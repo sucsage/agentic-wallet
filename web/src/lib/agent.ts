@@ -12,8 +12,27 @@ import {
 } from "./actions";
 import { type WalletState, readWallet } from "./state";
 
-export const MODEL = "claude-opus-5-5";
 const MAX_TURNS = 12;
+
+/**
+ * Provider selection. With OPENROUTER_API_KEY the official Anthropic SDK talks to OpenRouter's
+ * Anthropic-compatible endpoint; otherwise it calls the Anthropic API directly (ANTHROPIC_API_KEY).
+ */
+function llm() {
+  const openRouterKey = process.env.OPENROUTER_API_KEY;
+  if (openRouterKey) {
+    return {
+      client: new Anthropic({ baseURL: "https://openrouter.ai/api", apiKey: null, authToken: openRouterKey }),
+      model: process.env.LLM_MODEL ?? "anthropic/claude-opus-5.5",
+      direct: false,
+    };
+  }
+  return { client: new Anthropic(), model: process.env.LLM_MODEL ?? "claude-opus-5-5", direct: true };
+}
+
+export function llmConfigured() {
+  return Boolean(process.env.OPENROUTER_API_KEY || process.env.ANTHROPIC_API_KEY);
+}
 
 export type ChatTurn = { role: "user" | "assistant"; text: string };
 export type Attachment =
@@ -268,7 +287,7 @@ async function proposeDealSetupWithAcceptance(
 }
 
 export async function runAgent(wallet: Address, history: ChatTurn[], message: string, attachment?: Attachment) {
-  const client = new Anthropic();
+  const { client, model, direct } = llm();
   const userContent: Anthropic.Beta.BetaContentBlockParam[] = [];
   if (attachment) {
     userContent.push(
@@ -299,14 +318,14 @@ export async function runAgent(wallet: Address, history: ChatTurn[], message: st
 
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     const response = await client.beta.messages.create({
-      model: MODEL,
+      model,
       max_tokens: 16000,
       system: SYSTEM,
       tools: TOOLS,
       messages,
       output_config: { effort: "medium" },
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
+      // Server-side refusal fallback is an Anthropic API feature; OpenRouter doesn't take it.
+      ...(direct ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),
     });
 
     if (response.stop_reason === "refusal") {

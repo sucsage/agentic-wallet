@@ -89,3 +89,48 @@ body {
 @utility pill {
   @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap;
 }
+
+/* Agent replies (markdown) */
+.md > * + * {
+  margin-top: 0.6em;
+}
+.md strong {
+  font-weight: 600;
+}
+.md ul,
+.md ol {
+  padding-left: 1.2em;
+}
+.md ul {
+  list-style: disc;
+}
+.md ol {
+  list-style: decimal;
+}
+.md li + li {
+  margin-top: 0.2em;
+}
+.md code {
+  font-family: var(--font-geist-mono);
+  font-size: 0.85em;
+  background: var(--surface);
+  border-radius: 4px;
+  padding: 0.05em 0.3em;
+  overflow-wrap: anywhere;
+}
+.md table {
+  display: block;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 0.85em;
+}
+.md th,
+.md td {
+  border: 1px solid var(--border);
+  padding: 0.3em 0.6em;
+  text-align: left;
+}
+.md th {
+  background: var(--surface);
+  font-weight: 600;
+}

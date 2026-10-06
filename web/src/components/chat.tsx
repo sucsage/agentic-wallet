@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import type { AgentStep } from "@/lib/agent";
 import type { Sample } from "@/lib/samples";
@@ -186,7 +188,9 @@ export function Chat({
               {m.steps.map((s, j) => (
                 <Step key={j} step={s} />
               ))}
-              <div className="rounded-xl bg-surface-2 px-3.5 py-2.5 text-sm whitespace-pre-wrap">{m.text}</div>
+              <div className="md rounded-xl bg-surface-2 px-3.5 py-2.5 text-sm">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>
+              </div>
             </div>
           ),
         )}

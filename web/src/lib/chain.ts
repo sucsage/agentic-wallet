@@ -90,6 +90,13 @@ export function revertReason(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** Contract return values can contain bigints, which Response.json() cannot serialize. */
+function jsonSafe(v: unknown): unknown {
+  if (typeof v === "bigint") return v.toString();
+  if (Array.isArray(v)) return v.map(jsonSafe);
+  return v;
+}
+
 function isNonceError(err: unknown) {
   const msg = err instanceof BaseError ? err.details + err.shortMessage : String(err);
   return /nonce|replacement transaction underpriced|already known/i.test(msg);
@@ -133,7 +140,7 @@ export async function send<
         const hash = await wc.writeContract({ ...(call as any), gas: opts.force ? 400_000n : undefined });
         const receipt = await pc.waitForTransactionReceipt({ hash });
         if (receipt.status === "success") {
-          return { status: "success", hash, url: explorerTx(hash), result: simulated?.result };
+          return { status: "success", hash, url: explorerTx(hash), result: jsonSafe(simulated?.result) };
         }
         return { status: "reverted", hash, url: explorerTx(hash), error: simulationError ?? "reverted" };
       } catch (err) {
