@@ -12,6 +12,18 @@ export default defineConfig({
     },
   },
   networks: {
+    // Mine failing transactions as reverted (like a real chain) instead of throwing,
+    // so the local attack demo produces a reverted tx hash.
+    node: {
+      type: "edr-simulated",
+      chainType: "l1",
+      throwOnTransactionFailures: false,
+    },
+    localhost: {
+      type: "http",
+      chainType: "l1",
+      url: "http://127.0.0.1:8545",
+    },
     baseSepolia: {
       type: "http",
       chainType: "op",

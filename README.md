@@ -12,9 +12,25 @@ Topic F: Agent Wallet.
 
 | Path | What |
 |---|---|
-| `contracts/` | Solidity: `AgentWallet`, `MilestoneEscrow`, `MockUSDC` (Hardhat 3 + viem) |
-| `agent/` | *(next)* Claude tool-use agent + off-chain policy engine |
-| `web/` | *(next)* Next.js UI: chat, approvals, cash-flow dashboard |
+| `contracts/` | Solidity: `AgentWallet`, `AgentWalletFactory`, `MilestoneEscrow`, `MockUSDC` (Hardhat 3 + viem) |
+| `web/` | Next.js 16 app on Vercel: landing page, per-visitor sandbox, agent chat, approvals, deals, audit log |
+| `web/src/lib/agent.ts` | Claude (`claude-opus-5-5`) tool-use loop: 7 tools, untrusted-document handling |
+| `web/src/lib/policy.ts` | Guard #1: off-chain policy engine (tier routing, injection scan) |
+| `web/src/lib/actions.ts` | Every on-chain action, shared by the agent's tools and the UI |
+| `scripts/deploy-base-sepolia.sh` | One-command testnet deploy + gas funding + Vercel env file |
+
+## Architecture
+
+```
+Visitor ──► Next.js (Vercel) ──► Claude agent ──► Guard 1: policy engine ──► Guard 2: AgentWallet ──► MilestoneEscrow
+              │  chat, approvals,     tools          tier routing, caps,          on-chain caps,           evidence hash,
+              │  deals, audit         (7)            allowlist, injection scan     allowlists, N-of-M       release, dispute
+              └─► "Launch sandbox" ──► AgentWalletFactory: one tx = configured wallet + 10,000 mUSDC
+```
+
+The chain is the only database: deal terms and evidence ride on-chain as `data:` URIs, and the
+audit log is read from contract events. Each visitor gets an isolated wallet, so judges can't
+interfere with each other.
 
 ## Permission tiers (enforced on-chain)
 
@@ -29,12 +45,30 @@ Generic calls (Tier 1 `Call` kind) are limited to `token.approve(allowlisted esc
 `escrow.createDeal(allowlisted payee, settlement token)`, `escrow.fund` and `escrow.dispute`.
 Anything that moves funds out has to go through its dedicated, checked path.
 
+## Run locally
+
+```bash
+cd contracts && npm install && npx hardhat node          # terminal 1: local chain
+cd contracts && npx hardhat run scripts/deploy.ts --network localhost
+cd web && npm install && cp .env.example .env.local      # fill addresses + Hardhat test keys
+npm run dev                                              # http://localhost:3000
+npm run e2e                                              # backend end-to-end flow against the chain
+```
+
+`ANTHROPIC_API_KEY` is only needed for the chat agent; every other button works without it.
+
+## Deploy (Base Sepolia + Vercel)
+
+1. Fund the `OWNER` address from `.secrets/base-sepolia.env` with ~0.08 Base Sepolia ETH (any faucet).
+2. `./scripts/deploy-base-sepolia.sh`: deploys contracts, funds the other role keys, writes `.secrets/vercel.env`.
+3. Import the repo in Vercel with root directory `web/`, paste `.secrets/vercel.env` plus `ANTHROPIC_API_KEY`.
+
 ## Contracts
 
 ```bash
 cd contracts
 npm install
-npm test          # 17 tests, including the prompt-injection "send everything to 0xEvil" cases
+npm test          # 19 tests, including the prompt-injection "send everything to 0xEvil" cases
 ```
 
 Deploy to Base Sepolia (testnet keys only):

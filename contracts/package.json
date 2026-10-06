@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "test": "hardhat test nodejs",
-    "build": "hardhat build"
+    "build": "hardhat build",
+    "export-abis": "hardhat build && node scripts/export-abis.mjs"
   },
   "keywords": [],
   "author": "",

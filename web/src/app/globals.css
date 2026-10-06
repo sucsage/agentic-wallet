@@ -1,0 +1,91 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #f1f3f6;
+  --border: #e3e6eb;
+  --fg: #111827;
+  --muted: #5b6474;
+  --accent: #0f766e;
+  --accent-soft: #e6f4f2;
+  --accent-fg: #ffffff;
+  --ok: #15803d;
+  --ok-soft: #e8f6ec;
+  --warn: #b45309;
+  --warn-soft: #fdf3e3;
+  --bad: #be123c;
+  --bad-soft: #fdebef;
+  --info: #1d4ed8;
+  --info-soft: #e9effd;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b0f14;
+    --surface: #121821;
+    --surface-2: #19212c;
+    --border: #253041;
+    --fg: #e6eaf0;
+    --muted: #93a0b3;
+    --accent: #2dd4bf;
+    --accent-soft: #10302d;
+    --accent-fg: #04201d;
+    --ok: #4ade80;
+    --ok-soft: #12291a;
+    --warn: #fbbf24;
+    --warn-soft: #2d2410;
+    --bad: #fb7185;
+    --bad-soft: #321720;
+    --info: #93b4ff;
+    --info-soft: #16213b;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-fg: var(--accent-fg);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+}
+
+@utility card {
+  @apply rounded-xl border border-border bg-surface;
+}
+
+@utility btn {
+  @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+}
+@utility btn-primary {
+  @apply btn bg-accent text-accent-fg hover:opacity-90;
+}
+@utility btn-ghost {
+  @apply btn border border-border bg-surface text-fg hover:bg-surface-2;
+}
+@utility btn-danger {
+  @apply btn border border-bad/40 bg-bad-soft text-bad hover:border-bad;
+}
+
+@utility pill {
+  @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap;
+}
