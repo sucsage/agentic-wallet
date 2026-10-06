@@ -41,6 +41,8 @@ contract MilestoneEscrow is ReentrancyGuard {
     uint256 public dealCount;
     mapping(uint256 => Deal) private _deals;
     mapping(uint256 => mapping(uint256 => Milestone)) private _milestones;
+    mapping(address => uint256[]) private _dealsAsPayer;
+    mapping(address => uint256[]) private _dealsAsPayee;
 
     event DealCreated(
         uint256 indexed dealId, address indexed payer, address indexed payee, address token, uint256 total, string termsURI
@@ -94,6 +96,8 @@ contract MilestoneEscrow is ReentrancyGuard {
             funded: false,
             termsURI: termsURI
         });
+        _dealsAsPayer[msg.sender].push(dealId);
+        _dealsAsPayee[payee].push(dealId);
         emit DealCreated(dealId, msg.sender, payee, address(token), total, termsURI);
     }
 
@@ -169,6 +173,10 @@ contract MilestoneEscrow is ReentrancyGuard {
         m.status = Status.Refunded;
         d.token.safeTransfer(d.payer, m.amount);
         emit MilestoneRefunded(dealId, index, d.payer, m.amount);
+    }
+
+    function dealsOf(address account) external view returns (uint256[] memory asPayer, uint256[] memory asPayee) {
+        return (_dealsAsPayer[account], _dealsAsPayee[account]);
     }
 
     function getDeal(uint256 dealId) external view returns (Deal memory) {

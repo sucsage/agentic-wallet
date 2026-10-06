@@ -15,16 +15,25 @@ describe("AgentWallet", async function () {
   async function deploy() {
     const usdc = await viem.deployContract("MockUSDC");
     const escrow = await viem.deployContract("MilestoneEscrow");
-    const wallet = await viem.deployContract("AgentWallet", [owner.account.address, usdc.address]);
-    await usdc.write.mint([wallet.address, usd(100_000)]);
+    const factory = await viem.deployContract("AgentWalletFactory");
 
+    // One transaction: deploy a fully configured wallet and seed it with test stablecoin.
     const now = BigInt(await networkHelpers.time.latest());
-    await wallet.write.setRecipient([contractor.account.address, true]);
-    await wallet.write.setEscrow([escrow.address, true]);
-    await wallet.write.setSession([agent.account.address, now + BigInt(7 * DAY), usd(500), usd(1_000)]);
-    await wallet.write.setApprover([approverA.account.address, true]);
-    await wallet.write.setApprover([approverB.account.address, true]);
-    await wallet.write.setThreshold([2n]);
+    const config = {
+      owner: owner.account.address,
+      token: usdc.address,
+      agent: agent.account.address,
+      sessionExpiresAt: now + BigInt(7 * DAY),
+      maxPerTx: usd(500),
+      dailyLimit: usd(1_000),
+      approvers: [approverA.account.address, approverB.account.address],
+      threshold: 2n,
+      recipients: [contractor.account.address],
+      escrows: [escrow.address],
+    };
+    await factory.write.createWallet([config, usd(100_000)]);
+    const [walletAddress] = await factory.read.walletsOf([owner.account.address]);
+    const wallet = await viem.getContractAt("AgentWallet", walletAddress);
 
     // Owner sets up a funded deal: deposit 300, FAT 2000, SAT 700.
     const amounts = [usd(300), usd(2_000), usd(700)];
@@ -228,6 +237,54 @@ describe("AgentWallet", async function () {
       assert.equal(await usdc.read.balanceOf([contractor.account.address]), usd(2_000));
       assert.equal((await escrow.read.getMilestone([0n, 1n])).status, 2);
       await viem.assertions.revertWithCustomError(asA.write.approve([0n]), wallet, "ProposalClosed");
+    });
+
+    it("SetupDeal creates and funds a deal in one approval round", async () => {
+      const { usdc, escrow, asAgent, asA, asB, wallet } = await networkHelpers.loadFixture(deploy);
+      const data = encodeFunctionData({
+        abi: escrow.abi,
+        functionName: "createDeal",
+        args: [
+          contractor.account.address,
+          arbiter.account.address,
+          usdc.address,
+          [usd(400), usd(600)],
+          'data:application/json,{"po":"PO-2"}',
+        ],
+      });
+      await asAgent.write.propose([3, escrow.address, 0n, 0n, data, "PO-2 parsed: 2 milestones"]);
+      await asA.write.approve([0n]);
+      await asB.write.approve([0n]);
+
+      const [asPayer] = await escrow.read.dealsOf([wallet.address]);
+      assert.deepEqual(asPayer, [0n, 1n]);
+      const deal = await escrow.read.getDeal([1n]);
+      assert.equal(deal.funded, true);
+      assert.equal(deal.total, usd(1_000));
+      assert.equal(await usdc.read.allowance([wallet.address, escrow.address]), 0n);
+    });
+
+    it("SetupDeal rejects a non-allowlisted payee or a wrong token", async () => {
+      const { usdc, escrow, asAgent, wallet } = await networkHelpers.loadFixture(deploy);
+      const evilAddr = getAddress(evil.account.address);
+      const mk = (payee: `0x${string}`, token: `0x${string}`) =>
+        encodeFunctionData({
+          abi: escrow.abi,
+          functionName: "createDeal",
+          args: [payee, arbiter.account.address, token, [usd(1)], ""],
+        });
+      await viem.assertions.revertWithCustomErrorWithArgs(
+        asAgent.write.propose([3, escrow.address, 0n, 0n, mk(evilAddr, usdc.address), "x"]),
+        wallet,
+        "RecipientNotAllowed",
+        [evilAddr],
+      );
+      const otherToken = await viem.deployContract("MockUSDC");
+      await viem.assertions.revertWithCustomError(
+        asAgent.write.propose([3, escrow.address, 0n, 0n, mk(contractor.account.address, otherToken.address), "x"]),
+        wallet,
+        "WrongToken",
+      );
     });
 
     it("agent can draft deal setup calls that humans approve", async () => {

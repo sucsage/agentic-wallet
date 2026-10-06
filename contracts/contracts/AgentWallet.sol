@@ -25,7 +25,22 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
     enum Kind {
         Transfer,
         ReleaseMilestone,
-        Call
+        Call,
+        SetupDeal
+    }
+
+    /// @notice Full initial policy, so a wallet can be deployed ready to use in one transaction.
+    struct Config {
+        address owner;
+        IERC20 token;
+        address agent;
+        uint64 sessionExpiresAt;
+        uint256 maxPerTx;
+        uint256 dailyLimit;
+        address[] approvers;
+        uint256 threshold;
+        address[] recipients;
+        address[] escrows;
     }
 
     struct Session {
@@ -37,10 +52,10 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
     struct Proposal {
         Kind kind;
         address proposer;
-        address target; // Transfer: recipient. ReleaseMilestone/Call: contract.
+        address target; // Transfer: recipient. Other kinds: contract.
         uint256 amount; // Transfer: token amount. ReleaseMilestone: dealId.
         uint256 index; // ReleaseMilestone: milestone index.
-        bytes data; // Call only.
+        bytes data; // Call: calldata. SetupDeal: escrow.createDeal calldata.
         string reason;
         uint64 expiresAt;
         uint64 approverEpoch;
@@ -53,6 +68,7 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
 
     /// @notice The only token the agent may spend (the settlement stablecoin).
     IERC20 public immutable token;
+    uint256 public immutable createdAtBlock;
 
     bool public paused;
 
@@ -105,8 +121,20 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
     error InvalidThreshold();
     error InvalidSession();
 
-    constructor(address owner_, IERC20 token_) Ownable(owner_) {
-        token = token_;
+    constructor(Config memory c) Ownable(c.owner) {
+        token = c.token;
+        createdAtBlock = block.number;
+        if (c.agent != address(0)) _setSession(c.agent, c.sessionExpiresAt, c.maxPerTx, c.dailyLimit);
+        for (uint256 i = 0; i < c.approvers.length; i++) {
+            _setApprover(c.approvers[i], true);
+        }
+        if (c.threshold != 0) _setThreshold(c.threshold);
+        for (uint256 i = 0; i < c.recipients.length; i++) {
+            _setRecipient(c.recipients[i], true);
+        }
+        for (uint256 i = 0; i < c.escrows.length; i++) {
+            _setEscrow(c.escrows[i], true);
+        }
     }
 
     receive() external payable {}
@@ -135,9 +163,7 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
     // ----------------------------------------------------------------------------------------
 
     function setSession(address key, uint64 expiresAt, uint256 maxPerTx, uint256 dailyLimit) external onlyOwner {
-        if (key == address(0) || expiresAt <= block.timestamp || maxPerTx > dailyLimit) revert InvalidSession();
-        sessions[key] = Session(expiresAt, maxPerTx, dailyLimit);
-        emit SessionSet(key, expiresAt, maxPerTx, dailyLimit);
+        _setSession(key, expiresAt, maxPerTx, dailyLimit);
     }
 
     function revokeSession(address key) external onlyOwner {
@@ -146,33 +172,19 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
     }
 
     function setRecipient(address recipient, bool allowed) external onlyOwner {
-        allowedRecipient[recipient] = allowed;
-        emit RecipientSet(recipient, allowed);
+        _setRecipient(recipient, allowed);
     }
 
     function setEscrow(address escrow, bool allowed) external onlyOwner {
-        allowedEscrow[escrow] = allowed;
-        emit EscrowSet(escrow, allowed);
+        _setEscrow(escrow, allowed);
     }
 
     function setApprover(address approver, bool allowed) external onlyOwner {
-        if (approver == address(0) || isApprover[approver] == allowed) revert InvalidThreshold();
-        isApprover[approver] = allowed;
-        if (allowed) {
-            approverCount++;
-        } else {
-            approverCount--;
-            if (threshold > approverCount) revert InvalidThreshold();
-        }
-        approverEpoch++;
-        emit ApproverSet(approver, allowed);
+        _setApprover(approver, allowed);
     }
 
     function setThreshold(uint256 newThreshold) external onlyOwner {
-        if (newThreshold == 0 || newThreshold > approverCount) revert InvalidThreshold();
-        threshold = newThreshold;
-        approverEpoch++;
-        emit ThresholdSet(newThreshold);
+        _setThreshold(newThreshold);
     }
 
     function unpause() external onlyOwner {
@@ -310,6 +322,42 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
     // Internal
     // ----------------------------------------------------------------------------------------
 
+    function _setSession(address key, uint64 expiresAt, uint256 maxPerTx, uint256 dailyLimit) private {
+        if (key == address(0) || expiresAt <= block.timestamp || maxPerTx > dailyLimit) revert InvalidSession();
+        sessions[key] = Session(expiresAt, maxPerTx, dailyLimit);
+        emit SessionSet(key, expiresAt, maxPerTx, dailyLimit);
+    }
+
+    function _setRecipient(address recipient, bool allowed) private {
+        allowedRecipient[recipient] = allowed;
+        emit RecipientSet(recipient, allowed);
+    }
+
+    function _setEscrow(address escrow, bool allowed) private {
+        allowedEscrow[escrow] = allowed;
+        emit EscrowSet(escrow, allowed);
+    }
+
+    function _setApprover(address approver, bool allowed) private {
+        if (approver == address(0) || isApprover[approver] == allowed) revert InvalidThreshold();
+        isApprover[approver] = allowed;
+        if (allowed) {
+            approverCount++;
+        } else {
+            approverCount--;
+            if (threshold > approverCount) revert InvalidThreshold();
+        }
+        approverEpoch++;
+        emit ApproverSet(approver, allowed);
+    }
+
+    function _setThreshold(uint256 newThreshold) private {
+        if (newThreshold == 0 || newThreshold > approverCount) revert InvalidThreshold();
+        threshold = newThreshold;
+        approverEpoch++;
+        emit ThresholdSet(newThreshold);
+    }
+
     function _spend(address key, uint256 amount) private {
         Session memory s = sessions[key];
         if (amount > s.maxPerTx) revert ExceedsPerTxLimit(amount, s.maxPerTx);
@@ -341,9 +389,31 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
         } else if (kind == Kind.ReleaseMilestone) {
             _checkRelease(target, amount, index);
             if (data.length != 0) revert InvalidProposal();
-        } else {
+        } else if (kind == Kind.Call) {
             if (amount != 0 || index != 0) revert InvalidProposal();
             _checkCall(target, data);
+        } else {
+            if (amount != 0 || index != 0) revert InvalidProposal();
+            _decodeSetupDeal(target, data);
+        }
+    }
+
+    /// @dev SetupDeal = approve + createDeal + fund in one human-approved step. The payee must be
+    ///      allowlisted and the deal must settle in the wallet's token. Returns the decoded call.
+    function _decodeSetupDeal(address escrow, bytes memory data)
+        private
+        view
+        returns (address payee, address arbiter, uint256[] memory amounts, string memory termsURI, uint256 total)
+    {
+        if (!allowedEscrow[escrow]) revert EscrowNotAllowed(escrow);
+        if (data.length < 4 || bytes4(data) != MilestoneEscrow.createDeal.selector) revert InvalidProposal();
+        address dealToken;
+        (payee, arbiter, dealToken, amounts, termsURI) =
+            abi.decode(_args(data), (address, address, address, uint256[], string));
+        if (!allowedRecipient[payee]) revert RecipientNotAllowed(payee);
+        if (dealToken != address(token)) revert WrongToken();
+        for (uint256 i = 0; i < amounts.length; i++) {
+            total += amounts[i];
         }
     }
 
@@ -394,9 +464,16 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
         } else if (p.kind == Kind.ReleaseMilestone) {
             _checkRelease(p.target, p.amount, p.index);
             MilestoneEscrow(p.target).release(p.amount, p.index);
-        } else {
+        } else if (p.kind == Kind.Call) {
             _checkCall(p.target, p.data);
             Address.functionCall(p.target, p.data);
+        } else {
+            (address payee, address arbiter, uint256[] memory amounts, string memory termsURI, uint256 total) =
+                _decodeSetupDeal(p.target, p.data);
+            MilestoneEscrow escrow = MilestoneEscrow(p.target);
+            token.forceApprove(address(escrow), total);
+            uint256 dealId = escrow.createDeal(payee, arbiter, token, amounts, termsURI);
+            escrow.fund(dealId);
         }
     }
 }
