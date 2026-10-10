@@ -1,0 +1,200 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Auth (Better Auth core tables). Google + Sign in with Apple, see src/lib/auth.ts.
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String   @id
+  name          String
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  image         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sessions Session[]
+  accounts Account[]
+  profile  Profile?
+  wallets  UserWallet[]
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// One row per linked sign-in method (providerId "google" | "apple").
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@unique([providerId, accountId])
+  @@index([userId])
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+}
+
+// ---------------------------------------------------------------------------
+// App data linked to a user
+// ---------------------------------------------------------------------------
+
+/// Basic personal details, 1:1 with User. Everything optional so sign-in never blocks on it.
+model Profile {
+  userId       String    @id
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  firstName    String?
+  lastName     String?
+  phone        String?
+  dateOfBirth  DateTime? @db.Date
+  organization String?
+  jobTitle     String?
+  country      String?   @db.Char(2) /// ISO 3166-1 alpha-2, e.g. "TH"
+  locale       String    @default("en") /// "en" | "th", matches the UI language switch
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+enum WalletRole {
+  OWNER
+  APPROVER
+  CONTRACTOR
+  VIEWER
+}
+
+/// Links a signed-in user to on-chain AgentWallets (the indexed Wallet table) and, through it,
+/// to that wallet's Proposal / Approval / Event rows.
+model UserWallet {
+  userId        String
+  walletAddress String
+  role          WalletRole @default(OWNER)
+  label         String?
+  createdAt     DateTime   @default(now())
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  wallet        Wallet     @relation(fields: [walletAddress], references: [address], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([userId, walletAddress])
+  @@index([walletAddress])
+}
+
+model Approval {
+  walletAddress   String
+  proposalId      BigInt
+  approver        String
+  approvedAtBlock BigInt
+  approvedAt      DateTime
+  Proposal        Proposal @relation(fields: [walletAddress, proposalId], references: [walletAddress, proposalId])
+
+  @@id([walletAddress, proposalId, approver])
+}
+
+model Event {
+  id            String   @id
+  walletAddress String
+  txHash        String
+  logIndex      Int
+  eventName     String
+  args          Json
+  blockNumber   BigInt
+  blockTime     DateTime
+  Wallet        Wallet   @relation(fields: [walletAddress], references: [address])
+
+  @@unique([txHash, logIndex])
+  @@index([walletAddress, blockNumber])
+}
+
+model IndexerSyncState {
+  contractAddress String   @id
+  lastSyncedBlock BigInt
+  updatedAt       DateTime
+}
+
+model Proposal {
+  walletAddress  String
+  proposalId     BigInt
+  kind           ProposalKind
+  proposer       String
+  target         String
+  amount         Decimal        @db.Decimal(78, 0)
+  milestoneIndex Decimal        @db.Decimal(78, 0)
+  data           String
+  reason         String
+  expiresAt      DateTime
+  approverEpoch  BigInt
+  approvalsCount Int            @default(0)
+  status         ProposalStatus @default(OPEN)
+  createdBlock   BigInt
+  updatedBlock   BigInt
+  Approval       Approval[]
+  Wallet         Wallet         @relation(fields: [walletAddress], references: [address])
+
+  @@id([walletAddress, proposalId])
+  @@index([walletAddress, status])
+}
+
+model Wallet {
+  address      String       @id
+  owner        String
+  agent        String
+  creator      String
+  token        String
+  createdBlock BigInt
+  createdAt    DateTime
+  Event        Event[]
+  Proposal     Proposal[]
+  members      UserWallet[]
+
+  @@index([owner])
+}
+
+enum ProposalKind {
+  TRANSFER
+  RELEASE_MILESTONE
+  CALL
+  SETUP_DEAL
+}
+
+enum ProposalStatus {
+  OPEN
+  EXECUTED
+  CANCELLED
+  EXPIRED
+  STALE
+}

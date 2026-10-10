@@ -2,6 +2,7 @@
 
 import { LangToggle, type Key, useT } from "@/lib/i18n";
 
+import { AccountLink } from "./account-link";
 import { LaunchButton } from "./launch-button";
 
 const STEPS: [Key, Key][] = [
@@ -37,6 +38,7 @@ export function Landing() {
         <div className="flex items-center gap-2">
           <span className="pill hidden bg-surface-2 text-muted md:inline-flex">{t("landing.badge")}</span>
           <LangToggle />
+          <AccountLink />
         </div>
       </header>
 
