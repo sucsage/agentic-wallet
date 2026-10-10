@@ -11,11 +11,15 @@ import {
   type Hex,
   createPublicClient,
   createWalletClient,
+  decodeErrorResult,
   http,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
+import { agentWalletAbi, milestoneEscrowAbi, mockUSDCAbi } from "./abis";
 import { config, explorerTx } from "./config";
+
+const ERROR_ABI = [...agentWalletAbi, ...milestoneEscrowAbi, ...mockUSDCAbi].filter((i) => i.type === "error");
 
 export type Role = "owner" | "agent" | "approverA" | "approverB" | "contractor";
 
@@ -78,14 +82,29 @@ export type TxOutcome =
 
 /** Turns a viem error into a short readable reason, e.g. `RecipientNotAllowed(0xBad…)`. */
 export function revertReason(err: unknown): string {
-  if (err instanceof BaseError) {
-    const revert = err.walk((e) => e instanceof ContractFunctionRevertedError);
-    if (revert instanceof ContractFunctionRevertedError) {
-      const name = revert.data?.errorName ?? revert.reason ?? "reverted";
-      const args = revert.data?.args?.map((a) => (typeof a === "bigint" ? a.toString() : String(a)));
-      return args?.length ? `${name}(${args.join(", ")})` : name;
+  const fmt = (name: string, args?: readonly unknown[]) =>
+    args?.length ? `${name}(${args.map((a) => (typeof a === "bigint" ? a.toString() : String(a))).join(", ")})` : name;
+  if (err instanceof Error && "walk" in err) {
+    const be = err as BaseError;
+    // Match by name, not instanceof: bundlers/loaders can end up with two copies of viem.
+    const revert = be.walk((e) => (e as Error).name === "ContractFunctionRevertedError") as
+      | ContractFunctionRevertedError
+      | null;
+    if (revert?.data?.errorName) return fmt(revert.data.errorName, revert.data.args);
+    // Some public RPCs (e.g. sepolia.base.org) return the revert data in a shape viem doesn't
+    // decode for us; find the raw selector + args anywhere in the cause chain and decode it.
+    const withData = be.walk((e) => typeof (e as { data?: unknown }).data === "string");
+    const data = (withData as { data?: string } | null)?.data;
+    if (data?.startsWith("0x") && data.length >= 10) {
+      try {
+        const decoded = decodeErrorResult({ abi: ERROR_ABI, data: data as Hex });
+        return fmt(decoded.errorName, decoded.args as readonly unknown[] | undefined);
+      } catch {
+        // unknown selector: fall through
+      }
     }
-    return err.shortMessage;
+    if (revert?.reason) return revert.reason;
+    return be.shortMessage;
   }
   return err instanceof Error ? err.message : String(err);
 }
@@ -98,7 +117,8 @@ function jsonSafe(v: unknown): unknown {
 }
 
 function isNonceError(err: unknown) {
-  const msg = err instanceof BaseError ? err.details + err.shortMessage : String(err);
+  const be = err as Partial<BaseError>;
+  const msg = be?.shortMessage ? `${be.details ?? ""}${be.shortMessage}` : String(err);
   return /nonce|replacement transaction underpriced|already known/i.test(msg);
 }
 

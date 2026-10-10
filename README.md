@@ -80,6 +80,19 @@ AGENT_ADDRESS=0x... APPROVERS=0x...,0x... CONTRACTOR=0x... \
   npx hardhat run scripts/deploy.ts --network baseSepolia
 ```
 
+## Live on Base Sepolia (chain 84532)
+
+| Contract | Address |
+|---|---|
+| MockUSDC | [`0x9fe132768cd9f7dc8a9e89ab6c6555ac4c25a4c2`](https://sepolia.basescan.org/address/0x9fe132768cd9f7dc8a9e89ab6c6555ac4c25a4c2) |
+| MilestoneEscrow | [`0x0e0f107b42b6c13ceb48ef390cb8fd3747213b20`](https://sepolia.basescan.org/address/0x0e0f107b42b6c13ceb48ef390cb8fd3747213b20) |
+| AgentWalletFactory | [`0x1653fb818d253902e3aead22e570bacce608f7e1`](https://sepolia.basescan.org/address/0x1653fb818d253902e3aead22e570bacce608f7e1) |
+
+On-chain evidence:
+
+- Sandbox wallet created by the factory in one tx: [`0x01f44166…bc4c25`](https://sepolia.basescan.org/tx/0x01f441666745163fd4d3890eba2df910e6f2aa6ac3d2f2f9011ff4a343bc4c25)
+- Attack with the agent's own key, bypassing the AI and the policy engine: `agentTransfer(0xBAd…Bad, 5000)` **reverted on-chain** with `RecipientNotAllowed`: [`0xfc7b209e…69d1dce`](https://sepolia.basescan.org/tx/0xfc7b209e06d2e076525ab94fbf060160e381199656e1cb43b3d60906c69d1dce)
+
 ## Known risks (draft for the security self-assessment)
 
 1. **Prompt injection** through documents → policy is enforced on-chain; malicious recipients revert (tested).
