@@ -2,7 +2,7 @@ import { extractText, getDocumentProxy } from "unpdf";
 import { z } from "zod";
 
 import { type Attachment, llmConfigured, runAgent } from "@/lib/agent";
-import { HttpError, demoWallet, errorResponse, rateLimit } from "@/lib/guard";
+import { HttpError, userWallet, errorResponse, rateLimit } from "@/lib/guard";
 import { scanForInjection } from "@/lib/policy";
 import { readWallet } from "@/lib/state";
 
@@ -38,7 +38,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/workspace/[addr
   try {
     rateLimit(req, "agent", 30, 60 * 60 * 1000);
     if (!llmConfigured()) throw new HttpError(503, "The AI agent is not configured (missing API key).");
-    const wallet = await demoWallet((await ctx.params).address);
+    const wallet = await userWallet((await ctx.params).address);
     const parsed = Body.safeParse(await req.json());
     if (!parsed.success) throw new HttpError(400, "Invalid request body");
     const { history, message, attachment, lang } = parsed.data;

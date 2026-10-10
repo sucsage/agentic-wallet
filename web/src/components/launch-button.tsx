@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useSyncExternalStore } from "react";
 
+import { authClient } from "@/lib/auth-client";
 import { useT } from "@/lib/i18n";
 
 const STORAGE_KEY = "agentic-wallet:last";
@@ -20,6 +21,7 @@ export function LaunchButton() {
   const { t } = useT();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { data: session, isPending } = authClient.useSession();
   const last = useSyncExternalStore(
     () => () => {},
     readLast,
@@ -43,10 +45,22 @@ export function LaunchButton() {
     }
   }
 
+  if (!isPending && !session)
+    return (
+      <div className="flex flex-col gap-2">
+        <div>
+          <a className="btn-primary px-5 py-2.5 text-base" href="/login">
+            {t("launch.signIn")}
+          </a>
+        </div>
+        <p className="text-xs text-muted">{t("launch.note")}</p>
+      </div>
+    );
+
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-3">
-        <button className="btn-primary px-5 py-2.5 text-base" onClick={launch} disabled={busy}>
+        <button className="btn-primary px-5 py-2.5 text-base" onClick={launch} disabled={busy || isPending}>
           {busy ? t("launch.busy") : t("launch.button")}
         </button>
         {last && !busy && (

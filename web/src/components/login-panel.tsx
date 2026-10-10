@@ -16,7 +16,7 @@ export function LoginPanel({ providers }: { providers: Record<Provider, boolean>
   async function signIn(provider: Provider) {
     setBusy(provider);
     setError(null);
-    const { error } = await authClient.signIn.social({ provider, callbackURL: "/profile" });
+    const { error } = await authClient.signIn.social({ provider, callbackURL: "/" });
     // On success the browser is already navigating to the provider.
     if (error) {
       setError(error.message ?? t("auth.error"));

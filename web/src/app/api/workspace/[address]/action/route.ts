@@ -10,7 +10,7 @@ import {
   submitEvidence,
   unpause,
 } from "@/lib/actions";
-import { HttpError, demoWallet, errorResponse, rateLimit } from "@/lib/guard";
+import { HttpError, userWallet, errorResponse, rateLimit } from "@/lib/guard";
 import { readDeals } from "@/lib/state";
 
 export const maxDuration = 60;
@@ -35,7 +35,7 @@ const Body = z.discriminatedUnion("type", [
 export async function POST(req: Request, ctx: RouteContext<"/api/workspace/[address]/action">) {
   try {
     rateLimit(req, "action", 60, 60 * 60 * 1000);
-    const wallet = await demoWallet((await ctx.params).address);
+    const wallet = await userWallet((await ctx.params).address);
     const parsed = Body.safeParse(await req.json());
     if (!parsed.success) throw new HttpError(400, "Invalid request body");
     const a = parsed.data;

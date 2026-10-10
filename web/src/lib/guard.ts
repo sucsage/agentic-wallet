@@ -3,7 +3,9 @@ import "server-only";
 import { type Address, getAddress } from "viem";
 
 import { agentWalletAbi } from "./abis";
+import { getSession } from "./auth";
 import { publicClient, roleAddresses } from "./chain";
+import { db } from "./db";
 
 export class HttpError extends Error {
   constructor(
@@ -29,6 +31,30 @@ export async function demoWallet(raw: string): Promise<Address> {
     throw new HttpError(404, "Not an Agentic Wallet sandbox on this network");
   }
   return wallet;
+}
+
+/** The signed-in user. Every wallet operation requires an account. */
+export async function requireUser() {
+  const session = await getSession();
+  if (!session) throw new HttpError(401, "Sign in first");
+  return session.user;
+}
+
+/** A sandbox wallet that belongs to the signed-in user (UserWallet row) and to this demo on-chain. */
+export async function userWallet(raw: string): Promise<Address> {
+  const user = await requireUser();
+  let wallet: Address;
+  try {
+    wallet = getAddress(raw);
+  } catch {
+    throw new HttpError(400, "Invalid wallet address");
+  }
+  const link = await db.userWallet.findUnique({
+    where: { userId_walletAddress: { userId: user.id, walletAddress: wallet } },
+  });
+  // 404, not 403: don't confirm that someone else's wallet exists.
+  if (!link) throw new HttpError(404, "Wallet not found in your account");
+  return demoWallet(wallet);
 }
 
 // Best-effort, per-instance rate limit so a public demo can't burn the API budget or gas.
