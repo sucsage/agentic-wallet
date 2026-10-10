@@ -114,19 +114,21 @@ model UserWallet {
   @@index([walletAddress])
 }
 
+/// Who approved which proposal, so the UI doesn't need one hasApproved() call per approver.
 model Approval {
   walletAddress   String
   proposalId      BigInt
   approver        String
   approvedAtBlock BigInt
   approvedAt      DateTime
-  Proposal        Proposal @relation(fields: [walletAddress, proposalId], references: [walletAddress, proposalId])
+  proposal        Proposal @relation(fields: [walletAddress, proposalId], references: [walletAddress, proposalId])
 
   @@id([walletAddress, proposalId, approver])
 }
 
+/// Full audit log: every AgentWallet + MilestoneEscrow event, unpaginated.
 model Event {
-  id            String   @id
+  id            String   @id @default(cuid())
   walletAddress String
   txHash        String
   logIndex      Int
@@ -134,18 +136,20 @@ model Event {
   args          Json
   blockNumber   BigInt
   blockTime     DateTime
-  Wallet        Wallet   @relation(fields: [walletAddress], references: [address])
+  wallet        Wallet   @relation(fields: [walletAddress], references: [address])
 
   @@unique([txHash, logIndex])
   @@index([walletAddress, blockNumber])
 }
 
+/// Last block the indexer processed per contract, so it resumes instead of rescanning from 0.
 model IndexerSyncState {
   contractAddress String   @id
   lastSyncedBlock BigInt
-  updatedAt       DateTime
+  updatedAt       DateTime @updatedAt
 }
 
+/// Mirrors AgentWallet.Proposal, kept in sync from ProposalCreated/Approved/Executed/Cancelled.
 model Proposal {
   walletAddress  String
   proposalId     BigInt
@@ -162,13 +166,14 @@ model Proposal {
   status         ProposalStatus @default(OPEN)
   createdBlock   BigInt
   updatedBlock   BigInt
-  Approval       Approval[]
-  Wallet         Wallet         @relation(fields: [walletAddress], references: [address])
+  approvals      Approval[]
+  wallet         Wallet         @relation(fields: [walletAddress], references: [address])
 
   @@id([walletAddress, proposalId])
   @@index([walletAddress, status])
 }
 
+/// One row per AgentWallet deployed by AgentWalletFactory (WalletCreated event).
 model Wallet {
   address      String       @id
   owner        String
@@ -177,8 +182,8 @@ model Wallet {
   token        String
   createdBlock BigInt
   createdAt    DateTime
-  Event        Event[]
-  Proposal     Proposal[]
+  events       Event[]
+  proposals    Proposal[]
   members      UserWallet[]
 
   @@index([owner])

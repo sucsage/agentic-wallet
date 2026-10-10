@@ -44,7 +44,7 @@ export async function listUserWallets(userId: string) {
       wallet: {
         select: {
           createdAt: true,
-          _count: { select: { Proposal: { where: { status: "OPEN" } }, Event: true } },
+          _count: { select: { proposals: { where: { status: "OPEN" } }, events: true } },
         },
       },
     },

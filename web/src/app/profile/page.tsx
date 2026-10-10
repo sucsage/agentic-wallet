@@ -33,7 +33,7 @@ export default async function ProfilePage() {
         address: w.walletAddress,
         role: w.role,
         createdAt: w.wallet.createdAt.toISOString(),
-        openProposals: w.wallet._count.Proposal,
+        openProposals: w.wallet._count.proposals,
       }))}
     />
   );

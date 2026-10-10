@@ -175,19 +175,13 @@ export async function readProposals(wallet: Address, epoch: bigint): Promise<Pro
 
   return Promise.all(
     ids.map(async (id) => {
-      const [p, a, b] = await Promise.all([
+      const [p, byOwner] = await Promise.all([
         pc.readContract({ address: wallet, abi: agentWalletAbi, functionName: "getProposal", args: [id] }),
         pc.readContract({
           address: wallet,
           abi: agentWalletAbi,
           functionName: "hasApproved",
-          args: [id, roles.approverA],
-        }),
-        pc.readContract({
-          address: wallet,
-          abi: agentWalletAbi,
-          functionName: "hasApproved",
-          args: [id, roles.approverB],
+          args: [id, roles.owner],
         }),
       ]);
       const { summary, amount } = describeProposal(p.kind, p.target, p.amount, p.index, p.data);
@@ -208,7 +202,7 @@ export async function readProposals(wallet: Address, epoch: bigint): Promise<Pro
         summary,
         amount,
         approvals: p.approvals,
-        approvedBy: [...(a ? (["approverA"] as const) : []), ...(b ? (["approverB"] as const) : [])],
+        approvedBy: byOwner ? (["owner"] as const) : [],
         status,
         expiresAt: Number(p.expiresAt),
         release: p.kind === 1 ? { dealId: Number(p.amount), index: Number(p.index) } : null,
@@ -347,7 +341,7 @@ export async function readWallet(addressInput: string) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     pc.readContract({ address: wallet, abi: agentWalletAbi, functionName, args } as any) as Promise<any>;
 
-  const [owner, paused, session, remaining, threshold, epoch, createdAtBlock, balance, isA, isB, contractorOk, escrowOk] =
+  const [owner, paused, session, remaining, threshold, epoch, createdAtBlock, balance, ownerApproves, contractorOk, escrowOk] =
     await Promise.all([
       read("owner") as Promise<Address>,
       read("paused") as Promise<boolean>,
@@ -362,8 +356,7 @@ export async function readWallet(addressInput: string) {
         functionName: "balanceOf",
         args: [wallet],
       }),
-      read("isApprover", [roles.approverA]) as Promise<boolean>,
-      read("isApprover", [roles.approverB]) as Promise<boolean>,
+      read("isApprover", [roles.owner]) as Promise<boolean>,
       read("allowedRecipient", [roles.contractor]) as Promise<boolean>,
       read("allowedEscrow", [config.contracts.escrow]) as Promise<boolean>,
     ]);
@@ -396,10 +389,7 @@ export async function readWallet(addressInput: string) {
       dailyLimit: usd(dailyLimit),
       remainingToday: usd(remaining),
     },
-    approvers: [
-      { role: "approverA" as Role, address: roles.approverA, active: isA },
-      { role: "approverB" as Role, address: roles.approverB, active: isB },
-    ],
+    approvers: [{ role: "owner" as Role, address: roles.owner, active: ownerApproves }],
     threshold: Number(threshold),
     allowlist: {
       recipients: contractorOk ? [{ address: roles.contractor, label: "Contractor" }] : [],

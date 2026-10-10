@@ -21,13 +21,11 @@ import { config, explorerTx } from "./config";
 
 const ERROR_ABI = [...agentWalletAbi, ...milestoneEscrowAbi, ...mockUSDCAbi].filter((i) => i.type === "error");
 
-export type Role = "owner" | "agent" | "approverA" | "approverB" | "contractor";
+export type Role = "owner" | "agent" | "contractor";
 
 export const ROLE_LABEL: Record<Role, string> = {
   owner: "Owner",
   agent: "AI Agent",
-  approverA: "Approver A",
-  approverB: "Approver B",
   contractor: "Contractor",
 };
 
@@ -53,8 +51,6 @@ export function roleAddresses(): Record<Role, Address> {
   return {
     owner: account("owner").address,
     agent: account("agent").address,
-    approverA: account("approverA").address,
-    approverB: account("approverB").address,
     contractor: account("contractor").address,
   };
 }

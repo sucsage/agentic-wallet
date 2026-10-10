@@ -16,9 +16,9 @@ import { readDeals } from "@/lib/state";
 export const maxDuration = 60;
 
 const Body = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("approve"), id: z.number().int().min(0), role: z.enum(["approverA", "approverB"]) }),
+  z.object({ type: z.literal("approve"), id: z.number().int().min(0) }),
   z.object({ type: z.literal("cancel"), id: z.number().int().min(0) }),
-  z.object({ type: z.literal("pause"), role: z.enum(["owner", "approverA", "approverB", "agent"]) }),
+  z.object({ type: z.literal("pause"), role: z.enum(["owner", "agent"]) }),
   z.object({ type: z.literal("unpause") }),
   z.object({ type: z.literal("revoke_session") }),
   z.object({ type: z.literal("restore_session") }),
@@ -42,7 +42,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/workspace/[addr
 
     switch (a.type) {
       case "approve":
-        return Response.json(await approveProposal(wallet, a.id, a.role));
+        return Response.json(await approveProposal(wallet, a.id));
       case "cancel":
         return Response.json(await cancelProposal(wallet, a.id));
       case "pause":

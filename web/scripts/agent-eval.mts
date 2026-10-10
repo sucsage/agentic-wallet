@@ -29,8 +29,7 @@ let s = await readWallet(w);
 const setup = s.proposals.find((p) => p.kind === "SetupDeal" && p.status === "open");
 checks.push(["PO → deal proposal (4 milestones, 3,450)", !!setup && setup.amount === "3450"]);
 if (setup) {
-  await approveProposal(w, setup.id, "approverA");
-  await approveProposal(w, setup.id, "approverB");
+  await approveProposal(w, setup.id);
 }
 s = await readWallet(w);
 const deal = s.deals[0];

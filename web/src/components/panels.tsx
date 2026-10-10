@@ -190,20 +190,13 @@ export function ApprovalsPanel({ ws, run, busy }: { ws: Workspace; run: Run; bus
             </div>
             {p.reason && <p className="mt-2 rounded bg-surface px-2 py-1.5 text-xs text-muted">“{p.reason}”</p>}
             <div className="mt-2 flex flex-wrap gap-2">
-              {(["approverA", "approverB"] as const).map((role) => {
-                const done = p.approvedBy.includes(role);
-                const who = t(`role.${role}`);
-                return (
-                  <button
-                    key={role}
-                    className={done ? "btn-ghost" : "btn-primary"}
-                    disabled={done || !!busy || ws.paused}
-                    onClick={() => run(t("approvals.approveLabel", { id: p.id, who }), { type: "approve", id: p.id, role })}
-                  >
-                    {done ? `✓ ${who}` : t("approvals.approveAs", { who })}
-                  </button>
-                );
-              })}
+              <button
+                className="btn-primary"
+                disabled={!!busy || ws.paused}
+                onClick={() => run(t("approvals.approveLabel", { id: p.id }), { type: "approve", id: p.id })}
+              >
+                {t("approvals.approve")}
+              </button>
               <button
                 className="btn-ghost"
                 disabled={!!busy}

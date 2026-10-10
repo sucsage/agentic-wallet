@@ -33,7 +33,7 @@ export async function createWorkspace(): Promise<{ address: Address; outcome: Tx
         sessionExpiresAt: latest.timestamp + walletDefaults.sessionDays * 86_400n,
         maxPerTx: walletDefaults.maxPerTx,
         dailyLimit: walletDefaults.dailyLimit,
-        approvers: [roles.approverA, roles.approverB],
+        approvers: [roles.owner],
         threshold: walletDefaults.threshold,
         recipients: [roles.contractor],
         escrows: [config.contracts.escrow],
@@ -178,8 +178,8 @@ export async function restoreSession(wallet: Address): Promise<ActionResult> {
   return { action: "restore_session", outcome };
 }
 
-export async function approveProposal(wallet: Address, id: number, role: "approverA" | "approverB"): Promise<ActionResult> {
-  const outcome = await send(role, { address: wallet, abi: agentWalletAbi, functionName: "approve", args: [BigInt(id)] });
+export async function approveProposal(wallet: Address, id: number): Promise<ActionResult> {
+  const outcome = await send("owner", { address: wallet, abi: agentWalletAbi, functionName: "approve", args: [BigInt(id)] });
   return { action: "approve", outcome };
 }
 

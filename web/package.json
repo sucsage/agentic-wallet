@@ -10,7 +10,10 @@
     "e2e": "tsx --conditions=react-server --env-file=.env.local scripts/e2e.mts",
     "agent-eval": "tsx --conditions=react-server --env-file=.env.local scripts/agent-eval.mts",
     "postinstall": "prisma generate",
-    "db:push": "prisma db push"
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio",
+    "db:generate": "prisma generate"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
