@@ -9,6 +9,7 @@
 | @Qscawjds | `team/Qscawjds` |
 | @Gun-comp | `team/Gun-comp` |
 | @NapatFoythong | `team/NapatFoythong` |
+| @sucsage | `team/sucsage` |
 
 ## ครั้งแรก
 
