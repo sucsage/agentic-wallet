@@ -1,0 +1,102 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+/// One row per AgentWallet deployed by AgentWalletFactory (WalletCreated event).
+model Wallet {
+  address      String   @id
+  owner        String
+  agent        String
+  creator      String
+  token        String
+  createdBlock BigInt
+  createdAt    DateTime
+
+  proposals Proposal[]
+  events    Event[]
+
+  @@index([owner])
+}
+
+enum ProposalKind {
+  TRANSFER
+  RELEASE_MILESTONE
+  CALL
+  SETUP_DEAL
+}
+
+enum ProposalStatus {
+  OPEN
+  EXECUTED
+  CANCELLED
+  EXPIRED
+  STALE
+}
+
+/// Mirrors AgentWallet.Proposal, kept in sync from ProposalCreated/Approved/Executed/Cancelled.
+model Proposal {
+  walletAddress  String
+  proposalId     BigInt
+  kind           ProposalKind
+  proposer       String
+  target         String
+  amount         Decimal        @db.Decimal(78, 0)
+  milestoneIndex Decimal        @db.Decimal(78, 0)
+  data           String
+  reason         String
+  expiresAt      DateTime
+  approverEpoch  BigInt
+  approvalsCount Int            @default(0)
+  status         ProposalStatus @default(OPEN)
+  createdBlock   BigInt
+  updatedBlock   BigInt
+
+  wallet    Wallet     @relation(fields: [walletAddress], references: [address])
+  approvals Approval[]
+
+  @@id([walletAddress, proposalId])
+  @@index([walletAddress, status])
+}
+
+/// Who approved which proposal, so the UI doesn't need one hasApproved() call per approver.
+model Approval {
+  walletAddress   String
+  proposalId      BigInt
+  approver        String
+  approvedAtBlock BigInt
+  approvedAt      DateTime
+
+  proposal Proposal @relation(fields: [walletAddress, proposalId], references: [walletAddress, proposalId])
+
+  @@id([walletAddress, proposalId, approver])
+}
+
+/// Full audit log: every AgentWallet + MilestoneEscrow event, unpaginated.
+model Event {
+  id            String   @id @default(cuid())
+  walletAddress String
+  txHash        String
+  logIndex      Int
+  eventName     String
+  args          Json
+  blockNumber   BigInt
+  blockTime     DateTime
+
+  wallet Wallet @relation(fields: [walletAddress], references: [address])
+
+  @@unique([txHash, logIndex])
+  @@index([walletAddress, blockNumber])
+}
+
+/// Last block the indexer processed per contract, so it resumes instead of rescanning from 0.
+model IndexerSyncState {
+  contractAddress String   @id
+  lastSyncedBlock BigInt
+  updatedAt       DateTime @updatedAt
+}

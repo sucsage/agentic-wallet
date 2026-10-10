@@ -49,15 +49,14 @@ const setup = await proposeDealSetup(wallet, {
 });
 assert.equal(setup.decision?.route, "propose");
 assert.equal(setup.outcome?.status, "success");
-await approveProposal(wallet, 0, "approverA");
-const approved = await approveProposal(wallet, 0, "approverB");
+const approved = await approveProposal(wallet, 0);
 assert.equal(approved.outcome?.status, "success");
 s = await readWallet(wallet);
 assert.equal(s.deals.length, 1);
 assert.equal(s.deals[0].funded, true);
 assert.equal(s.balance, "6550");
 const dealId = s.deals[0].id;
-log("PO proposed, 2-of-2 approved, deal funded", { dealId, balance: s.balance });
+log("PO proposed, owner approved, deal funded", { dealId, balance: s.balance });
 
 // 2. Release without evidence -> Tier 1 proposal, not a payment.
 const noEvidence = await releaseMilestone(wallet, dealId, 0, "deposit");
@@ -80,11 +79,10 @@ const fat = await releaseMilestone(wallet, dealId, 2, "64/64 PASS, signed");
 assert.equal(fat.decision?.route, "propose");
 s = await readWallet(wallet);
 const fatProposal = s.proposals.find((p) => p.status === "open" && p.kind === "ReleaseMilestone" && p.release?.index === 2)!;
-await approveProposal(wallet, fatProposal.id, "approverA");
-await approveProposal(wallet, fatProposal.id, "approverB");
+await approveProposal(wallet, fatProposal.id);
 s = await readWallet(wallet);
 assert.equal(s.deals[0].milestones[2].status, "Released");
-log("FAT above cap went through 2-of-2 approval and was paid", s.deals[0].milestones.map((m) => m.status));
+log("FAT above cap went through owner approval and was paid", s.deals[0].milestones.map((m) => m.status));
 
 // 5. Phishing: scanner flags it, policy blocks it, contract reverts it.
 const flags = scanForInjection(doc("phishing").text, s);

@@ -55,8 +55,6 @@ export const config = {
     return {
       owner: key("OWNER_PRIVATE_KEY"),
       agent: key("AGENT_PRIVATE_KEY"),
-      approverA: key("APPROVER_A_PRIVATE_KEY"),
-      approverB: key("APPROVER_B_PRIVATE_KEY"),
       contractor: key("CONTRACTOR_PRIVATE_KEY"),
     };
   },
@@ -67,7 +65,7 @@ export const walletDefaults = {
   maxPerTx: 500_000_000n, // 500 mUSDC
   dailyLimit: 1_000_000_000n, // 1,000 mUSDC
   sessionDays: 7n,
-  threshold: 2n,
+  threshold: 1n,
   seed: 10_000_000_000n, // 10,000 mUSDC
 };
 
