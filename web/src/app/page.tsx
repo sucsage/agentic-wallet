@@ -72,7 +72,7 @@ export default function Home() {
           <p className="mb-3 font-medium">Two independent guards</p>
           <ol className="flex flex-col gap-2">
             {[
-              ["AI agent (Claude)", "Understands documents, decides what should happen", "bg-info-soft text-info"],
+              ["AI agent (LLM)", "Understands documents, decides what should happen", "bg-info-soft text-info"],
               ["Guard 1 · Policy engine", "Off-chain: allowlist, caps, evidence, routes to a tier", "bg-warn-soft text-warn"],
               ["Guard 2 · AgentWallet contract", "On-chain: re-checks every rule, reverts violations", "bg-ok-soft text-ok"],
               ["MilestoneEscrow", "Holds funds, releases one milestone at a time", "bg-surface-2 text-fg"],

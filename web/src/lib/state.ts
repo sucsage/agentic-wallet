@@ -1,6 +1,6 @@
 import "server-only";
 
-import { type Address, type Hex, decodeFunctionData, formatUnits, getAddress } from "viem";
+import { type Abi, type Address, type Hex, decodeEventLog, decodeFunctionData, formatUnits, getAddress, pad, toHex } from "viem";
 
 import { agentWalletAbi, milestoneEscrowAbi, mockUSDCAbi } from "./abis";
 import { type Role, ROLE_LABEL, publicClient, roleAddresses } from "./chain";
@@ -217,69 +217,125 @@ export async function readProposals(wallet: Address, epoch: bigint): Promise<Pro
   );
 }
 
-const LOG_CHUNK = 9_000n;
-const LOG_WINDOW = 90_000n;
+// Public RPCs cap eth_getLogs ranges (sepolia.base.org: 200 blocks). Recent history is read from
+// the RPC in small chunks; anything older comes from Blockscout, which has no range limit.
+const RPC_LOG_CHUNK = 200n;
+const RPC_LOG_MAX_RANGE = 2_000n;
+const BLOCKSCOUT_MAX_PAGES = 10;
 
-export async function readAudit(wallet: Address, fromBlock: bigint, dealIds: number[]): Promise<AuditEntry[]> {
+type RawLog = { topics: [Hex, ...Hex[]]; data: Hex; blockNumber: bigint; logIndex: number; transactionHash: Hex };
+
+async function rpcLogs(address: Address, from: bigint, to: bigint): Promise<RawLog[]> {
   const pc = publicClient();
-  const latest = await pc.getBlockNumber();
-  const start = fromBlock > latest - LOG_WINDOW ? fromBlock : latest - LOG_WINDOW;
   const ranges: [bigint, bigint][] = [];
-  for (let f = start; f <= latest; f += LOG_CHUNK) {
-    ranges.push([f, f + LOG_CHUNK - 1n > latest ? latest : f + LOG_CHUNK - 1n]);
+  for (let f = from; f <= to; f += RPC_LOG_CHUNK) ranges.push([f, f + RPC_LOG_CHUNK - 1n > to ? to : f + RPC_LOG_CHUNK - 1n]);
+  const logs = (await Promise.all(ranges.map(([fromBlock, toBlock]) => pc.getLogs({ address, fromBlock, toBlock })))).flat();
+  return logs.map((l) => ({
+    topics: l.topics as [Hex, ...Hex[]],
+    data: l.data,
+    blockNumber: l.blockNumber,
+    logIndex: l.logIndex,
+    transactionHash: l.transactionHash,
+  }));
+}
+
+async function blockscoutLogs(base: string, address: Address, fromBlock: bigint, topic?: Hex): Promise<RawLog[]> {
+  const out: RawLog[] = [];
+  let params: Record<string, string> | null = topic ? { topic } : {};
+  for (let page = 0; params && page < BLOCKSCOUT_MAX_PAGES; page++) {
+    const res = await fetch(`${base}/api/v2/addresses/${address}/logs?${new URLSearchParams(params)}`, {
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) throw new Error(`Blockscout ${res.status}`);
+    const body = (await res.json()) as {
+      items: { topics: (Hex | null)[]; data: Hex; block_number: number; index: number; transaction_hash: Hex }[];
+      next_page_params: Record<string, string | number> | null;
+    };
+    for (const i of body.items) {
+      if (BigInt(i.block_number) < fromBlock) return out; // newest first: older than the wallet means done
+      out.push({
+        topics: i.topics.filter((t): t is Hex => !!t) as [Hex, ...Hex[]],
+        data: i.data,
+        blockNumber: BigInt(i.block_number),
+        logIndex: i.index,
+        transactionHash: i.transaction_hash,
+      });
+    }
+    params = body.next_page_params
+      ? { ...(topic ? { topic } : {}), ...Object.fromEntries(Object.entries(body.next_page_params).map(([k, v]) => [k, String(v)])) }
+      : null;
   }
+  return out;
+}
 
-  const walletLogs = (
-    await Promise.all(
-      ranges.map(([from, to]) =>
-        pc.getContractEvents({ address: wallet, abi: agentWalletAbi, fromBlock: from, toBlock: to }),
-      ),
-    )
-  ).flat();
-  const escrowLogs = dealIds.length
-    ? (
-        await Promise.all(
-          ranges.map(([from, to]) =>
-            pc.getContractEvents({
-              address: config.contracts.escrow,
-              abi: milestoneEscrowAbi,
-              fromBlock: from,
-              toBlock: to,
-            }),
-          ),
-        )
+async function fetchLogs(address: Address, fromBlock: bigint, latest: bigint, topic?: Hex): Promise<RawLog[]> {
+  const blockscout = config.blockscoutUrl;
+  if (latest - fromBlock > RPC_LOG_MAX_RANGE && blockscout) return blockscoutLogs(blockscout, address, fromBlock, topic);
+  const from = latest - fromBlock > RPC_LOG_MAX_RANGE ? latest - RPC_LOG_MAX_RANGE : fromBlock;
+  return rpcLogs(address, from, latest);
+}
+
+function decodeLogs<const A extends Abi>(abi: A, logs: RawLog[]) {
+  return logs.flatMap((l) => {
+    try {
+      const ev = decodeEventLog({ abi, topics: l.topics, data: l.data });
+      return [{ ...l, eventName: ev.eventName as string, args: (ev.args ?? {}) as Record<string, unknown> }];
+    } catch {
+      return [];
+    }
+  });
+}
+
+/** Best effort: the audit log must never take the rest of the page down with it. */
+export async function readAudit(wallet: Address, fromBlock: bigint, dealIds: number[]): Promise<AuditEntry[]> {
+  try {
+    const latest = await publicClient().getBlockNumber();
+    const walletLogs = decodeLogs(agentWalletAbi, await fetchLogs(wallet, fromBlock, latest));
+    const escrowLogs = (
+      await Promise.all(
+        dealIds.map(async (id) =>
+          decodeLogs(milestoneEscrowAbi, await fetchLogs(config.contracts.escrow, fromBlock, latest, pad(toHex(id)))),
+        ),
       )
-        .flat()
-        .filter((l) => {
-          const args = l.args as { dealId?: bigint };
-          return args.dealId !== undefined && dealIds.includes(Number(args.dealId));
-        })
-    : [];
-
-  const fmt = (key: string, v: unknown): string => {
-    if (typeof v === "bigint" && /amount|total|maxPerTx|dailyLimit/i.test(key)) return `${usd(v)} mUSDC`;
-    if (typeof v === "bigint" && key === "expiresAt") return new Date(Number(v) * 1000).toISOString().slice(0, 10);
-    if (typeof v === "bigint") return v.toString();
-    if (typeof v === "string" && /^0x[0-9a-fA-F]{40}$/.test(v)) return labelFor(v);
-    if (typeof v === "string" && v.length > 60) return `${v.slice(0, 57)}…`;
-    return String(v);
-  };
-
-  return [...walletLogs, ...escrowLogs]
-    .sort((x, y) =>
-      x.blockNumber === y.blockNumber ? x.logIndex - y.logIndex : Number(x.blockNumber - y.blockNumber),
     )
-    .reverse()
-    .slice(0, 100)
-    .map((l) => ({
-      block: l.blockNumber.toString(),
-      event: l.eventName,
-      detail: Object.entries((l.args ?? {}) as Record<string, unknown>)
-        .map(([k, v]) => `${k}=${fmt(k, v)}`)
-        .join(" "),
-      txHash: l.transactionHash,
-      url: explorerTx(l.transactionHash),
-    }));
+      .flat()
+      .filter((l) => {
+        const dealId = (l.args as { dealId?: bigint }).dealId;
+        return dealId !== undefined && dealIds.includes(Number(dealId));
+      });
+
+    const fmt = (key: string, v: unknown): string => {
+      if (typeof v === "bigint" && /amount|total|maxPerTx|dailyLimit/i.test(key)) return `${usd(v)} mUSDC`;
+      if (typeof v === "bigint" && key === "expiresAt") return new Date(Number(v) * 1000).toISOString().slice(0, 10);
+      if (typeof v === "bigint") return v.toString();
+      if (typeof v === "string" && /^0x[0-9a-fA-F]{40}$/.test(v)) return labelFor(v);
+      if (typeof v === "string" && v.length > 60) return `${v.slice(0, 57)}…`;
+      return String(v);
+    };
+
+    const seen = new Set<string>();
+    return [...walletLogs, ...escrowLogs]
+      .filter((l) => {
+        const k = `${l.transactionHash}:${l.logIndex}`;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      })
+      .sort((x, y) => (x.blockNumber === y.blockNumber ? y.logIndex - x.logIndex : Number(y.blockNumber - x.blockNumber)))
+      .slice(0, 100)
+      .map((l) => ({
+        block: l.blockNumber.toString(),
+        event: l.eventName,
+        detail: Object.entries(l.args)
+          .map(([k, v]) => `${k}=${fmt(k, v)}`)
+          .join(" "),
+        txHash: l.transactionHash,
+        url: explorerTx(l.transactionHash),
+      }));
+  } catch (err) {
+    console.error("audit log unavailable:", err instanceof Error ? err.message : err);
+    return [];
+  }
 }
 
 export async function readWallet(addressInput: string) {

@@ -85,7 +85,7 @@ export function Workspace({ address }: { address: string }) {
       {ws && (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
           <div className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-4 lg:self-start">
-            <Chat address={address} samples={samples} onChanged={refresh} />
+            <Chat address={address} samples={samples} model={ws.model} onChanged={refresh} />
           </div>
           <div className="flex min-w-0 flex-col gap-4">
             <LastAction last={last} busy={busy} clear={clear} />

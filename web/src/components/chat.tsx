@@ -73,10 +73,12 @@ function Step({ step }: { step: AgentStep }) {
 export function Chat({
   address,
   samples,
+  model,
   onChanged,
 }: {
   address: string;
   samples: Sample[];
+  model: string | null;
   onChanged: () => void;
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -133,7 +135,7 @@ export function Chat({
           <h2 className="font-semibold">AI agent</h2>
           <p className="text-xs text-muted">Acts for the buyer. Every action goes through the policy engine and the contract.</p>
         </div>
-        <span className="pill bg-info-soft text-info">Claude</span>
+        <span className="pill bg-info-soft font-mono text-info">{model ?? "not configured"}</span>
       </div>
 
       <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">

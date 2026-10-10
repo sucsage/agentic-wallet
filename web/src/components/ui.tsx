@@ -3,7 +3,7 @@
 import type { ActionResult } from "@/lib/actions";
 import type { AuditEntry, WalletState } from "@/lib/state";
 
-export type Workspace = WalletState & { audit: AuditEntry[] };
+export type Workspace = WalletState & { audit: AuditEntry[]; model: string | null };
 
 export const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 

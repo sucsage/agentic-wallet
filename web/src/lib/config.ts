@@ -38,6 +38,11 @@ export const config = {
       factory: addr("FACTORY_ADDRESS"),
     };
   },
+  /** Blockscout instance used for event history when the RPC caps eth_getLogs ranges. */
+  get blockscoutUrl(): string | null {
+    if (process.env.BLOCKSCOUT_URL) return process.env.BLOCKSCOUT_URL;
+    return this.chain.id === baseSepolia.id ? "https://base-sepolia.blockscout.com" : null;
+  },
   /** First block worth scanning for events (the escrow deployment block). */
   get startBlock() {
     return BigInt(process.env.START_BLOCK ?? "0");

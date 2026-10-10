@@ -44,8 +44,9 @@ export async function POST(req: Request, ctx: RouteContext<"/api/workspace/[addr
     if (!message && !attachment) throw new HttpError(400, "Send a message or a document");
 
     // Advisory pre-scan of untrusted content, shown to the user next to the agent's answer.
-    const flags = attachment ? scanForInjection(await attachmentText(attachment), await readWallet(wallet)) : [];
-    const { reply, steps } = await runAgent(wallet, history, message, attachment);
+    const text = attachment ? await attachmentText(attachment) : undefined;
+    const flags = text !== undefined ? scanForInjection(text, await readWallet(wallet)) : [];
+    const { reply, steps } = await runAgent(wallet, history, message, attachment, text);
     return Response.json({ reply, steps, flags });
   } catch (err) {
     return errorResponse(err);

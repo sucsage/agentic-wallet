@@ -79,7 +79,7 @@ await submitEvidence(dealId, 2, { title: "fat", text: doc("fat").text });
 const fat = await releaseMilestone(wallet, dealId, 2, "64/64 PASS, signed");
 assert.equal(fat.decision?.route, "propose");
 s = await readWallet(wallet);
-const fatProposal = s.proposals.find((p) => p.status === "open" && p.kind === "ReleaseMilestone" && p.summary.includes("milestone 3"))!;
+const fatProposal = s.proposals.find((p) => p.status === "open" && p.kind === "ReleaseMilestone" && p.release?.index === 2)!;
 await approveProposal(wallet, fatProposal.id, "approverA");
 await approveProposal(wallet, fatProposal.id, "approverB");
 s = await readWallet(wallet);

@@ -14,7 +14,7 @@ Topic F: Agent Wallet.
 |---|---|
 | `contracts/` | Solidity: `AgentWallet`, `AgentWalletFactory`, `MilestoneEscrow`, `MockUSDC` (Hardhat 3 + viem) |
 | `web/` | Next.js 16 app on Vercel: landing page, per-visitor sandbox, agent chat, approvals, deals, audit log |
-| `web/src/lib/agent.ts` | Claude Opus 5.5 tool-use loop (OpenRouter or Anthropic API): 7 tools, untrusted-document handling |
+| `web/src/lib/agent.ts` | LLM tool-use loop (any Anthropic-compatible API: PSU gateway, OpenRouter, Anthropic): 7 validated tools, untrusted-document handling |
 | `web/src/lib/policy.ts` | Guard #1: off-chain policy engine (tier routing, injection scan) |
 | `web/src/lib/actions.ts` | Every on-chain action, shared by the agent's tools and the UI |
 | `scripts/deploy-base-sepolia.sh` | One-command testnet deploy + gas funding + Vercel env file |
@@ -55,13 +55,15 @@ npm run dev                                              # http://localhost:3000
 npm run e2e                                              # backend end-to-end flow against the chain
 ```
 
-The chat agent needs `OPENROUTER_API_KEY` (OpenRouter) or `ANTHROPIC_API_KEY` (Anthropic API). Every other button works without either one.
+The chat agent needs one LLM provider: `LLM_BASE_URL` + `LLM_API_KEY` (any Anthropic-compatible gateway; default model `openai/gpt-6-luna`), `OPENROUTER_API_KEY`, or `ANTHROPIC_API_KEY`. Every other button works without one.
+
+`npm run agent-eval` grades the live agent on the demo's decision points (deal setup, autonomous payments, over-cap approval, refusing an incomplete SAT, phishing). With the PSU gateway, `openai/gpt-6-luna`, `deepseek/deepseek-v4.1-flash` and `qwen/qwen3.7-plus` all scored 8/8; gpt-6-luna did so 3/3 runs at ~35 s.
 
 ## Deploy (Base Sepolia + Vercel)
 
 1. Fund the `OWNER` address from `.secrets/base-sepolia.env` with ~0.08 Base Sepolia ETH (any faucet).
 2. `./scripts/deploy-base-sepolia.sh`: deploys contracts, funds the other role keys, writes `.secrets/vercel.env`.
-3. Import the repo in Vercel with root directory `web/`, then paste `.secrets/vercel.env` plus `OPENROUTER_API_KEY` (or `ANTHROPIC_API_KEY`).
+3. Import the repo in Vercel with root directory `web/`, then paste `.secrets/vercel.env` plus the LLM variables (`LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`).
 
 ## Contracts
 
