@@ -60,7 +60,7 @@
   --color-bad-soft: var(--bad-soft);
   --color-info: var(--info);
   --color-info-soft: var(--info-soft);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-geist-sans), var(--font-thai), sans-serif;
   --font-mono: var(--font-geist-mono);
 }
 

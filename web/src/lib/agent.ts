@@ -348,6 +348,7 @@ export async function runAgent(
   attachment?: Attachment,
   /** Plain text of the attachment (PDFs are extracted by the caller), for models without document blocks. */
   attachmentText?: string,
+  lang: "en" | "th" = "en",
 ) {
   const { client, model, direct } = llm();
   const isClaude = model.includes("claude");
@@ -392,7 +393,10 @@ export async function runAgent(
       .stream({
         model,
         max_tokens: 16000,
-        system: SYSTEM,
+        system:
+          lang === "th"
+            ? `${SYSTEM}\n\nThe user's interface is in Thai: always reply in Thai. Keep amounts, addresses, tx hashes, document names and technical terms (mUSDC, FAT, SAT, Tier) as they are.`
+            : SYSTEM,
         // `strict` and `effort` are Claude features; other models get plain JSON-schema tools.
         tools: isClaude
           ? TOOLS

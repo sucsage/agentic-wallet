@@ -3,22 +3,17 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
+import { type Key, LangToggle, useT } from "@/lib/i18n";
 import type { Sample } from "@/lib/samples";
 
 import { Chat } from "./chat";
 import { ApprovalsPanel, AuditPanel, DealsPanel, LastAction, WalletPanel, useActions } from "./panels";
 import type { Workspace as WorkspaceState } from "./ui";
 
-const GUIDE = [
-  "Click “Purchase Order PO-2026-0142”. The agent proposes an escrow deal (Tier 1).",
-  "Approve as Approver A and B. The deal is created and funded on-chain.",
-  "As contractor, submit the order acknowledgement and delivery note, then ask the agent to pay. Small milestones are paid on their own (Tier 2).",
-  "Submit the FAT report. 2,000 is above the cap, so the agent proposes and you approve.",
-  "Submit the draft SAT report. The agent should refuse: criteria not met.",
-  "Attach the “urgent” invoice, then fire the raw attack. Both are blocked; the second one reverts on-chain.",
-];
+const GUIDE: Key[] = ["ws.guide.1", "ws.guide.2", "ws.guide.3", "ws.guide.4", "ws.guide.5", "ws.guide.6"];
 
 export function Workspace({ address }: { address: string }) {
+  const { t } = useT();
   const [ws, setWs] = useState<WorkspaceState | null>(null);
   const [samples, setSamples] = useState<Sample[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -59,11 +54,14 @@ export function Workspace({ address }: { address: string }) {
         <Link href="/" className="flex items-center gap-2 font-semibold">
           <span className="grid h-8 w-8 place-items-center rounded-lg bg-accent text-accent-fg">AW</span>
           Agentic Wallet
-          <span className="pill bg-surface-2 font-normal text-muted">sandbox</span>
+          <span className="pill bg-surface-2 font-normal text-muted">{t("brand.sandbox")}</span>
         </Link>
-        <button className="btn-ghost text-xs" onClick={() => setGuideOpen((v) => !v)}>
-          {guideOpen ? "Hide demo guide" : "Show demo guide"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button className="btn-ghost text-xs" onClick={() => setGuideOpen((v) => !v)}>
+            {guideOpen ? t("ws.guide.hide") : t("ws.guide.show")}
+          </button>
+          <LangToggle />
+        </div>
       </header>
 
       {guideOpen && (
@@ -73,14 +71,14 @@ export function Workspace({ address }: { address: string }) {
               <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-accent-soft text-xs font-semibold text-accent">
                 {i + 1}
               </span>
-              <span className="text-muted">{g}</span>
+              <span className="text-muted">{t(g)}</span>
             </li>
           ))}
         </ol>
       )}
 
       {error && !ws && <div className="card p-6 text-sm text-bad">{error}</div>}
-      {!ws && !error && <div className="card p-6 text-sm text-muted">Loading wallet from the chain…</div>}
+      {!ws && !error && <div className="card p-6 text-sm text-muted">{t("ws.loading")}</div>}
 
       {ws && (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">

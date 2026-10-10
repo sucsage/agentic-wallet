@@ -1,6 +1,7 @@
 "use client";
 
 import type { ActionResult } from "@/lib/actions";
+import { trServer, useT } from "@/lib/i18n";
 import type { AuditEntry, WalletState } from "@/lib/state";
 
 export type Workspace = WalletState & { audit: AuditEntry[]; model: string | null };
@@ -12,13 +13,14 @@ export function fmt(n: string | number) {
 }
 
 export function Tier({ route, tier }: { route: string; tier: number }) {
+  const { t } = useT();
   const tone =
     route === "execute"
       ? "bg-ok-soft text-ok"
       : route === "propose"
         ? "bg-warn-soft text-warn"
         : "bg-bad-soft text-bad";
-  const label = route === "execute" ? "Autonomous" : route === "propose" ? "Needs approval" : "Blocked";
+  const label = route === "execute" ? t("route.execute") : route === "propose" ? t("route.propose") : t("route.block");
   return (
     <span className={`pill ${tone}`}>
       Tier {tier} · {label}
@@ -40,6 +42,7 @@ export function TxLink({ hash, url }: { hash: string; url: string | null }) {
 
 /** Compact rendering of an action's policy decision and on-chain outcome. */
 export function Outcome({ result }: { result: ActionResult }) {
+  const { t, lang } = useT();
   const o = result.outcome;
   return (
     <div className="flex flex-col gap-1">
@@ -47,18 +50,24 @@ export function Outcome({ result }: { result: ActionResult }) {
         {result.decision && <Tier route={result.decision.route} tier={result.decision.tier} />}
         {o?.status === "success" && (
           <span className="pill bg-ok-soft text-ok">
-            Confirmed <TxLink hash={o.hash} url={o.url} />
+            {t("outcome.confirmed")} <TxLink hash={o.hash} url={o.url} />
           </span>
         )}
         {o?.status === "reverted" && (
           <span className="pill bg-bad-soft text-bad">
-            Reverted on-chain: {o.error} <TxLink hash={o.hash} url={o.url} />
+            {t("outcome.reverted")} {o.error} <TxLink hash={o.hash} url={o.url} />
           </span>
         )}
-        {o?.status === "rejected" && <span className="pill bg-bad-soft text-bad">Rejected: {o.error}</span>}
+        {o?.status === "rejected" && (
+          <span className="pill bg-bad-soft text-bad">
+            {t("outcome.rejected")} {o.error}
+          </span>
+        )}
       </div>
-      {result.decision && <p className="text-xs text-muted">{result.decision.reasons.join(" · ")}</p>}
-      {result.detail && <p className="text-xs text-muted">{result.detail}</p>}
+      {result.decision && (
+        <p className="text-xs text-muted">{result.decision.reasons.map((r) => trServer(r, lang)).join(" · ")}</p>
+      )}
+      {result.detail && <p className="text-xs text-muted">{trServer(result.detail, lang)}</p>}
     </div>
   );
 }

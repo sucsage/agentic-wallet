@@ -3,6 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useState, useSyncExternalStore } from "react";
 
+import { useT } from "@/lib/i18n";
+
 const STORAGE_KEY = "agentic-wallet:last";
 
 function readLast(): string | null {
@@ -15,6 +17,7 @@ function readLast(): string | null {
 
 export function LaunchButton() {
   const router = useRouter();
+  const { t } = useT();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const last = useSyncExternalStore(
@@ -29,7 +32,7 @@ export function LaunchButton() {
     try {
       const res = await fetch("/api/workspace", { method: "POST" });
       const body = await res.json();
-      if (!res.ok) throw new Error(body.error ?? "Could not create a sandbox");
+      if (!res.ok) throw new Error(body.error ?? t("launch.error"));
       try {
         localStorage.setItem(STORAGE_KEY, body.address);
       } catch {}
@@ -44,16 +47,16 @@ export function LaunchButton() {
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-3">
         <button className="btn-primary px-5 py-2.5 text-base" onClick={launch} disabled={busy}>
-          {busy ? "Deploying your sandbox wallet on-chain…" : "Launch my sandbox wallet"}
+          {busy ? t("launch.busy") : t("launch.button")}
         </button>
         {last && !busy && (
           <a className="btn-ghost px-4 py-2.5" href={`/w/${last}`}>
-            Resume last sandbox
+            {t("launch.resume")}
           </a>
         )}
       </div>
       <p className="text-xs text-muted">
-        One transaction deploys a private AgentWallet for you, seeded with 10,000 test mUSDC. No sign-up, no real funds.
+        {t("launch.note")}
       </p>
       {error && <p className="text-sm text-bad">{error}</p>}
     </div>

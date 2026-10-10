@@ -14,6 +14,7 @@ const Body = z.object({
     .max(30)
     .default([]),
   message: z.string().max(4000).default(""),
+  lang: z.enum(["en", "th"]).default("en"),
   attachment: z
     .discriminatedUnion("kind", [
       z.object({ kind: z.literal("pdf"), name: z.string().max(200), base64: z.string().max(4_000_000) }),
@@ -40,13 +41,13 @@ export async function POST(req: Request, ctx: RouteContext<"/api/workspace/[addr
     const wallet = await demoWallet((await ctx.params).address);
     const parsed = Body.safeParse(await req.json());
     if (!parsed.success) throw new HttpError(400, "Invalid request body");
-    const { history, message, attachment } = parsed.data;
+    const { history, message, attachment, lang } = parsed.data;
     if (!message && !attachment) throw new HttpError(400, "Send a message or a document");
 
     // Advisory pre-scan of untrusted content, shown to the user next to the agent's answer.
     const text = attachment ? await attachmentText(attachment) : undefined;
     const flags = text !== undefined ? scanForInjection(text, await readWallet(wallet)) : [];
-    const { reply, steps } = await runAgent(wallet, history, message, attachment, text);
+    const { reply, steps } = await runAgent(wallet, history, message, attachment, text, lang);
     return Response.json({ reply, steps, flags });
   } catch (err) {
     return errorResponse(err);
