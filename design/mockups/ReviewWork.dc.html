@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<title>ผู้ซื้อตรวจงาน</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500&amp;family=Noto+Sans+Thai:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#0f766e}a:hover{color:#115e59}
+</style>
+</helmet>
+<div style="min-height: 100vh; background: #f6f7f9; color: #111827; font-family: 'Geist', 'Noto Sans Thai', sans-serif; font-size: 16px; line-height: 1.55">
+
+  <header style="background: #ffffff; border-bottom: 1px solid #e3e6eb">
+    <div style="max-width: 1200px; margin: 0 auto; padding: 12px 24px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px">
+      <a href="Dashboard.dc.html" style="display: flex; align-items: center; gap: 10px; font-weight: 600; color: #111827; text-decoration: none">
+        <span style="display: grid; place-items: center; width: 34px; height: 34px; border-radius: 9px; background: #0f766e; color: #ffffff; font-size: 14px">AW</span>
+        Agentic Wallet
+      </a>
+      <nav aria-label="เมนูหลัก" style="display: flex; flex-wrap: wrap; gap: 4px">
+        <a href="Dashboard.dc.html" aria-current="page" style="padding: 10px 14px; border-radius: 8px; background: #e6f4f2; color: #0f766e; text-decoration: none; font-weight: 600; font-size: 15px">ดีลของฉัน</a>
+        <a href="NewOffer.dc.html" style="padding: 10px 14px; border-radius: 8px; color: #5b6474; text-decoration: none; font-size: 15px">สร้างข้อเสนอ</a>
+        <a href="Wallet.dc.html" style="padding: 10px 14px; border-radius: 8px; color: #5b6474; text-decoration: none; font-size: 15px">กระเป๋า</a>
+      </nav>
+      <div style="display: flex; align-items: center; gap: 10px">
+        <span style="padding: 4px 10px; border-radius: 999px; background: #f1f3f6; color: #5b6474; font-size: 13px">Testnet</span>
+        <a href="Profile.dc.html" aria-label="โปรไฟล์ของร้านกาแฟบ้านสวน" style="display: grid; place-items: center; width: 40px; height: 40px; border-radius: 999px; background: #fdf3e3; color: #b45309; text-decoration: none; font-weight: 600">บ</a>
+      </div>
+    </div>
+  </header>
+
+  <main style="max-width: 1200px; margin: 0 auto; padding: 28px 24px 64px; display: flex; flex-direction: column; gap: 20px">
+    <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px">
+      <a href="Dashboard.dc.html" style="font-size: 14px; text-decoration: none">← ดีลของฉัน</a>
+      <span style="padding: 4px 12px; border-radius: 999px; background: #e9effd; color: #1d4ed8; font-size: 13px; font-weight: 600">มุมมองผู้ซื้อ · ร้านกาแฟบ้านสวน</span>
+    </div>
+
+    <div>
+      <h1 style="margin: 0 0 4px; font-size: 30px; font-weight: 700">ตรวจงานงวด 1: แบบร่างโลโก้ 3 แบบ</h1>
+      <p style="margin: 0; color: #5b6474">โลโก้ร้านกาแฟบ้านสวน · ดีล #0142 · งวดนี้ 150 USDC</p>
+    </div>
+
+    <div role="status" style="background: #fdf3e3; border: 1px solid #f3dcb5; border-radius: 12px; padding: 14px 18px; display: flex; flex-wrap: wrap; align-items: center; gap: 14px">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#b45309" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+      <div style="flex: 1 1 400px; min-width: 0">
+        <div style="font-weight: 600; color: #8a4207">เหลือเวลาตรวจ 2 วัน 18 ชั่วโมง</div>
+        <div style="font-size: 14px; color: #8a4207">ถ้าไม่ตอบภายในเวลา ผู้ขายจะปล่อยกุญแจไฟล์และรับเงินได้ ถ้างานมีปัญหา แจ้งข้อพิพาทก่อนหมดเวลา</div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+      <div style="flex: 1.5 1 600px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+        <section aria-label="Preview" style="background: #ffffff; border: 1px solid #e3e6eb; border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 14px">
+          <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px">
+            <h2 style="margin: 0; font-size: 17px; font-weight: 600">Preview จากผู้ขาย</h2>
+            <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #5b6474">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+              ไฟล์จริงยังถูกเข้ารหัส
+            </span>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px">
+            <figure style="margin: 0; display: flex; flex-direction: column; gap: 8px">
+              <div style="aspect-ratio: 1 / 1; max-width: 100%; border-radius: 12px; background: #f1f3f6; border: 1px solid #e3e6eb; display: grid; place-items: center; color: #5b6474; font-family: 'Geist Mono', monospace; font-size: 13px; letter-spacing: 0.12em">PREVIEW</div>
+              <figcaption><span style="font-weight: 600">แบบ A</span> <span style="color: #5b6474; font-size: 14px">ใบกาแฟกับบ้านหลังเล็ก</span></figcaption>
+            </figure>
+            <figure style="margin: 0; display: flex; flex-direction: column; gap: 8px">
+              <div style="aspect-ratio: 1 / 1; max-width: 100%; border-radius: 12px; background: #f1f3f6; border: 1px solid #e3e6eb; display: grid; place-items: center; color: #5b6474; font-family: 'Geist Mono', monospace; font-size: 13px; letter-spacing: 0.12em">PREVIEW</div>
+              <figcaption><span style="font-weight: 600">แบบ B</span> <span style="color: #5b6474; font-size: 14px">ถ้วยกาแฟลายเส้น</span></figcaption>
+            </figure>
+            <figure style="margin: 0; display: flex; flex-direction: column; gap: 8px">
+              <div style="aspect-ratio: 1 / 1; max-width: 100%; border-radius: 12px; background: #f1f3f6; border: 1px solid #e3e6eb; display: grid; place-items: center; color: #5b6474; font-family: 'Geist Mono', monospace; font-size: 13px; letter-spacing: 0.12em">PREVIEW</div>
+              <figcaption><span style="font-weight: 600">แบบ C</span> <span style="color: #5b6474; font-size: 14px">ตัวอักษร "บ้านสวน" มือเขียน</span></figcaption>
+            </figure>
+          </div>
+          <p style="margin: 0; font-size: 14px; color: #374151; background: #f6f7f9; border-radius: 10px; padding: 12px 14px">ข้อความจากผู้ขาย: "ทั้ง 3 แบบใช้โทนเขียวเข้มกับครีม ถ้าชอบแบบไหน งวด 2 จะทำเวอร์ชันสีและขาวดำให้ครบ"</p>
+        </section>
+
+        <section aria-label="ผลตรวจจากตัวตรวจกลาง" style="background: #ffffff; border: 1px solid #e3e6eb; border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 12px">
+          <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px">
+            <h2 style="margin: 0; font-size: 17px; font-weight: 600">ผลตรวจจากตัวตรวจกลาง</h2>
+            <span style="padding: 3px 10px; border-radius: 999px; background: #e8f6ec; color: #15803d; font-size: 13px; font-weight: 600">ผ่านทุกข้อ</span>
+          </div>
+          <div style="overflow-x: auto">
+            <table style="width: 100%; min-width: 520px; border-collapse: collapse; font-size: 15px">
+              <thead>
+                <tr style="text-align: left; color: #5b6474; font-size: 13px">
+                  <th scope="col" style="padding: 8px 10px; font-weight: 500">เงื่อนไขในสัญญา</th>
+                  <th scope="col" style="padding: 8px 10px; font-weight: 500">ที่ตรวจพบ</th>
+                  <th scope="col" style="padding: 8px 10px; font-weight: 500">ผล</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr style="border-top: 1px solid #eef0f3">
+                  <td style="padding: 10px">3 แบบที่แนวคิดต่างกันชัดเจน</td>
+                  <td style="padding: 10px; color: #5b6474">3 แบบ ความคล้ายกันระหว่างแบบต่ำ</td>
+                  <td style="padding: 10px; color: #15803d; font-weight: 600">ผ่าน</td>
+                </tr>
+                <tr style="border-top: 1px solid #eef0f3">
+                  <td style="padding: 10px">PNG กว้างอย่างน้อย 2000 px</td>
+                  <td style="padding: 10px; color: #5b6474">PNG 3000 × 3000 px ทั้ง 3 ไฟล์</td>
+                  <td style="padding: 10px; color: #15803d; font-weight: 600">ผ่าน</td>
+                </tr>
+                <tr style="border-top: 1px solid #eef0f3">
+                  <td style="padding: 10px">ไฟล์ตรงกับที่บันทึกบน chain</td>
+                  <td style="padding: 10px; color: #5b6474; font-family: 'Geist Mono', monospace; font-size: 13px">0x5d1a…e9f3</td>
+                  <td style="padding: 10px; color: #15803d; font-weight: 600">ผ่าน</td>
+                </tr>
+                <tr style="border-top: 1px solid #eef0f3">
+                  <td style="padding: 10px">ไม่ลอกงานที่มีอยู่</td>
+                  <td style="padding: 10px; color: #5b6474">ไม่พบโลโก้ที่คล้ายสูงในฐานข้อมูลที่ตรวจ</td>
+                  <td style="padding: 10px; color: #15803d; font-weight: 600">ผ่าน</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin: 0; font-size: 13px; color: #5b6474">ตัวตรวจเป็นของระบบ แยกจาก AI ที่ช่วยฝ่ายใดฝ่ายหนึ่ง ผลตรวจช่วยตัดสินใจ แต่คุณเป็นคนตัดสินเรื่องความชอบเอง</p>
+        </section>
+      </div>
+
+      <aside style="flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+        <section aria-label="ตัดสินใจ" style="background: #ffffff; border: 1px solid #e3e6eb; border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 12px">
+          <h2 style="margin: 0; font-size: 17px; font-weight: 600">ตัดสินใจ</h2>
+          <a href="ReceiveFile.dc.html" style="display: flex; align-items: center; justify-content: center; min-height: 48px; border-radius: 10px; background: #0f766e; color: #ffffff; text-decoration: none; font-weight: 600">อนุมัติงานงวด 1</a>
+          <p style="margin: 0; font-size: 13px; color: #5b6474">หลังอนุมัติ ผู้ขายต้องส่งกุญแจไฟล์ภายใน 3 วัน ถ้าไม่ส่ง คุณขอเงินคืนได้</p>
+          <button type="button" style="min-height: 46px; border-radius: 10px; border: 1px solid #e3e6eb; background: #ffffff; color: #111827; font: inherit; font-weight: 500; cursor: pointer">ขอให้ผู้ขายแก้งาน</button>
+          <a href="Dispute.dc.html" style="display: flex; align-items: center; justify-content: center; min-height: 46px; border-radius: 10px; border: 1px solid #f5c2cd; background: #fdebef; color: #be123c; text-decoration: none; font-weight: 500">แจ้งข้อพิพาท</a>
+        </section>
+
+        <section aria-label="ความคืบหน้าของดีล" style="background: #ffffff; border: 1px solid #e3e6eb; border-radius: 14px; padding: 20px">
+          <h2 style="margin: 0 0 12px; font-size: 17px; font-weight: 600">ความคืบหน้า</h2>
+          <ol style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; font-size: 14px">
+            <li style="display: flex; gap: 10px"><span style="flex: none; width: 10px; height: 10px; margin-top: 6px; border-radius: 999px; background: #15803d"></span><span><span style="font-weight: 500">ตอบรับดีลและล็อกเงิน 500 USDC</span><br><span style="color: #5b6474">8 ต.ค.</span></span></li>
+            <li style="display: flex; gap: 10px"><span style="flex: none; width: 10px; height: 10px; margin-top: 6px; border-radius: 999px; background: #15803d"></span><span><span style="font-weight: 500">ผู้ขายส่งงานงวด 1</span><br><span style="color: #5b6474">11 ต.ค.</span></span></li>
+            <li style="display: flex; gap: 10px"><span style="flex: none; width: 10px; height: 10px; margin-top: 6px; border-radius: 999px; background: #b45309"></span><span><span style="font-weight: 600">รอคุณตรวจงาน</span><br><span style="color: #5b6474">ตอนนี้</span></span></li>
+            <li style="display: flex; gap: 10px; color: #5b6474"><span style="flex: none; width: 10px; height: 10px; margin-top: 6px; border-radius: 999px; border: 2px solid #cfd5dd; box-sizing: border-box"></span><span>ได้กุญแจเปิดไฟล์</span></li>
+            <li style="display: flex; gap: 10px; color: #5b6474"><span style="flex: none; width: 10px; height: 10px; margin-top: 6px; border-radius: 999px; border: 2px solid #cfd5dd; box-sizing: border-box"></span><span>เงินงวด 1 โอนให้ผู้ขาย</span></li>
+          </ol>
+        </section>
+      </aside>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1400}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

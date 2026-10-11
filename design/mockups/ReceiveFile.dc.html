@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<title>รับไฟล์</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500&amp;family=Noto+Sans+Thai:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#0f766e}a:hover{color:#115e59}
+</style>
+</helmet>
+<div style="min-height: 100vh; background: #f6f7f9; color: #111827; font-family: 'Geist', 'Noto Sans Thai', sans-serif; font-size: 16px; line-height: 1.55">
+
+  <header style="background: #ffffff; border-bottom: 1px solid #e3e6eb">
+    <div style="max-width: 1200px; margin: 0 auto; padding: 12px 24px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px">
+      <a href="Dashboard.dc.html" style="display: flex; align-items: center; gap: 10px; font-weight: 600; color: #111827; text-decoration: none">
+        <span style="display: grid; place-items: center; width: 34px; height: 34px; border-radius: 9px; background: #0f766e; color: #ffffff; font-size: 14px">AW</span>
+        Agentic Wallet
+      </a>
+      <nav aria-label="เมนูหลัก" style="display: flex; flex-wrap: wrap; gap: 4px">
+        <a href="Dashboard.dc.html" aria-current="page" style="padding: 10px 14px; border-radius: 8px; background: #e6f4f2; color: #0f766e; text-decoration: none; font-weight: 600; font-size: 15px">ดีลของฉัน</a>
+        <a href="NewOffer.dc.html" style="padding: 10px 14px; border-radius: 8px; color: #5b6474; text-decoration: none; font-size: 15px">สร้างข้อเสนอ</a>
+        <a href="Wallet.dc.html" style="padding: 10px 14px; border-radius: 8px; color: #5b6474; text-decoration: none; font-size: 15px">กระเป๋า</a>
+      </nav>
+      <div style="display: flex; align-items: center; gap: 10px">
+        <span style="padding: 4px 10px; border-radius: 999px; background: #f1f3f6; color: #5b6474; font-size: 13px">Testnet</span>
+        <a href="Profile.dc.html" aria-label="โปรไฟล์ของร้านกาแฟบ้านสวน" style="display: grid; place-items: center; width: 40px; height: 40px; border-radius: 999px; background: #fdf3e3; color: #b45309; text-decoration: none; font-weight: 600">บ</a>
+      </div>
+    </div>
+  </header>
+
+  <main style="max-width: 1200px; margin: 0 auto; padding: 28px 24px 64px; display: flex; flex-direction: column; gap: 20px">
+    <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px">
+      <a href="Dashboard.dc.html" style="font-size: 14px; text-decoration: none">← ดีลของฉัน</a>
+      <span style="padding: 4px 12px; border-radius: 999px; background: #e9effd; color: #1d4ed8; font-size: 13px; font-weight: 600">มุมมองผู้ซื้อ · ร้านกาแฟบ้านสวน</span>
+    </div>
+
+    <div>
+      <h1 style="margin: 0 0 4px; font-size: 30px; font-weight: 700">ได้รับไฟล์งานงวด 1 แล้ว</h1>
+      <p style="margin: 0; color: #5b6474">โลโก้ร้านกาแฟบ้านสวน · ดีล #0142 · ผู้ขายปล่อยกุญแจเมื่อ 11 ต.ค. 16:42</p>
+    </div>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+      <div style="flex: 1.5 1 600px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+        <section aria-label="ไฟล์ของคุณ" style="background: #ffffff; border: 1px solid #e3e6eb; border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 16px">
+          <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px">
+            <h2 style="margin: 0; font-size: 17px; font-weight: 600">ไฟล์ของคุณ</h2>
+            <span style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 999px; background: #e8f6ec; color: #15803d; font-size: 13px; font-weight: 600">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"></path></svg>
+              ตรงกับไฟล์ที่ส่งมอบ
+            </span>
+          </div>
+          <p style="margin: 0; font-size: 14px; color: #5b6474">ไฟล์ถูกถอดรหัสในเบราว์เซอร์ของคุณด้วยกุญแจที่ผู้ขายส่งมา และตรวจแล้วว่า hash ตรงกับที่บันทึกบน chain <span style="font-family: 'Geist Mono', monospace; font-size: 13px">0x5d1a…e9f3</span></p>
+          <ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px">
+            <li style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; border: 1px solid #e3e6eb; border-radius: 10px; padding: 10px 14px">
+              <span style="display: grid; place-items: center; width: 44px; height: 44px; flex: none; border-radius: 8px; background: #f1f3f6; color: #5b6474; font-size: 11px; font-family: 'Geist Mono', monospace">PNG</span>
+              <span style="flex: 1 1 200px; min-width: 0"><span style="display: block; font-weight: 500">concept-A-leaf-house.png</span><span style="font-size: 13px; color: #5b6474">3000 × 3000 px · 6.1 MB</span></span>
+              <a href="#download-a" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px; border-radius: 8px; border: 1px solid #e3e6eb; color: #111827; text-decoration: none; font-size: 14px; font-weight: 500">ดาวน์โหลด</a>
+            </li>
+            <li style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; border: 1px solid #e3e6eb; border-radius: 10px; padding: 10px 14px">
+              <span style="display: grid; place-items: center; width: 44px; height: 44px; flex: none; border-radius: 8px; background: #f1f3f6; color: #5b6474; font-size: 11px; font-family: 'Geist Mono', monospace">PNG</span>
+              <span style="flex: 1 1 200px; min-width: 0"><span style="display: block; font-weight: 500">concept-B-cup-line.png</span><span style="font-size: 13px; color: #5b6474">3000 × 3000 px · 5.8 MB</span></span>
+              <a href="#download-b" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px; border-radius: 8px; border: 1px solid #e3e6eb; color: #111827; text-decoration: none; font-size: 14px; font-weight: 500">ดาวน์โหลด</a>
+            </li>
+            <li style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; border: 1px solid #e3e6eb; border-radius: 10px; padding: 10px 14px">
+              <span style="display: grid; place-items: center; width: 44px; height: 44px; flex: none; border-radius: 8px; background: #f1f3f6; color: #5b6474; font-size: 11px; font-family: 'Geist Mono', monospace">PNG</span>
+              <span style="flex: 1 1 200px; min-width: 0"><span style="display: block; font-weight: 500">concept-C-handwritten.png</span><span style="font-size: 13px; color: #5b6474">3000 × 3000 px · 6.5 MB</span></span>
+              <a href="#download-c" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px; border-radius: 8px; border: 1px solid #e3e6eb; color: #111827; text-decoration: none; font-size: 14px; font-weight: 500">ดาวน์โหลด</a>
+            </li>
+          </ul>
+          <a href="#download-all" style="align-self: flex-start; display: inline-flex; align-items: center; min-height: 46px; padding: 0 18px; border-radius: 10px; background: #0f766e; color: #ffffff; text-decoration: none; font-weight: 600">ดาวน์โหลดทั้งหมด (.zip)</a>
+        </section>
+
+        <section aria-label="เลือกแบบสำหรับงวด 2" style="background: #ffffff; border: 1px solid #e3e6eb; border-radius: 14px; padding: 20px">
+          <form style="display: flex; flex-direction: column; gap: 12px">
+            <fieldset style="border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px">
+              <legend style="margin-bottom: 8px; font-size: 17px; font-weight: 600">เลือกแบบที่จะทำต่อในงวด 2</legend>
+              <label style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px; border: 1px solid #e3e6eb; border-radius: 10px; cursor: pointer"><input type="radio" name="concept" value="A" checked> แบบ A ใบกาแฟกับบ้านหลังเล็ก</label>
+              <label style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px; border: 1px solid #e3e6eb; border-radius: 10px; cursor: pointer"><input type="radio" name="concept" value="B"> แบบ B ถ้วยกาแฟลายเส้น</label>
+              <label style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px; border: 1px solid #e3e6eb; border-radius: 10px; cursor: pointer"><input type="radio" name="concept" value="C"> แบบ C ตัวอักษรมือเขียน</label>
+            </fieldset>
+            <button type="button" style="align-self: flex-start; min-height: 46px; padding: 0 18px; border-radius: 10px; border: 1px solid #e3e6eb; background: #ffffff; color: #111827; font: inherit; font-weight: 500; cursor: pointer">ส่งให้ผู้ขาย</button>
+          </form>
+        </section>
+      </div>
+
+      <aside style="flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+        <section aria-label="ช่วงคัดค้าน" style="background: #fdf3e3; border: 1px solid #f3dcb5; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px">
+          <h2 style="margin: 0; font-size: 16px; font-weight: 600; color: #8a4207">เปิดไฟล์ไม่ได้ หรือไม่ตรงกับ preview?</h2>
+          <p style="margin: 0; font-size: 14px; color: #8a4207">แจ้งได้ภายใน <strong>2 วัน 23 ชั่วโมง</strong> หลังจากนั้นเงินงวด 1 จะโอนให้ผู้ขาย</p>
+          <a href="Dispute.dc.html" style="display: flex; align-items: center; justify-content: center; min-height: 46px; border-radius: 10px; border: 1px solid #f5c2cd; background: #ffffff; color: #be123c; text-decoration: none; font-weight: 500">แจ้งข้อพิพาท</a>
+        </section>
+
+        <section aria-label="สถานะเงิน" style="background: #ffffff; border: 1px solid #e3e6eb; border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 12px">
+          <h2 style="margin: 0; font-size: 17px; font-weight: 600">สถานะเงิน</h2>
+          <div style="display: flex; justify-content: space-between; gap: 12px; align-items: flex-start">
+            <span><span style="display: block; font-weight: 500">งวด 1 · 150 USDC</span><span style="font-size: 13px; color: #5b6474">โอนให้ผู้ขายเมื่อพ้นช่วงคัดค้าน</span></span>
+            <span style="padding: 3px 10px; border-radius: 999px; background: #fdf3e3; color: #b45309; font-size: 13px; font-weight: 500; white-space: nowrap">รอ 2 วัน 23 ชม.</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; gap: 12px; align-items: flex-start">
+            <span><span style="display: block; font-weight: 500">งวด 2 · 350 USDC</span><span style="font-size: 13px; color: #5b6474">ยังล็อกอยู่ รอผู้ขายส่งงาน</span></span>
+            <span style="padding: 3px 10px; border-radius: 999px; background: #f1f3f6; color: #5b6474; font-size: 13px; font-weight: 500; white-space: nowrap">ล็อกอยู่</span>
+          </div>
+        </section>
+      </aside>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1150}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

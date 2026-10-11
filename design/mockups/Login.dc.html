@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<title>เข้าสู่ระบบ</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500&amp;family=Noto+Sans+Thai:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#0f766e}a:hover{color:#115e59}
+</style>
+</helmet>
+<div style="min-height: 100vh; background: #f6f7f9; color: #111827; font-family: 'Geist', 'Noto Sans Thai', sans-serif; font-size: 16px; line-height: 1.6; display: flex; flex-direction: column">
+
+  <header style="max-width: 1200px; width: 100%; box-sizing: border-box; margin: 0 auto; padding: 18px 24px">
+    <a href="Main.dc.html" style="display: inline-flex; align-items: center; gap: 10px; font-weight: 600; color: #111827; text-decoration: none">
+      <span style="display: grid; place-items: center; width: 34px; height: 34px; border-radius: 9px; background: #0f766e; color: #ffffff; font-size: 14px">AW</span>
+      Agentic Wallet
+    </a>
+  </header>
+
+  <main style="flex: 1; max-width: 1000px; width: 100%; box-sizing: border-box; margin: 0 auto; padding: 40px 24px 64px; display: flex; flex-wrap: wrap; align-items: center; gap: 48px">
+    <div style="flex: 1 1 380px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+      <h1 style="margin: 0; font-size: 36px; line-height: 1.25; font-weight: 700">เข้าสู่ระบบ<br>แล้วเริ่มดีลแรก</h1>
+      <p style="margin: 0; color: #5b6474">ใช้กระเป๋าคริปโตที่คุณมีอยู่แล้ว หรือเข้าด้วยอีเมลแล้วค่อยเชื่อมกระเป๋าทีหลังก็ได้</p>
+      <ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px">
+        <li style="display: flex; gap: 12px; align-items: flex-start">
+          <span style="display: grid; place-items: center; width: 30px; height: 30px; flex: none; border-radius: 8px; background: #e6f4f2; color: #0f766e">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+          </span>
+          <span>เราไม่เคยถือ private key ของคุณ ทุกธุรกรรมคุณเซ็นเองจากกระเป๋า</span>
+        </li>
+        <li style="display: flex; gap: 12px; align-items: flex-start">
+          <span style="display: grid; place-items: center; width: 30px; height: 30px; flex: none; border-radius: 8px; background: #e6f4f2; color: #0f766e">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.9"></path><path d="M16 3.1a4 4 0 0 1 0 7.8"></path></svg>
+          </span>
+          <span>คู่ค้าของคุณไม่ต้องสมัครก็ได้ ใช้แค่กระเป๋าคริปโตทั่วไป</span>
+        </li>
+        <li style="display: flex; gap: 12px; align-items: flex-start">
+          <span style="display: grid; place-items: center; width: 30px; height: 30px; flex: none; border-radius: 8px; background: #e6f4f2; color: #0f766e">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path></svg>
+          </span>
+          <span>ตอนนี้เป็น testnet ใช้ mUSDC จำลอง ไม่มีเงินจริงเกี่ยวข้อง</span>
+        </li>
+      </ul>
+    </div>
+
+    <div style="flex: 1 1 380px; min-width: 0; background: #ffffff; border: 1px solid #e3e6eb; border-radius: 16px; padding: 28px; display: flex; flex-direction: column; gap: 18px">
+      <h2 style="margin: 0; font-size: 20px; font-weight: 600">เลือกวิธีเข้าสู่ระบบ</h2>
+
+      <a href="Dashboard.dc.html" style="display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 50px; border-radius: 10px; background: #0f766e; color: #ffffff; text-decoration: none; font-weight: 600">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7H5a2 2 0 0 1 0-4h13v4"></path><path d="M3 5v14a2 2 0 0 0 2 2h15V7"></path><circle cx="16" cy="14" r="1.5"></circle></svg>
+        เชื่อมกระเป๋าคริปโต
+      </a>
+      <p style="margin: -8px 0 0; font-size: 13px; color: #5b6474; text-align: center">กระเป๋าจะขอให้คุณเซ็นข้อความยืนยันตัวตน ไม่มีค่าธรรมเนียม</p>
+
+      <div style="display: flex; align-items: center; gap: 12px; color: #5b6474; font-size: 14px">
+        <span style="flex: 1; height: 1px; background: #e3e6eb"></span>หรือ<span style="flex: 1; height: 1px; background: #e3e6eb"></span>
+      </div>
+
+      <form style="display: flex; flex-direction: column; gap: 10px" aria-label="เข้าสู่ระบบด้วยอีเมล">
+        <label for="email" style="font-size: 14px; font-weight: 500">อีเมล</label>
+        <input id="email" type="email" placeholder="you@example.com" style="min-height: 46px; padding: 0 14px; border: 1px solid #cfd5dd; border-radius: 10px; font: inherit; color: #111827; background: #ffffff">
+        <button type="button" style="min-height: 46px; border-radius: 10px; border: 1px solid #e3e6eb; background: #ffffff; color: #111827; font: inherit; font-weight: 500; cursor: pointer">ส่งลิงก์เข้าสู่ระบบทางอีเมล</button>
+      </form>
+
+      <p style="margin: 0; font-size: 13px; color: #5b6474">เข้าครั้งแรก ระบบจะสร้างบัญชีให้อัตโนมัติ การเข้าสู่ระบบถือว่ายอมรับ<a href="#terms">ข้อตกลงการใช้งาน</a></p>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

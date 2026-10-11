@@ -1,0 +1,43 @@
+{
+  "v": 3,
+  "createdOnFiles": { "v": 1, "at": "2026-10-11T12:00:00Z" },
+  "title": "Agentic Wallet Mockups",
+  "launch": { "view": "canvas" },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": { "x": 0, "y": 0, "w": 1280, "h": 2100, "title": "หน้าแรก", "expand": "fill", "is_interactive": true },
+    "Login.dc.html": { "x": 1360, "y": 0, "w": 1280, "h": 900, "title": "เข้าสู่ระบบ", "expand": "fill", "is_interactive": true },
+
+    "Dashboard.dc.html": { "x": 0, "y": 2520, "w": 1280, "h": 1150, "title": "ดีลของฉัน", "expand": "fill", "is_interactive": true },
+    "NewOffer.dc.html": { "x": 1360, "y": 2520, "w": 1280, "h": 1250, "title": "สร้างข้อเสนอด้วย AI", "expand": "fill", "is_interactive": true },
+    "OfferReview.dc.html": { "x": 2720, "y": 2520, "w": 1280, "h": 1350, "title": "ตรวจและตอบรับข้อเสนอ", "expand": "fill", "is_interactive": true },
+
+    "DeliverWork.dc.html": { "x": 0, "y": 4290, "w": 1280, "h": 1200, "title": "ผู้ขายส่งงาน", "expand": "fill", "is_interactive": true },
+    "ReviewWork.dc.html": { "x": 1360, "y": 4290, "w": 1280, "h": 1400, "title": "ผู้ซื้อตรวจงาน", "expand": "fill", "is_interactive": true },
+    "ReceiveFile.dc.html": { "x": 2720, "y": 4290, "w": 1280, "h": 1150, "title": "รับไฟล์", "expand": "fill", "is_interactive": true },
+    "Dispute.dc.html": { "x": 4080, "y": 4290, "w": 1280, "h": 1350, "title": "ข้อพิพาท (มุมมอง arbiter)", "expand": "fill", "is_interactive": true },
+
+    "Wallet.dc.html": { "x": 0, "y": 6110, "w": 1280, "h": 1250, "title": "กระเป๋าและ AI agent", "expand": "fill", "is_interactive": true },
+    "Profile.dc.html": { "x": 1360, "y": 6110, "w": 1280, "h": 1050, "title": "โปรไฟล์และการตั้งค่า", "expand": "fill", "is_interactive": true }
+  },
+  "order": [
+    "Main.dc.html",
+    "Login.dc.html",
+    "Dashboard.dc.html",
+    "NewOffer.dc.html",
+    "OfferReview.dc.html",
+    "DeliverWork.dc.html",
+    "ReviewWork.dc.html",
+    "ReceiveFile.dc.html",
+    "Dispute.dc.html",
+    "Wallet.dc.html",
+    "Profile.dc.html"
+  ],
+  "notes": {
+    "row-start": { "x": 0, "y": -300, "text": "เริ่มต้นใช้งาน", "kind": "title1", "maxW": 2640 },
+    "row-deals": { "x": 0, "y": 2220, "text": "สร้างและตอบรับดีล", "kind": "title1", "maxW": 4000 },
+    "row-room": { "x": 0, "y": 3990, "text": "ห้องดีล: ส่งงาน → ตรวจ → รับไฟล์ → ข้อพิพาท", "kind": "title1", "maxW": 5360 },
+    "row-account": { "x": 0, "y": 5810, "text": "บัญชี", "kind": "title1", "maxW": 2640 }
+  },
+  "designSystems": []
+}
