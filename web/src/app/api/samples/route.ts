@@ -1,6 +1,6 @@
-import { samples } from "@/lib/samples";
+import { contractApiStub } from "@/lib/api-stub";
 
-// Fictional fixtures only; no roles, recipients, or addresses are loaded from chain config.
+/** Sample documents are embedded in the browser mockup; no server data source is active. */
 export async function GET() {
-  return Response.json(samples("0x000000000000000000000000000000000000cafe", "0x000000000000000000000000000000000000bad0"));
+  return contractApiStub();
 }
