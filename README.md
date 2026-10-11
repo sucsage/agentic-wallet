@@ -84,16 +84,20 @@ AGENT_ADDRESS=0x... APPROVERS=0x...,0x... CONTRACTOR=0x... \
 
 ## Live on Base Sepolia (chain 84532)
 
+Redeployed 2026-10-12 with the neutral-arbiter escrow and FileEscrow.
+
 | Contract | Address |
 |---|---|
-| MockUSDC | [`0x9fe132768cd9f7dc8a9e89ab6c6555ac4c25a4c2`](https://sepolia.basescan.org/address/0x9fe132768cd9f7dc8a9e89ab6c6555ac4c25a4c2) |
-| MilestoneEscrow | [`0x0e0f107b42b6c13ceb48ef390cb8fd3747213b20`](https://sepolia.basescan.org/address/0x0e0f107b42b6c13ceb48ef390cb8fd3747213b20) |
-| AgentWalletFactory | [`0x1653fb818d253902e3aead22e570bacce608f7e1`](https://sepolia.basescan.org/address/0x1653fb818d253902e3aead22e570bacce608f7e1) |
+| MockUSDC | [`0x3b190bdeca8b04849418e403a7a0a380314fddc5`](https://sepolia.basescan.org/address/0x3b190bdeca8b04849418e403a7a0a380314fddc5) |
+| MilestoneEscrow | [`0x8c0a2b2d19b3a4c5fcc3cc89454807f7f7a99c6a`](https://sepolia.basescan.org/address/0x8c0a2b2d19b3a4c5fcc3cc89454807f7f7a99c6a) |
+| AgentWalletFactory | [`0x3258ddda874fcf21b6cb5c2069c2836b53d902ec`](https://sepolia.basescan.org/address/0x3258ddda874fcf21b6cb5c2069c2836b53d902ec) |
+| FileEscrow | [`0xc96fbcef6dcee0996baf8dce66494cbe31e43d38`](https://sepolia.basescan.org/address/0xc96fbcef6dcee0996baf8dce66494cbe31e43d38) |
+| Arbiter (neutral dispute resolver) | [`0x2b4a015514fc1b732AA60784243e51d9cd4Ec1D7`](https://sepolia.basescan.org/address/0x2b4a015514fc1b732AA60784243e51d9cd4Ec1D7) |
 
 On-chain evidence:
 
-- Sandbox wallet created by the factory in one tx: [`0x01f44166…bc4c25`](https://sepolia.basescan.org/tx/0x01f441666745163fd4d3890eba2df910e6f2aa6ac3d2f2f9011ff4a343bc4c25)
-- Attack with the agent's own key, bypassing the AI and the policy engine: `agentTransfer(0xBAd…Bad, 5000)` **reverted on-chain** with `RecipientNotAllowed`: [`0xfc7b209e…69d1dce`](https://sepolia.basescan.org/tx/0xfc7b209e06d2e076525ab94fbf060160e381199656e1cb43b3d60906c69d1dce)
+- Sandbox wallet created by the factory in one tx: [`0x8556315d…291bb8f0`](https://sepolia.basescan.org/tx/0x8556315df58ce42a55cee203589b2fb12782a9e8f9638845d8bef503291bb8f0)
+- Attack with the agent's own key, bypassing the AI and the policy engine: `agentTransfer(0xBAd…Bad, 5000)` **reverted on-chain** with `RecipientNotAllowed`: [`0xa7289c26…7912cf0f`](https://sepolia.basescan.org/tx/0xa7289c26a0e0fe7c15878687a349d3fd3c527d987cc8d37af10a76e27912cf0f)
 
 ## Known risks (draft for the security self-assessment)
 

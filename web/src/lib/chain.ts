@@ -158,7 +158,19 @@ export async function send<
         if (receipt.status === "success") {
           return { status: "success", hash, url: explorerTx(hash), result: jsonSafe(simulated?.result) };
         }
-        return { status: "reverted", hash, url: explorerTx(hash), error: simulationError ?? "reverted" };
+        // The pre-send simulation can miss the reason: a load-balanced public RPC may not have seen a
+        // contract created moments earlier (a call to an address without code "succeeds"). Replaying
+        // the call at the block where it reverted recovers the real reason.
+        let reason = simulationError;
+        if (!reason) {
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            await pc.simulateContract({ ...(call as any), account: account(role), blockNumber: receipt.blockNumber });
+          } catch (err) {
+            reason = revertReason(err);
+          }
+        }
+        return { status: "reverted", hash, url: explorerTx(hash), error: reason ?? "reverted" };
       } catch (err) {
         if (attempt < 3 && isNonceError(err)) continue;
         return { status: "rejected", error: revertReason(err) };

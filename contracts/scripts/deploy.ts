@@ -1,4 +1,4 @@
-// Deploys the shared demo infrastructure: MockUSDC, MilestoneEscrow and AgentWalletFactory.
+// Deploys the shared demo infrastructure: MockUSDC, MilestoneEscrow, AgentWalletFactory and FileEscrow.
 // Per-visitor wallets are created later by the web app through the factory.
 //
 //   npx hardhat keystore set BASE_SEPOLIA_RPC_URL
@@ -23,7 +23,8 @@ const startBlock = await publicClient.getBlockNumber();
 const usdc = await viem.deployContract("MockUSDC");
 const escrow = await viem.deployContract("MilestoneEscrow");
 const factory = await viem.deployContract("AgentWalletFactory");
-console.log({ usdc: usdc.address, escrow: escrow.address, factory: factory.address });
+const fileEscrow = await viem.deployContract("FileEscrow");
+console.log({ usdc: usdc.address, escrow: escrow.address, factory: factory.address, fileEscrow: fileEscrow.address });
 
 const fundEth = parseEther(process.env.FUND_ETH ?? "0.01");
 for (const raw of (process.env.FUND_ADDRESSES ?? "").split(",").filter(Boolean)) {
@@ -37,7 +38,12 @@ mkdirSync("deployments", { recursive: true });
 const out = {
   chainId,
   startBlock: startBlock.toString(),
-  contracts: { MockUSDC: usdc.address, MilestoneEscrow: escrow.address, AgentWalletFactory: factory.address },
+  contracts: {
+    MockUSDC: usdc.address,
+    MilestoneEscrow: escrow.address,
+    AgentWalletFactory: factory.address,
+    FileEscrow: fileEscrow.address,
+  },
 };
 writeFileSync(`deployments/${chainId}.json`, JSON.stringify(out, null, 2) + "\n");
 console.log(`Wrote deployments/${chainId}.json`);

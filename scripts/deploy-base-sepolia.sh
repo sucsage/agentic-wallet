@@ -10,7 +10,8 @@ set -a; source .secrets/base-sepolia.env; set +a
 RPC_URL="${RPC_URL:-https://sepolia.base.org}"
 
 addr() { (cd web && node -e "import('viem/accounts').then(a=>console.log(a.privateKeyToAccount(process.argv[1]).address))" "$1"); }
-FUND="$(addr "$AGENT_PRIVATE_KEY"),$(addr "$CONTRACTOR_PRIVATE_KEY")"
+# The arbiter also gets gas: it must be able to send resolve() on disputed milestones.
+FUND="$(addr "$AGENT_PRIVATE_KEY"),$(addr "$CONTRACTOR_PRIVATE_KEY"),$(addr "$ARBITER_PRIVATE_KEY")"
 
 (cd contracts && BASE_SEPOLIA_RPC_URL="$RPC_URL" DEPLOYER_PRIVATE_KEY="$OWNER_PRIVATE_KEY" \
   FUND_ADDRESSES="$FUND" FUND_ETH="${FUND_ETH:-0.01}" \
@@ -25,6 +26,7 @@ RPC_URL=$RPC_URL
 USDC_ADDRESS=$(j .contracts.MockUSDC)
 ESCROW_ADDRESS=$(j .contracts.MilestoneEscrow)
 FACTORY_ADDRESS=$(j .contracts.AgentWalletFactory)
+FILE_ESCROW_ADDRESS=$(j .contracts.FileEscrow)
 START_BLOCK=$(j .startBlock)
 ARBITER_ADDRESS=$ARBITER_ADDRESS
 OWNER_PRIVATE_KEY=$OWNER_PRIVATE_KEY
