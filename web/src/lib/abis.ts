@@ -84,6 +84,17 @@ export const agentWalletAbi = [
     "inputs": [
       {
         "internalType": "address",
+        "name": "arbiter",
+        "type": "address"
+      }
+    ],
+    "name": "ArbiterNotNeutral",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
         "name": "escrow",
         "type": "address"
       }
@@ -1429,6 +1440,11 @@ export const milestoneEscrowAbi = [
   {
     "inputs": [],
     "name": "AlreadyFunded",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "ArbiterNotNeutral",
     "type": "error"
   },
   {

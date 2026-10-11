@@ -109,6 +109,7 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
     error NotAuthorized();
     error RecipientNotAllowed(address recipient);
     error EscrowNotAllowed(address escrow);
+    error ArbiterNotNeutral(address arbiter);
     error ExceedsPerTxLimit(uint256 amount, uint256 maxPerTx);
     error ExceedsDailyLimit(uint256 amount, uint256 remaining);
     error NotPayerOfDeal();
@@ -412,6 +413,7 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
             abi.decode(_args(data), (address, address, address, uint256[], string));
         if (!allowedRecipient[payee]) revert RecipientNotAllowed(payee);
         if (dealToken != address(token)) revert WrongToken();
+        _checkArbiter(arbiter);
         for (uint256 i = 0; i < amounts.length; i++) {
             total += amounts[i];
         }
@@ -429,16 +431,25 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
             if (!allowedEscrow[spender]) revert EscrowNotAllowed(spender);
         } else if (allowedEscrow[target]) {
             if (selector == MilestoneEscrow.createDeal.selector) {
-                (address payee,, address dealToken,,) =
+                (address payee, address arbiter, address dealToken,,) =
                     abi.decode(_args(data), (address, address, address, uint256[], string));
                 if (!allowedRecipient[payee]) revert RecipientNotAllowed(payee);
                 if (dealToken != address(token)) revert WrongToken();
+                _checkArbiter(arbiter);
             } else if (selector != MilestoneEscrow.fund.selector && selector != MilestoneEscrow.dispute.selector) {
                 revert InvalidProposal();
             }
         } else {
             revert InvalidProposal();
         }
+    }
+
+    /// @dev The escrow only sees this contract as the payer; the keys that control it (owner,
+    ///      approvers, agent) are the buyer's side too and must not judge the buyer's disputes.
+    function _checkArbiter(address arbiter) private view {
+        if (
+            arbiter == address(this) || arbiter == owner() || isApprover[arbiter] || sessions[arbiter].expiresAt != 0
+        ) revert ArbiterNotNeutral(arbiter);
     }
 
     function _args(bytes memory data) private pure returns (bytes memory args) {

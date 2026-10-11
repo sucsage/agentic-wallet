@@ -287,6 +287,32 @@ describe("AgentWallet", async function () {
       );
     });
 
+    it("rejects a deal whose arbiter is on the buyer's side", async () => {
+      const { usdc, escrow, asAgent, wallet } = await networkHelpers.loadFixture(deploy);
+      const mk = (judge: `0x${string}`) =>
+        encodeFunctionData({
+          abi: escrow.abi,
+          functionName: "createDeal",
+          args: [contractor.account.address, judge, usdc.address, [usd(1)], ""],
+        });
+      for (const judge of [owner, agent, approverA].map((c) => getAddress(c.account.address))) {
+        // SetupDeal path.
+        await viem.assertions.revertWithCustomErrorWithArgs(
+          asAgent.write.propose([3, escrow.address, 0n, 0n, mk(judge), "x"]),
+          wallet,
+          "ArbiterNotNeutral",
+          [judge],
+        );
+        // Generic Call path.
+        await viem.assertions.revertWithCustomErrorWithArgs(
+          asAgent.write.propose([2, escrow.address, 0n, 0n, mk(judge), "x"]),
+          wallet,
+          "ArbiterNotNeutral",
+          [judge],
+        );
+      }
+    });
+
     it("agent can draft deal setup calls that humans approve", async () => {
       const { usdc, escrow, asAgent, asA, asB } = await networkHelpers.loadFixture(deploy);
       const calls = [
@@ -383,6 +409,20 @@ describe("AgentWallet", async function () {
       await escrowAsArbiter.write.resolve([0n, 2n, false]);
       assert.equal((await escrow.read.getMilestone([0n, 2n])).status, 4);
       assert.equal(await usdc.read.balanceOf([wallet.address]), usd(100_000) - usd(3_000) + usd(700));
+    });
+
+    it("rejects an arbiter who is the payer or the payee", async () => {
+      const { usdc, escrow } = await networkHelpers.loadFixture(deploy);
+      const escrowAsStranger = await viem.getContractAt("MilestoneEscrow", escrow.address, {
+        client: { wallet: stranger },
+      });
+      for (const judge of [stranger.account.address, contractor.account.address]) {
+        await viem.assertions.revertWithCustomError(
+          escrowAsStranger.write.createDeal([contractor.account.address, judge, usdc.address, [usd(1)], ""]),
+          escrow,
+          "ArbiterNotNeutral",
+        );
+      }
     });
 
     it("only the payer can release", async () => {

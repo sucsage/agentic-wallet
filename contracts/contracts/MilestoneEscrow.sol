@@ -58,6 +58,7 @@ contract MilestoneEscrow is ReentrancyGuard {
     error NotArbiter();
     error NotParty();
     error InvalidDeal();
+    error ArbiterNotNeutral();
     error AlreadyFunded();
     error NotFunded();
     error BadStatus(Status current);
@@ -78,6 +79,8 @@ contract MilestoneEscrow is ReentrancyGuard {
     ) external returns (uint256 dealId) {
         if (payee == address(0) || arbiter == address(0) || address(token) == address(0)) revert InvalidDeal();
         if (payee == msg.sender || amounts.length == 0) revert InvalidDeal();
+        // A party judging its own dispute could take back funds after receiving the work.
+        if (arbiter == msg.sender || arbiter == payee) revert ArbiterNotNeutral();
 
         dealId = dealCount++;
         uint256 total;

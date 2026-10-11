@@ -3,7 +3,7 @@
 //
 //   npx hardhat keystore set BASE_SEPOLIA_RPC_URL
 //   npx hardhat keystore set DEPLOYER_PRIVATE_KEY      # testnet-only key
-//   FUND_ADDRESSES=0xagent,0xapproverA,0xapproverB,0xcontractor FUND_ETH=0.01 \
+//   FUND_ADDRESSES=0xagent,0xcontractor FUND_ETH=0.01 \
 //     npx hardhat run scripts/deploy.ts --network baseSepolia
 //
 // FUND_ADDRESSES (optional) receive FUND_ETH each, so the demo role keys can pay gas.
