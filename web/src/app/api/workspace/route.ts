@@ -1,14 +1,10 @@
-import { createWorkspace } from "@/lib/actions";
-import { errorResponse, rateLimit } from "@/lib/guard";
+import { contractApiStub } from "@/lib/api-stub";
 
-export const maxDuration = 60;
+/** Workspace creation will be wired to the wallet factory in a later milestone. */
+export async function POST() {
+  return contractApiStub();
+}
 
-export async function POST(req: Request) {
-  try {
-    rateLimit(req, "create", 5, 60 * 60 * 1000);
-    const { address, outcome } = await createWorkspace();
-    return Response.json({ address, outcome });
-  } catch (err) {
-    return errorResponse(err);
-  }
+export async function GET() {
+  return contractApiStub();
 }

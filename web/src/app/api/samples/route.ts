@@ -1,12 +1,6 @@
-import { roleAddresses } from "@/lib/chain";
-import { ATTACKER } from "@/lib/config";
-import { errorResponse } from "@/lib/guard";
 import { samples } from "@/lib/samples";
 
+// Fictional fixtures only; no roles, recipients, or addresses are loaded from chain config.
 export async function GET() {
-  try {
-    return Response.json(samples(roleAddresses().contractor, ATTACKER));
-  } catch (err) {
-    return errorResponse(err);
-  }
+  return Response.json(samples("0x000000000000000000000000000000000000cafe", "0x000000000000000000000000000000000000bad0"));
 }
