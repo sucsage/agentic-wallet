@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<title>กระเป๋าและ AI agent</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500&amp;family=Noto+Sans+Thai:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#0f766e}a:hover{color:#115e59}
+</style>
+</helmet>
+<div style="min-height: 100vh; background: #f6f7f9; color: #111827; font-family: 'Geist', 'Noto Sans Thai', sans-serif; font-size: 16px; line-height: 1.55">
+
+  <header style="background: #ffffff; border-bottom: 1px solid #e3e6eb">
+    <div style="max-width: 1200px; margin: 0 auto; padding: 12px 24px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px">
+      <a href="Dashboard.dc.html" style="display: flex; align-items: center; gap: 10px; font-weight: 600; color: #111827; text-decoration: none">
+        <span style="display: grid; place-items: center; width: 34px; height: 34px; border-radius: 9px; background: #0f766e; color: #ffffff; font-size: 14px">AW</span>
+        Agentic Wallet
+      </a>
+      <nav aria-label="เมนูหลัก" style="display: flex; flex-wrap: wrap; gap: 4px">
+        <a href="Dashboard.dc.html" style="padding: 10px 14px; border-radius: 8px; color: #5b6474; text-decoration: none; font-size: 15px">ดีลของฉัน</a>
+        <a href="NewOffer.dc.html" style="padding: 10px 14px; border-radius: 8px; color: #5b6474; text-decoration: none; font-size: 15px">สร้างข้อเสนอ</a>
+        <a href="Wallet.dc.html" aria-current="page" style="padding: 10px 14px; border-radius: 8px; background: #e6f4f2; color: #0f766e; text-decoration: none; font-weight: 600; font-size: 15px">กระเป๋า</a>
+      </nav>
+      <div style="display: flex; align-items: center; gap: 10px">
+        <span style="padding: 4px 10px; border-radius: 999px; background: #f1f3f6; color: #5b6474; font-size: 13px">Testnet</span>
+        <a href="Profile.dc.html" aria-label="โปรไฟล์ของนภัส" style="display: grid; place-items: center; width: 40px; height: 40px; border-radius: 999px; background: #e9effd; color: #1d4ed8; text-decoration: none; font-weight: 600">น</a>
+      </div>
+    </div>
+  </header>
+
+  <main style="max-width: 1200px; margin: 0 auto; padding: 32px 24px 64px; display: flex; flex-direction: column; gap: 20px">
+    <div>
+      <h1 style="margin: 0; font-size: 30px; font-weight: 700">กระเป๋าและ AI agent</h1>
+      <p style="margin: 4px 0 0; color: #5b6474">AI จ่ายงวดเล็กที่ผ่านเงื่อนไขได้เอง ภายในวงเงินที่คุณตั้ง smart contract บังคับวงเงินนี้อีกชั้น</p>
+    </div>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+      <div style="flex: 1.3 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+
+        <section aria-label="ยอดเงิน" style="background: #ffffff; border: 1px solid #e3e6eb; border-radius: 14px; padding: 22px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 18px">
+          <div>
+            <div style="font-size: 14px; color: #5b6474">ใช้ได้ตอนนี้</div>
+            <div style="font-size: 36px; font-weight: 700; font-variant-numeric: tabular-nums">2,450 <span style="font-size: 18px; font-weight: 500; color: #5b6474">USDC</span></div>
+            <div style="font-size: 14px; color: #5b6474">ล็อกอยู่ในดีลที่คุณซื้อ 900 USDC</div>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px">
+            <span style="padding: 4px 12px; border-radius: 999px; background: #e8f6ec; color: #15803d; font-size: 13px; font-weight: 600">ใช้งานได้ปกติ</span>
+            <a href="#explorer" style="font-family: 'Geist Mono', monospace; font-size: 14px">0x8a1D…f204 ↗</a>
+          </div>
+        </section>
+
+        <section aria-label="รอคุณอนุมัติ" style="background: #ffffff; border: 1px solid #e3e6eb; border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 12px">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px">
+            <h2 style="margin: 0; font-size: 17px; font-weight: 600">AI ขอให้คุณอนุมัติ</h2>
+            <span style="padding: 3px 10px; border-radius: 999px; background: #fdf3e3; color: #b45309; font-size: 13px; font-weight: 500">1 รายการ</span>
+          </div>
+          <div style="border: 1px solid #f3dcb5; background: #fffaf2; border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px">
+            <div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px">
+              <span style="font-weight: 600">จ่ายงวด 3: ภาพประกอบหนังสือเด็ก</span>
+              <span style="font-weight: 600; font-variant-numeric: tabular-nums">600 USDC</span>
+            </div>
+            <p style="margin: 0; font-size: 14px; color: #5b6474">เหตุผลจาก AI: "หลักฐานส่งมอบครบ 4 ภาพสุดท้าย ผ่านเงื่อนไขทุกข้อ แต่ยอดเกินวงเงินต่อครั้ง 500 USDC จึงต้องให้คุณอนุมัติ"</p>
+            <div style="display: flex; flex-wrap: wrap; gap: 10px">
+              <button type="button" style="min-height: 44px; padding: 0 18px; border-radius: 10px; border: 0; background: #0f766e; color: #ffffff; font: inherit; font-weight: 600; cursor: pointer">อนุมัติ</button>
+              <button type="button" style="min-height: 44px; padding: 0 18px; border-radius: 10px; border: 1px solid #e3e6eb; background: #ffffff; color: #111827; font: inherit; font-weight: 500; cursor: pointer">ปฏิเสธ</button>
+            </div>
+          </div>
+        </section>
+
+        <section aria-label="ประวัติบน chain" style="background: #ffffff; border: 1px solid #e3e6eb; border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 12px">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px">
+            <h2 style="margin: 0; font-size: 17px; font-weight: 600">ประวัติบน chain</h2>
+            <a href="#audit-all" style="font-size: 14px">ดูทั้งหมด</a>
+          </div>
+          <ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column">
+            <li style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; padding: 12px 0; border-top: 1px solid #eef0f3">
+              <span><span style="display: block; font-weight: 500">AI จ่ายงวด 2 ภาพประกอบหนังสือเด็ก</span><span style="font-size: 13px; color: #5b6474">อัตโนมัติ ภายในวงเงิน · 11 ต.ค. 10:15</span></span>
+              <span style="display: flex; align-items: center; gap: 12px"><span style="font-variant-numeric: tabular-nums">−150 USDC</span><a href="#tx-1" style="font-family: 'Geist Mono', monospace; font-size: 13px">0x3f9a…↗</a></span>
+            </li>
+            <li style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; padding: 12px 0; border-top: 1px solid #eef0f3">
+              <span><span style="display: block; font-weight: 500">ได้รับเงินงวด 1 ตัดต่อวิดีโอ</span><span style="font-size: 13px; color: #5b6474">ปิดดีล · 9 ต.ค. 18:02</span></span>
+              <span style="display: flex; align-items: center; gap: 12px"><span style="font-variant-numeric: tabular-nums; color: #15803d">+100 USDC</span><a href="#tx-2" style="font-family: 'Geist Mono', monospace; font-size: 13px">0xa71c…↗</a></span>
+            </li>
+            <li style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; padding: 12px 0; border-top: 1px solid #eef0f3">
+              <span><span style="display: block; font-weight: 500">AI ปฏิเสธใบแจ้งหนี้ที่ขอโอนไป address แปลกหน้า</span><span style="font-size: 13px; color: #5b6474">ถูกบล็อก ไม่มีเงินออก · 7 ต.ค. 21:40</span></span>
+              <span style="padding: 3px 10px; border-radius: 999px; background: #fdebef; color: #be123c; font-size: 13px; font-weight: 500; align-self: center">บล็อก</span>
+            </li>
+          </ul>
+        </section>
+      </div>
+
+      <aside style="flex: 1 1 340px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+        <section aria-label="AI agent" style="background: #ffffff; border: 1px solid #e3e6eb; border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 14px">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px">
+            <h2 style="margin: 0; font-size: 17px; font-weight: 600">AI agent</h2>
+            <span style="padding: 3px 10px; border-radius: 999px; background: #e8f6ec; color: #15803d; font-size: 13px; font-weight: 500">ทำงานอยู่</span>
+          </div>
+          <dl style="margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; font-size: 15px">
+            <dt style="color: #5b6474">จ่ายเองได้ต่อครั้ง</dt><dd style="margin: 0; text-align: right; font-weight: 600">500 USDC</dd>
+            <dt style="color: #5b6474">จ่ายเองได้ต่อวัน</dt><dd style="margin: 0; text-align: right; font-weight: 600">1,000 USDC</dd>
+            <dt style="color: #5b6474">กุญแจ agent ใช้ได้ถึง</dt><dd style="margin: 0; text-align: right">18 ต.ค.</dd>
+          </dl>
+          <div>
+            <div style="display: flex; justify-content: space-between; font-size: 13px; color: #5b6474; margin-bottom: 6px"><span>ใช้ไปวันนี้</span><span style="font-variant-numeric: tabular-nums">150 / 1,000</span></div>
+            <div style="height: 8px; border-radius: 999px; background: #f1f3f6; overflow: hidden" role="progressbar" aria-label="วงเงินรายวันที่ใช้ไป" aria-valuenow="15" aria-valuemin="0" aria-valuemax="100"><div style="width: 15%; height: 100%; background: #0f766e"></div></div>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 10px">
+            <button type="button" style="flex: 1; min-height: 44px; border-radius: 10px; border: 1px solid #e3e6eb; background: #ffffff; color: #111827; font: inherit; font-weight: 500; cursor: pointer">แก้วงเงิน</button>
+            <button type="button" style="flex: 1; min-height: 44px; border-radius: 10px; border: 1px solid #e3e6eb; background: #ffffff; color: #111827; font: inherit; font-weight: 500; cursor: pointer">เพิกถอนกุญแจ agent</button>
+          </div>
+        </section>
+
+        <section aria-label="ปุ่มฉุกเฉิน" style="background: #fdebef; border: 1px solid #f5c2cd; border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 10px">
+          <h2 style="margin: 0; font-size: 16px; font-weight: 600; color: #9f1239">ปุ่มฉุกเฉิน</h2>
+          <p style="margin: 0; font-size: 14px; color: #9f1239">หยุดการจ่ายเงินทุกทางทันที ทั้งของ AI และของคุณ จนกว่าคุณจะปลดล็อกเอง ใช้เมื่อสงสัยว่ามีอะไรผิดปกติ</p>
+          <button type="button" style="min-height: 46px; border-radius: 10px; border: 0; background: #be123c; color: #ffffff; font: inherit; font-weight: 600; cursor: pointer">หยุดกระเป๋าทันที</button>
+        </section>
+      </aside>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1250}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

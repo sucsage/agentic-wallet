@@ -1,0 +1,384 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.28;
+
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
+/// @title FileEscrow
+/// @notice Fair exchange of work (optionally a file) for a token payment between two people who
+///         do not trust each other. Either side may make the offer; the other side accepts it.
+///
+///         The buyer's payment is locked before any work is shown, and a file's decryption key is
+///         only published after the buyer approves the work, in exchange for the payment. Neither
+///         side can walk away holding both halves.
+///
+///         Deal:
+///           Proposed --accept--> Active         the counterparty agrees; the buyer's funds are locked
+///           Proposed --cancel--> Cancelled      creator only; a buyer's up-front funds are returned
+///
+///         Milestone (in an Active deal):
+///           Pending     --deliver-->    Delivered    seller anchors the work hash + encrypted file/preview URI
+///           Delivered   --approve-->    Approved     buyer accepts the work (file milestone)
+///           Delivered   --approve-->    Released     buyer accepts the work (no file: paid at once)
+///           Approved    --releaseKey--> KeyReleased  seller publishes the key, encrypted to the buyer
+///           KeyReleased --claim-->      Released     after the challenge window, the seller is paid
+///
+///         Every window lasts `reviewPeriod`, agreed in the offer. When a window passes:
+///           Delivered, buyer silent         -> seller may releaseKey (file) or claim (no file)
+///           Approved, seller withholds key  -> buyer may reclaim the payment
+///           KeyReleased, no challenge       -> seller may claim the payment
+///         Inside a review or challenge window the buyer may dispute; a neutral arbiter settles it.
+contract FileEscrow is ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
+    enum DealStatus {
+        Proposed,
+        Active,
+        Cancelled
+    }
+
+    enum Status {
+        Pending,
+        Delivered,
+        Approved,
+        KeyReleased,
+        Released,
+        Disputed,
+        Refunded
+    }
+
+    /// @notice One milestone as written in an offer.
+    struct MilestoneTerms {
+        uint256 amount;
+        bool hasFile;
+        /// @dev A seller selling a file it already has may commit to it up front; 0 = not known yet.
+        bytes32 workHash;
+    }
+
+    struct Deal {
+        address buyer;
+        address seller;
+        address arbiter;
+        address creator;
+        IERC20 token;
+        uint256 total;
+        uint256 milestoneCount;
+        uint64 reviewPeriod;
+        DealStatus status;
+        string termsURI;
+    }
+
+    struct Milestone {
+        uint256 amount;
+        bool hasFile;
+        Status status;
+        /// @dev End of the window the milestone is currently in; its meaning follows `status`.
+        uint64 deadline;
+        /// @dev Hash committed in the offer; a delivery must match it. 0 = none committed.
+        bytes32 agreedWorkHash;
+        /// @dev Hash of the delivered work: the plaintext file, or the evidence of a no-file milestone.
+        bytes32 workHash;
+        /// @dev Where the encrypted file and its preview (or the evidence) can be fetched.
+        string deliveryURI;
+        /// @dev The file's decryption key, encrypted to the buyer.
+        bytes encryptedKey;
+    }
+
+    /// @notice Shortest review window an offer may set, so a window cannot lapse before anyone can react.
+    uint64 public constant MIN_REVIEW_PERIOD = 1 hours;
+
+    uint256 public dealCount;
+    mapping(uint256 => Deal) private _deals;
+    mapping(uint256 => mapping(uint256 => Milestone)) private _milestones;
+    mapping(address => uint256[]) private _dealsOf;
+
+    event OfferCreated(
+        uint256 indexed dealId, address indexed buyer, address indexed seller, address creator, uint256 total, string termsURI
+    );
+    event OfferAccepted(uint256 indexed dealId);
+    event OfferCancelled(uint256 indexed dealId);
+    event Delivered(uint256 indexed dealId, uint256 indexed index, bytes32 workHash, string deliveryURI);
+    event Approved(uint256 indexed dealId, uint256 indexed index);
+    event KeyReleased(uint256 indexed dealId, uint256 indexed index, bytes encryptedKey);
+    event Disputed(uint256 indexed dealId, uint256 indexed index);
+    event Released(uint256 indexed dealId, uint256 indexed index, uint256 amount);
+    event Refunded(uint256 indexed dealId, uint256 indexed index, uint256 amount);
+
+    error InvalidOffer();
+    error ArbiterNotNeutral();
+    error InvalidIndex();
+    error NotAllowed();
+    error WrongDealStatus(DealStatus current);
+    error WrongStatus(Status current);
+    error InvalidDelivery();
+    error WorkMismatch();
+    error NoFile();
+    error WindowOpen();
+    error WindowClosed();
+
+    // ----------------------------------------------------------------------------------------
+    // Offers
+    // ----------------------------------------------------------------------------------------
+
+    /// @notice Buyer offers to pay for work. The payment is locked now, so the seller knows it exists.
+    function offerToBuy(
+        address seller,
+        address arbiter,
+        IERC20 token,
+        MilestoneTerms[] calldata terms,
+        uint64 reviewPeriod,
+        string calldata termsURI
+    ) external nonReentrant returns (uint256 dealId) {
+        dealId = _create(msg.sender, seller, arbiter, token, terms, reviewPeriod, termsURI);
+        token.safeTransferFrom(msg.sender, address(this), _deals[dealId].total);
+    }
+
+    /// @notice Seller offers work or a ready-made file. Nothing is locked until the buyer accepts.
+    function offerToSell(
+        address buyer,
+        address arbiter,
+        IERC20 token,
+        MilestoneTerms[] calldata terms,
+        uint64 reviewPeriod,
+        string calldata termsURI
+    ) external returns (uint256 dealId) {
+        dealId = _create(buyer, msg.sender, arbiter, token, terms, reviewPeriod, termsURI);
+    }
+
+    /// @notice The counterparty agrees to the offer as written. A buyer accepting pays in now.
+    function accept(uint256 dealId) external nonReentrant {
+        Deal storage d = _deal(dealId);
+        if (d.status != DealStatus.Proposed) revert WrongDealStatus(d.status);
+        address counterparty = d.creator == d.buyer ? d.seller : d.buyer;
+        if (msg.sender != counterparty) revert NotAllowed();
+
+        d.status = DealStatus.Active;
+        if (msg.sender == d.buyer) d.token.safeTransferFrom(d.buyer, address(this), d.total);
+        emit OfferAccepted(dealId);
+    }
+
+    /// @notice The creator withdraws an offer nobody has accepted yet.
+    function cancel(uint256 dealId) external nonReentrant {
+        Deal storage d = _deal(dealId);
+        if (msg.sender != d.creator) revert NotAllowed();
+        if (d.status != DealStatus.Proposed) revert WrongDealStatus(d.status);
+
+        d.status = DealStatus.Cancelled;
+        if (d.creator == d.buyer) d.token.safeTransfer(d.buyer, d.total);
+        emit OfferCancelled(dealId);
+    }
+
+    // ----------------------------------------------------------------------------------------
+    // Seller
+    // ----------------------------------------------------------------------------------------
+
+    /// @notice Anchors the work. For a file, `deliveryURI` points at the encrypted file and a preview,
+    ///         so the buyer can judge it without receiving it. Can be redone until the buyer approves.
+    function deliver(uint256 dealId, uint256 index, bytes32 workHash, string calldata deliveryURI) external {
+        (Deal storage d, Milestone storage m) = _active(dealId, index);
+        if (msg.sender != d.seller) revert NotAllowed();
+        if (m.status != Status.Pending && m.status != Status.Delivered) revert WrongStatus(m.status);
+        if (workHash == bytes32(0)) revert InvalidDelivery();
+        if (m.agreedWorkHash != bytes32(0) && workHash != m.agreedWorkHash) revert WorkMismatch();
+
+        m.status = Status.Delivered;
+        m.workHash = workHash;
+        m.deliveryURI = deliveryURI;
+        m.deadline = _windowEnd(d);
+        emit Delivered(dealId, index, workHash, deliveryURI);
+    }
+
+    /// @notice Hands over the file by publishing its key, encrypted to the buyer. Allowed once the
+    ///         buyer approved, or once the buyer let the review window pass in silence.
+    function releaseKey(uint256 dealId, uint256 index, bytes calldata encryptedKey) external {
+        (Deal storage d, Milestone storage m) = _active(dealId, index);
+        if (msg.sender != d.seller) revert NotAllowed();
+        if (!m.hasFile) revert NoFile();
+        if (encryptedKey.length == 0) revert InvalidDelivery();
+        if (m.status == Status.Approved) {
+            if (block.timestamp > m.deadline) revert WindowClosed();
+        } else if (m.status == Status.Delivered) {
+            if (block.timestamp <= m.deadline) revert WindowOpen();
+        } else {
+            revert WrongStatus(m.status);
+        }
+
+        m.status = Status.KeyReleased;
+        m.encryptedKey = encryptedKey;
+        m.deadline = _windowEnd(d);
+        emit KeyReleased(dealId, index, encryptedKey);
+    }
+
+    /// @notice Collects the payment once the buyer can no longer object: the key went unchallenged,
+    ///         or (no file) the buyer let the review window pass.
+    function claim(uint256 dealId, uint256 index) external nonReentrant {
+        (Deal storage d, Milestone storage m) = _active(dealId, index);
+        if (msg.sender != d.seller) revert NotAllowed();
+        bool keyUnchallenged = m.status == Status.KeyReleased;
+        bool noFileUnanswered = m.status == Status.Delivered && !m.hasFile;
+        if (!keyUnchallenged && !noFileUnanswered) revert WrongStatus(m.status);
+        if (block.timestamp <= m.deadline) revert WindowOpen();
+
+        _payOut(dealId, index, d, m);
+    }
+
+    /// @notice Gives a milestone's payment back to the buyer at any point before it is settled.
+    function refund(uint256 dealId, uint256 index) external nonReentrant {
+        (Deal storage d, Milestone storage m) = _active(dealId, index);
+        if (msg.sender != d.seller) revert NotAllowed();
+        if (m.status == Status.Released || m.status == Status.Refunded) revert WrongStatus(m.status);
+
+        _payBack(dealId, index, d, m);
+    }
+
+    // ----------------------------------------------------------------------------------------
+    // Buyer
+    // ----------------------------------------------------------------------------------------
+
+    /// @notice Accepts the delivered work after checking its preview and verification report.
+    ///         A no-file milestone is paid at once; a file milestone now waits for the seller's key.
+    function approve(uint256 dealId, uint256 index) external nonReentrant {
+        (Deal storage d, Milestone storage m) = _active(dealId, index);
+        if (msg.sender != d.buyer) revert NotAllowed();
+        if (m.status != Status.Delivered) revert WrongStatus(m.status);
+
+        if (!m.hasFile) {
+            _payOut(dealId, index, d, m);
+        } else {
+            m.status = Status.Approved;
+            m.deadline = _windowEnd(d);
+            emit Approved(dealId, index);
+        }
+    }
+
+    /// @notice Objects inside a window: to the work itself (Delivered) or to a key that does not open
+    ///         the file matching `workHash` (KeyReleased). The arbiter decides.
+    function dispute(uint256 dealId, uint256 index) external {
+        (Deal storage d, Milestone storage m) = _active(dealId, index);
+        if (msg.sender != d.buyer) revert NotAllowed();
+        if (m.status != Status.Delivered && m.status != Status.KeyReleased) revert WrongStatus(m.status);
+        if (block.timestamp > m.deadline) revert WindowClosed();
+
+        m.status = Status.Disputed;
+        emit Disputed(dealId, index);
+    }
+
+    /// @notice Takes the payment back when the seller did not hand over the key after approval.
+    function reclaim(uint256 dealId, uint256 index) external nonReentrant {
+        (Deal storage d, Milestone storage m) = _active(dealId, index);
+        if (msg.sender != d.buyer) revert NotAllowed();
+        if (m.status != Status.Approved) revert WrongStatus(m.status);
+        if (block.timestamp <= m.deadline) revert WindowOpen();
+
+        _payBack(dealId, index, d, m);
+    }
+
+    // ----------------------------------------------------------------------------------------
+    // Arbiter
+    // ----------------------------------------------------------------------------------------
+
+    /// @notice Settles a disputed milestone to either side.
+    function resolve(uint256 dealId, uint256 index, bool toSeller) external nonReentrant {
+        (Deal storage d, Milestone storage m) = _active(dealId, index);
+        if (msg.sender != d.arbiter) revert NotAllowed();
+        if (m.status != Status.Disputed) revert WrongStatus(m.status);
+
+        if (toSeller) _payOut(dealId, index, d, m);
+        else _payBack(dealId, index, d, m);
+    }
+
+    // ----------------------------------------------------------------------------------------
+    // Views
+    // ----------------------------------------------------------------------------------------
+
+    function getDeal(uint256 dealId) external view returns (Deal memory) {
+        return _deal(dealId);
+    }
+
+    function getMilestone(uint256 dealId, uint256 index) external view returns (Milestone memory) {
+        if (index >= _deal(dealId).milestoneCount) revert InvalidIndex();
+        return _milestones[dealId][index];
+    }
+
+    /// @notice Every deal an account is a party to, as buyer or seller.
+    function dealsOf(address account) external view returns (uint256[] memory) {
+        return _dealsOf[account];
+    }
+
+    // ----------------------------------------------------------------------------------------
+    // Internal
+    // ----------------------------------------------------------------------------------------
+
+    function _create(
+        address buyer,
+        address seller,
+        address arbiter,
+        IERC20 token,
+        MilestoneTerms[] calldata terms,
+        uint64 reviewPeriod,
+        string calldata termsURI
+    ) private returns (uint256 dealId) {
+        if (buyer == address(0) || seller == address(0) || buyer == seller) revert InvalidOffer();
+        if (address(token) == address(0) || terms.length == 0 || reviewPeriod < MIN_REVIEW_PERIOD) revert InvalidOffer();
+        // A party judging its own dispute could take back the money after receiving the work.
+        if (arbiter == address(0) || arbiter == buyer || arbiter == seller) revert ArbiterNotNeutral();
+
+        dealId = dealCount++;
+        uint256 total;
+        for (uint256 i = 0; i < terms.length; i++) {
+            MilestoneTerms calldata t = terms[i];
+            if (t.amount == 0) revert InvalidOffer();
+            // Only a seller can commit to a file it already has.
+            if (t.workHash != bytes32(0) && (!t.hasFile || msg.sender != seller)) revert InvalidOffer();
+            Milestone storage m = _milestones[dealId][i];
+            m.amount = t.amount;
+            m.hasFile = t.hasFile;
+            m.agreedWorkHash = t.workHash;
+            total += t.amount;
+        }
+
+        Deal storage d = _deals[dealId];
+        d.buyer = buyer;
+        d.seller = seller;
+        d.arbiter = arbiter;
+        d.creator = msg.sender;
+        d.token = token;
+        d.total = total;
+        d.milestoneCount = terms.length;
+        d.reviewPeriod = reviewPeriod;
+        d.termsURI = termsURI;
+
+        _dealsOf[buyer].push(dealId);
+        _dealsOf[seller].push(dealId);
+        emit OfferCreated(dealId, buyer, seller, msg.sender, total, termsURI);
+    }
+
+    function _deal(uint256 dealId) private view returns (Deal storage) {
+        if (dealId >= dealCount) revert InvalidIndex();
+        return _deals[dealId];
+    }
+
+    function _active(uint256 dealId, uint256 index) private view returns (Deal storage d, Milestone storage m) {
+        d = _deal(dealId);
+        if (d.status != DealStatus.Active) revert WrongDealStatus(d.status);
+        if (index >= d.milestoneCount) revert InvalidIndex();
+        m = _milestones[dealId][index];
+    }
+
+    function _windowEnd(Deal storage d) private view returns (uint64) {
+        return uint64(block.timestamp) + d.reviewPeriod;
+    }
+
+    function _payOut(uint256 dealId, uint256 index, Deal storage d, Milestone storage m) private {
+        m.status = Status.Released;
+        d.token.safeTransfer(d.seller, m.amount);
+        emit Released(dealId, index, m.amount);
+    }
+
+    function _payBack(uint256 dealId, uint256 index, Deal storage d, Milestone storage m) private {
+        m.status = Status.Refunded;
+        d.token.safeTransfer(d.buyer, m.amount);
+        emit Refunded(dealId, index, m.amount);
+    }
+}

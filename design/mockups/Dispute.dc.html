@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<title>ข้อพิพาท มุมมองคนกลาง</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500&amp;family=Noto+Sans+Thai:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#0f766e}a:hover{color:#115e59}
+</style>
+</helmet>
+<div style="min-height: 100vh; background: #f6f7f9; color: #111827; font-family: 'Geist', 'Noto Sans Thai', sans-serif; font-size: 16px; line-height: 1.55">
+
+  <header style="background: #ffffff; border-bottom: 1px solid #e3e6eb">
+    <div style="max-width: 1200px; margin: 0 auto; padding: 12px 24px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px">
+      <a href="Dashboard.dc.html" style="display: flex; align-items: center; gap: 10px; font-weight: 600; color: #111827; text-decoration: none">
+        <span style="display: grid; place-items: center; width: 34px; height: 34px; border-radius: 9px; background: #0f766e; color: #ffffff; font-size: 14px">AW</span>
+        Agentic Wallet
+        <span style="padding: 3px 10px; border-radius: 999px; background: #fdf3e3; color: #b45309; font-size: 13px; font-weight: 500">คนกลาง</span>
+      </a>
+      <nav aria-label="เมนูคนกลาง" style="display: flex; flex-wrap: wrap; gap: 4px">
+        <a href="Dispute.dc.html" aria-current="page" style="padding: 10px 14px; border-radius: 8px; background: #e6f4f2; color: #0f766e; text-decoration: none; font-weight: 600; font-size: 15px">ข้อพิพาทที่รอตัดสิน 1</a>
+        <a href="#history" style="padding: 10px 14px; border-radius: 8px; color: #5b6474; text-decoration: none; font-size: 15px">ตัดสินแล้ว</a>
+      </nav>
+      <span style="padding: 4px 10px; border-radius: 999px; background: #f1f3f6; color: #5b6474; font-size: 13px">Testnet</span>
+    </div>
+  </header>
+
+  <main style="max-width: 1200px; margin: 0 auto; padding: 28px 24px 64px; display: flex; flex-direction: column; gap: 20px">
+    <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px">
+      <span style="font-size: 14px; color: #5b6474">ดีล #0137 · เปิดข้อพิพาทเมื่อ 9 ต.ค.</span>
+      <span style="padding: 4px 12px; border-radius: 999px; background: #fdf3e3; color: #b45309; font-size: 13px; font-weight: 600">มุมมองคนกลาง · Agentic Wallet Arbitration</span>
+    </div>
+
+    <div style="display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 16px">
+      <div>
+        <h1 style="margin: 0 0 4px; font-size: 30px; font-weight: 700">ข้อพิพาท: แปลเอกสาร EN→TH 20 หน้า</h1>
+        <p style="margin: 0; color: #5b6474">ผู้ซื้อคัดค้านระหว่างตรวจงาน ก่อนได้กุญแจไฟล์</p>
+      </div>
+      <div style="text-align: right">
+        <div style="font-size: 14px; color: #5b6474">เงินที่รอตัดสิน</div>
+        <div style="font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums">400 USDC</div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 12px">
+      <div style="flex: 1 1 260px; min-width: 0; background: #ffffff; border: 1px solid #e3e6eb; border-radius: 12px; padding: 14px 16px">
+        <div style="font-size: 13px; color: #5b6474">ผู้ซื้อ</div>
+        <div style="font-family: 'Geist Mono', monospace; font-size: 15px">0xC03e…5B18</div>
+      </div>
+      <div style="flex: 1 1 260px; min-width: 0; background: #ffffff; border: 1px solid #e3e6eb; border-radius: 12px; padding: 14px 16px">
+        <div style="font-size: 13px; color: #5b6474">ผู้ขาย</div>
+        <div><span style="font-weight: 500">นภัส</span> <span style="font-family: 'Geist Mono', monospace; font-size: 14px; color: #5b6474">0x8a1D…f204</span></div>
+      </div>
+      <div style="flex: 1 1 260px; min-width: 0; background: #e8f6ec; border-radius: 12px; padding: 14px 16px; color: #14532d">
+        <div style="font-size: 13px">ความเป็นกลาง</div>
+        <div style="font-weight: 500">คุณไม่ใช่คู่กรณี contract ตรวจแล้ว</div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+      <div style="flex: 1.5 1 600px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+        <section aria-label="ข้อโต้แย้งของทั้งสองฝ่าย" style="display: flex; flex-wrap: wrap; gap: 14px">
+          <div style="flex: 1 1 280px; min-width: 0; background: #ffffff; border: 1px solid #e3e6eb; border-radius: 14px; padding: 18px">
+            <h2 style="margin: 0 0 8px; font-size: 16px; font-weight: 600">ผู้ซื้อแจ้งว่า</h2>
+            <p style="margin: 0; color: #374151">"งานแปลขาดไป 4 หน้า หน้า 17 ถึง 20 ไม่ได้แปล สัญญาระบุ 20 หน้า"</p>
+          </div>
+          <div style="flex: 1 1 280px; min-width: 0; background: #ffffff; border: 1px solid #e3e6eb; border-radius: 14px; padding: 18px">
+            <h2 style="margin: 0 0 8px; font-size: 16px; font-weight: 600">ผู้ขายตอบว่า</h2>
+            <p style="margin: 0 0 10px; color: #374151">"หน้า 17 ถึง 20 เป็นตารางภาคผนวก ผู้ซื้อบอกในแชทว่าไม่ต้องแปล"</p>
+            <a href="#evidence-chat" style="font-size: 14px">ดูหลักฐาน: ภาพหน้าจอแชท 2 ต.ค.</a>
+          </div>
+        </section>
+
+        <section aria-label="ผลตรวจจากตัวตรวจกลาง" style="background: #ffffff; border: 1px solid #e3e6eb; border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 12px">
+          <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px">
+            <h2 style="margin: 0; font-size: 17px; font-weight: 600">ผลตรวจจากตัวตรวจกลาง</h2>
+            <span style="padding: 3px 10px; border-radius: 999px; background: #fdebef; color: #be123c; font-size: 13px; font-weight: 600">ไม่ผ่าน 1 ข้อ</span>
+          </div>
+          <div style="overflow-x: auto">
+            <table style="width: 100%; min-width: 520px; border-collapse: collapse; font-size: 15px">
+              <thead>
+                <tr style="text-align: left; color: #5b6474; font-size: 13px">
+                  <th scope="col" style="padding: 8px 10px; font-weight: 500">เงื่อนไขในสัญญา</th>
+                  <th scope="col" style="padding: 8px 10px; font-weight: 500">ที่ตรวจพบ</th>
+                  <th scope="col" style="padding: 8px 10px; font-weight: 500">ผล</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr style="border-top: 1px solid #eef0f3">
+                  <td style="padding: 10px">แปลครบ 20 หน้า</td>
+                  <td style="padding: 10px; color: #5b6474">แปล 16 หน้า หน้า 17–20 เป็นตารางที่ไม่ได้แปล</td>
+                  <td style="padding: 10px; color: #be123c; font-weight: 600">ไม่ผ่าน</td>
+                </tr>
+                <tr style="border-top: 1px solid #eef0f3">
+                  <td style="padding: 10px">ใช้ศัพท์ตามอภิธานศัพท์ที่แนบ</td>
+                  <td style="padding: 10px; color: #5b6474">ตรง 47 จาก 48 คำ</td>
+                  <td style="padding: 10px; color: #15803d; font-weight: 600">ผ่าน</td>
+                </tr>
+                <tr style="border-top: 1px solid #eef0f3">
+                  <td style="padding: 10px">ส่งเป็นไฟล์ .docx</td>
+                  <td style="padding: 10px; color: #5b6474">translation-th.docx</td>
+                  <td style="padding: 10px; color: #15803d; font-weight: 600">ผ่าน</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin: 0; font-size: 14px; color: #5b6474">ผู้ขายเปิดสิทธิ์ให้คนกลางดูไฟล์เต็มเพื่อตัดสิน <a href="#open-file">เปิดไฟล์งาน</a></p>
+        </section>
+
+        <section aria-label="ตรวจกุญแจ" style="background: #ffffff; border: 1px solid #e3e6eb; border-radius: 14px; padding: 20px">
+          <h2 style="margin: 0 0 6px; font-size: 17px; font-weight: 600">เครื่องมือตรวจกุญแจ</h2>
+          <p style="margin: 0; font-size: 14px; color: #5b6474">ใช้เมื่อผู้ซื้อแจ้งว่ากุญแจเปิดไฟล์ไม่ได้ ระบบจะถอดรหัสแล้วเทียบ hash ให้อัตโนมัติ ข้อพิพาทนี้เป็นเรื่องเนื้องาน จึงไม่ต้องใช้</p>
+        </section>
+      </div>
+
+      <aside style="flex: 1 1 320px; min-width: 0">
+        <section aria-label="ตัดสิน" style="background: #ffffff; border: 1px solid #e3e6eb; border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 14px">
+          <h2 style="margin: 0; font-size: 17px; font-weight: 600">ตัดสิน</h2>
+          <label style="display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 500">เหตุผลการตัดสิน (บังคับ)
+            <textarea rows="5" placeholder="สรุปหลักฐานที่ใช้ตัดสิน ทั้งสองฝ่ายจะเห็นข้อความนี้" style="padding: 10px 12px; border: 1px solid #cfd5dd; border-radius: 10px; font: inherit; font-weight: 400; resize: vertical"></textarea>
+          </label>
+          <button type="button" style="min-height: 48px; border-radius: 10px; border: 0; background: #0f766e; color: #ffffff; font: inherit; font-weight: 600; cursor: pointer">จ่ายให้ผู้ขาย 400 USDC</button>
+          <button type="button" style="min-height: 48px; border-radius: 10px; border: 1px solid #e3e6eb; background: #ffffff; color: #111827; font: inherit; font-weight: 600; cursor: pointer">คืนเงินผู้ซื้อ 400 USDC</button>
+          <p style="margin: 0; font-size: 13px; color: #5b6474">คำตัดสินบันทึกบน chain และแก้ไม่ได้ ตอนนี้ตัดสินได้ทั้งงวดเท่านั้น ยังแบ่งเงินบางส่วนไม่ได้</p>
+        </section>
+      </aside>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1350}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

@@ -38,6 +38,10 @@ export const config = {
       factory: addr("FACTORY_ADDRESS"),
     };
   },
+  /** Neutral dispute resolver for every deal: never the buyer's or the contractor's own key. */
+  get arbiter() {
+    return addr("ARBITER_ADDRESS");
+  },
   /** Blockscout instance used for event history when the RPC caps eth_getLogs ranges. */
   get blockscoutUrl(): string | null {
     if (process.env.BLOCKSCOUT_URL) return process.env.BLOCKSCOUT_URL;

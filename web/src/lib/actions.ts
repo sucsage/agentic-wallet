@@ -64,7 +64,7 @@ export async function proposeDealSetup(
     functionName: "createDeal",
     args: [
       getAddress(input.payee),
-      roleAddresses().owner, // arbiter for the demo; in production a neutral third party
+      config.arbiter,
       config.contracts.usdc,
       input.milestones.map((m) => parseUnits(String(m.amount), 6)),
       toDataUri(terms),

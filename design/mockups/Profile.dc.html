@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<title>โปรไฟล์และการตั้งค่า</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500&amp;family=Noto+Sans+Thai:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#0f766e}a:hover{color:#115e59}
+</style>
+</helmet>
+<div style="min-height: 100vh; background: #f6f7f9; color: #111827; font-family: 'Geist', 'Noto Sans Thai', sans-serif; font-size: 16px; line-height: 1.55">
+
+  <header style="background: #ffffff; border-bottom: 1px solid #e3e6eb">
+    <div style="max-width: 1200px; margin: 0 auto; padding: 12px 24px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px">
+      <a href="Dashboard.dc.html" style="display: flex; align-items: center; gap: 10px; font-weight: 600; color: #111827; text-decoration: none">
+        <span style="display: grid; place-items: center; width: 34px; height: 34px; border-radius: 9px; background: #0f766e; color: #ffffff; font-size: 14px">AW</span>
+        Agentic Wallet
+      </a>
+      <nav aria-label="เมนูหลัก" style="display: flex; flex-wrap: wrap; gap: 4px">
+        <a href="Dashboard.dc.html" style="padding: 10px 14px; border-radius: 8px; color: #5b6474; text-decoration: none; font-size: 15px">ดีลของฉัน</a>
+        <a href="NewOffer.dc.html" style="padding: 10px 14px; border-radius: 8px; color: #5b6474; text-decoration: none; font-size: 15px">สร้างข้อเสนอ</a>
+        <a href="Wallet.dc.html" style="padding: 10px 14px; border-radius: 8px; color: #5b6474; text-decoration: none; font-size: 15px">กระเป๋า</a>
+      </nav>
+      <div style="display: flex; align-items: center; gap: 10px">
+        <span style="padding: 4px 10px; border-radius: 999px; background: #f1f3f6; color: #5b6474; font-size: 13px">Testnet</span>
+        <a href="Profile.dc.html" aria-current="page" aria-label="โปรไฟล์ของนภัส" style="display: grid; place-items: center; width: 40px; height: 40px; border-radius: 999px; background: #1d4ed8; color: #ffffff; text-decoration: none; font-weight: 600">น</a>
+      </div>
+    </div>
+  </header>
+
+  <main style="max-width: 900px; margin: 0 auto; padding: 32px 24px 64px; display: flex; flex-direction: column; gap: 20px">
+    <div>
+      <h1 style="margin: 0; font-size: 30px; font-weight: 700">โปรไฟล์และการตั้งค่า</h1>
+      <p style="margin: 4px 0 0; color: #5b6474">คู่ค้าจะเห็นแค่ชื่อที่แสดงกับ address กระเป๋า ข้อมูลอื่นไม่เปิดเผย</p>
+    </div>
+
+    <section aria-label="ข้อมูลส่วนตัว" style="background: #ffffff; border: 1px solid #e3e6eb; border-radius: 14px; padding: 22px">
+      <h2 style="margin: 0 0 16px; font-size: 17px; font-weight: 600">ข้อมูลส่วนตัว</h2>
+      <form style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px">
+        <label style="display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 500">ชื่อ
+          <input type="text" value="นภัส" style="min-height: 44px; padding: 0 12px; border: 1px solid #cfd5dd; border-radius: 10px; font: inherit; font-weight: 400">
+        </label>
+        <label style="display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 500">นามสกุล
+          <input type="text" value="ใจดี" style="min-height: 44px; padding: 0 12px; border: 1px solid #cfd5dd; border-radius: 10px; font: inherit; font-weight: 400">
+        </label>
+        <label style="display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 500"><span>อีเมล <span style="padding: 2px 8px; border-radius: 999px; background: #e8f6ec; color: #15803d; font-size: 12px; font-weight: 500">ยืนยันแล้ว</span></span>
+          <input type="email" value="napat@example.com" style="min-height: 44px; padding: 0 12px; border: 1px solid #cfd5dd; border-radius: 10px; font: inherit; font-weight: 400">
+        </label>
+        <label style="display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 500">เบอร์โทร (ไม่บังคับ)
+          <input type="tel" placeholder="08x-xxx-xxxx" style="min-height: 44px; padding: 0 12px; border: 1px solid #cfd5dd; border-radius: 10px; font: inherit; font-weight: 400">
+        </label>
+        <label style="display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 500">องค์กร (ไม่บังคับ)
+          <input type="text" placeholder="ฟรีแลนซ์" style="min-height: 44px; padding: 0 12px; border: 1px solid #cfd5dd; border-radius: 10px; font: inherit; font-weight: 400">
+        </label>
+        <label style="display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 500">อาชีพ / ตำแหน่ง (ไม่บังคับ)
+          <input type="text" value="นักออกแบบกราฟิก" style="min-height: 44px; padding: 0 12px; border: 1px solid #cfd5dd; border-radius: 10px; font: inherit; font-weight: 400">
+        </label>
+        <label style="display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 500">ประเทศ
+          <select style="min-height: 44px; padding: 0 10px; border: 1px solid #cfd5dd; border-radius: 10px; font: inherit; font-weight: 400; background: #ffffff">
+            <option selected>ไทย</option>
+            <option>อื่นๆ</option>
+          </select>
+        </label>
+        <label style="display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 500">ภาษา
+          <select style="min-height: 44px; padding: 0 10px; border: 1px solid #cfd5dd; border-radius: 10px; font: inherit; font-weight: 400; background: #ffffff">
+            <option selected>ภาษาไทย</option>
+            <option>English</option>
+          </select>
+        </label>
+      </form>
+    </section>
+
+    <section aria-label="กระเป๋าที่เชื่อม" style="background: #ffffff; border: 1px solid #e3e6eb; border-radius: 14px; padding: 22px; display: flex; flex-direction: column; gap: 14px">
+      <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px">
+        <h2 style="margin: 0; font-size: 17px; font-weight: 600">กระเป๋าที่เชื่อม</h2>
+        <button type="button" style="min-height: 42px; padding: 0 14px; border-radius: 10px; border: 1px solid #e3e6eb; background: #ffffff; color: #0f766e; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer">+ เชื่อมกระเป๋าเพิ่ม</button>
+      </div>
+      <ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px">
+        <li style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; border: 1px solid #e3e6eb; border-radius: 10px; padding: 12px 14px">
+          <span style="flex: 1 1 240px; min-width: 0"><span style="display: block; font-weight: 500">กระเป๋าหลัก</span><span style="font-family: 'Geist Mono', monospace; font-size: 14px; color: #5b6474">0x8a1D…f204</span></span>
+          <span style="padding: 3px 10px; border-radius: 999px; background: #e6f4f2; color: #0f766e; font-size: 13px; font-weight: 500">เจ้าของ · มี AI agent</span>
+          <button type="button" style="min-height: 40px; padding: 0 12px; border-radius: 8px; border: 1px solid #e3e6eb; background: #ffffff; color: #111827; font: inherit; font-size: 14px; cursor: pointer">แก้ชื่อ</button>
+        </li>
+        <li style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; border: 1px solid #e3e6eb; border-radius: 10px; padding: 12px 14px">
+          <span style="flex: 1 1 240px; min-width: 0"><span style="display: block; font-weight: 500">กระเป๋ารับเงินงานขาย</span><span style="font-family: 'Geist Mono', monospace; font-size: 14px; color: #5b6474">0x2c66…9A0e</span></span>
+          <span style="padding: 3px 10px; border-radius: 999px; background: #f1f3f6; color: #5b6474; font-size: 13px; font-weight: 500">กระเป๋าทั่วไป</span>
+          <button type="button" style="min-height: 40px; padding: 0 12px; border-radius: 8px; border: 1px solid #e3e6eb; background: #ffffff; color: #111827; font: inherit; font-size: 14px; cursor: pointer">แก้ชื่อ</button>
+        </li>
+      </ul>
+    </section>
+
+    <section aria-label="การแจ้งเตือน" style="background: #ffffff; border: 1px solid #e3e6eb; border-radius: 14px; padding: 22px">
+      <fieldset style="border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px">
+        <legend style="margin-bottom: 10px; font-size: 17px; font-weight: 600">แจ้งเตือนทางอีเมลเมื่อ</legend>
+        <label style="display: flex; align-items: center; gap: 10px; min-height: 44px"><input type="checkbox" checked style="width: 18px; height: 18px"> มีข้อเสนอใหม่ถึงคุณ</label>
+        <label style="display: flex; align-items: center; gap: 10px; min-height: 44px"><input type="checkbox" checked style="width: 18px; height: 18px"> เหลือเวลาตรวจงานหรือคัดค้านไม่ถึง 24 ชั่วโมง</label>
+        <label style="display: flex; align-items: center; gap: 10px; min-height: 44px"><input type="checkbox" checked style="width: 18px; height: 18px"> AI ขอให้คุณอนุมัติการจ่ายเงิน</label>
+        <label style="display: flex; align-items: center; gap: 10px; min-height: 44px"><input type="checkbox" style="width: 18px; height: 18px"> ได้รับเงินเข้ากระเป๋า</label>
+      </fieldset>
+    </section>
+
+    <section aria-label="ความปลอดภัย" style="background: #ffffff; border: 1px solid #e3e6eb; border-radius: 14px; padding: 22px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 14px">
+      <div>
+        <h2 style="margin: 0 0 4px; font-size: 17px; font-weight: 600">ความปลอดภัย</h2>
+        <p style="margin: 0; font-size: 14px; color: #5b6474">เข้าสู่ระบบอยู่ 2 อุปกรณ์</p>
+      </div>
+      <button type="button" style="min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid #f5c2cd; background: #fdebef; color: #be123c; font: inherit; font-weight: 500; cursor: pointer">ออกจากระบบทุกอุปกรณ์</button>
+    </section>
+
+    <div style="display: flex; justify-content: flex-end; gap: 10px">
+      <button type="button" style="min-height: 46px; padding: 0 22px; border-radius: 10px; border: 0; background: #0f766e; color: #ffffff; font: inherit; font-weight: 600; cursor: pointer">บันทึก</button>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1050}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<title>สร้างข้อเสนอด้วย AI</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500&amp;family=Noto+Sans+Thai:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#0f766e}a:hover{color:#115e59}
+</style>
+</helmet>
+<div style="min-height: 100vh; background: #f6f7f9; color: #111827; font-family: 'Geist', 'Noto Sans Thai', sans-serif; font-size: 16px; line-height: 1.55">
+
+  <header style="background: #ffffff; border-bottom: 1px solid #e3e6eb">
+    <div style="max-width: 1200px; margin: 0 auto; padding: 12px 24px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px">
+      <a href="Dashboard.dc.html" style="display: flex; align-items: center; gap: 10px; font-weight: 600; color: #111827; text-decoration: none">
+        <span style="display: grid; place-items: center; width: 34px; height: 34px; border-radius: 9px; background: #0f766e; color: #ffffff; font-size: 14px">AW</span>
+        Agentic Wallet
+      </a>
+      <nav aria-label="เมนูหลัก" style="display: flex; flex-wrap: wrap; gap: 4px">
+        <a href="Dashboard.dc.html" style="padding: 10px 14px; border-radius: 8px; color: #5b6474; text-decoration: none; font-size: 15px">ดีลของฉัน</a>
+        <a href="NewOffer.dc.html" aria-current="page" style="padding: 10px 14px; border-radius: 8px; background: #e6f4f2; color: #0f766e; text-decoration: none; font-weight: 600; font-size: 15px">สร้างข้อเสนอ</a>
+        <a href="Wallet.dc.html" style="padding: 10px 14px; border-radius: 8px; color: #5b6474; text-decoration: none; font-size: 15px">กระเป๋า</a>
+      </nav>
+      <div style="display: flex; align-items: center; gap: 10px">
+        <span style="padding: 4px 10px; border-radius: 999px; background: #f1f3f6; color: #5b6474; font-size: 13px">Testnet</span>
+        <a href="Profile.dc.html" aria-label="โปรไฟล์ของนภัส" style="display: grid; place-items: center; width: 40px; height: 40px; border-radius: 999px; background: #e9effd; color: #1d4ed8; text-decoration: none; font-weight: 600">น</a>
+      </div>
+    </div>
+  </header>
+
+  <main style="max-width: 1200px; margin: 0 auto; padding: 32px 24px 64px; display: flex; flex-direction: column; gap: 22px">
+    <div>
+      <h1 style="margin: 0; font-size: 30px; font-weight: 700">สร้างข้อเสนอ</h1>
+      <p style="margin: 4px 0 0; color: #5b6474">เล่ารายละเอียดงาน AI จะร่างสัญญาที่เป็นกลางให้ คุณแก้ได้ทุกช่องก่อนส่ง และอีกฝ่ายก็ขอแก้ได้ก่อนตอบรับ</p>
+    </div>
+
+    <fieldset style="border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+      <legend style="float: left; margin-right: 4px; font-weight: 600">ฉันต้องการ</legend>
+      <sc-if value="{{isBuy}}" hint-placeholder-val="{{ true }}">
+        <button type="button" aria-pressed="true" onClick="{{pickBuy}}" style="min-height: 46px; padding: 0 18px; border-radius: 10px; border: 2px solid #0f766e; background: #e6f4f2; color: #0f766e; font: inherit; font-weight: 600; cursor: pointer">จ้างงาน / ซื้อไฟล์</button>
+        <button type="button" aria-pressed="false" onClick="{{pickSell}}" style="min-height: 46px; padding: 0 18px; border-radius: 10px; border: 1px solid #e3e6eb; background: #ffffff; color: #111827; font: inherit; cursor: pointer">ขายงาน / ขายไฟล์</button>
+      </sc-if>
+      <sc-if value="{{isSell}}" hint-placeholder-val="{{ false }}">
+        <button type="button" aria-pressed="false" onClick="{{pickBuy}}" style="min-height: 46px; padding: 0 18px; border-radius: 10px; border: 1px solid #e3e6eb; background: #ffffff; color: #111827; font: inherit; cursor: pointer">จ้างงาน / ซื้อไฟล์</button>
+        <button type="button" aria-pressed="true" onClick="{{pickSell}}" style="min-height: 46px; padding: 0 18px; border-radius: 10px; border: 2px solid #0f766e; background: #e6f4f2; color: #0f766e; font: inherit; font-weight: 600; cursor: pointer">ขายงาน / ขายไฟล์</button>
+      </sc-if>
+    </fieldset>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+
+      <section aria-label="ผู้ช่วยร่างสัญญา" style="flex: 1 1 420px; min-width: 0; background: #ffffff; border: 1px solid #e3e6eb; border-radius: 14px; display: flex; flex-direction: column">
+        <div style="padding: 16px 18px; border-bottom: 1px solid #e3e6eb">
+          <h2 style="margin: 0; font-size: 17px; font-weight: 600">ผู้ช่วยร่างสัญญา</h2>
+          <p style="margin: 2px 0 0; font-size: 14px; color: #5b6474">AI ช่วยร่างเท่านั้น ไม่ได้เป็นคนตรวจงาน</p>
+        </div>
+        <div style="padding: 18px; display: flex; flex-direction: column; gap: 14px">
+          <div style="align-self: flex-end; max-width: 85%; background: #0f766e; color: #ffffff; border-radius: 14px 14px 4px 14px; padding: 12px 14px; font-size: 15px">จ้างออกแบบโลโก้ร้านกาแฟชื่อบ้านสวน ขอแบบร่าง 3 แบบก่อน แล้วเลือก 1 แบบไปทำไฟล์จริงพร้อมคู่มือแบรนด์ งบ 500 USDC</div>
+          <div style="align-self: flex-start; max-width: 90%; background: #f1f3f6; border-radius: 14px 14px 14px 4px; padding: 12px 14px; font-size: 15px; display: flex; flex-direction: column; gap: 8px">
+            <span>ร่างให้แล้ว แบ่งเป็น 2 งวดตามขั้นงาน และตั้งเงื่อนไขรับงานที่ตรวจได้จริง ดูฝั่งขวาได้เลย</span>
+            <span style="font-weight: 600">สิ่งที่ผมตั้งไว้ให้ก่อน แก้ได้ทุกข้อ</span>
+            <ul style="margin: 0; padding-left: 20px">
+              <li>งวด 1 แบบร่าง 30% งวด 2 ไฟล์จริง 70%</li>
+              <li>ระยะเวลาตรวจงานงวดละ 3 วัน</li>
+              <li>ใช้คนกลางของระบบเป็น arbiter</li>
+            </ul>
+            <span>ถ้ามีใบเสนอราคาหรือ brief อยู่แล้ว แนบมาได้เลย ผมจะดึงเงื่อนไขจากไฟล์ให้</span>
+          </div>
+        </div>
+        <form style="margin-top: auto; padding: 14px 18px; border-top: 1px solid #e3e6eb; display: flex; gap: 8px; align-items: center" aria-label="ส่งข้อความถึงผู้ช่วย">
+          <button type="button" aria-label="แนบไฟล์" style="display: grid; place-items: center; width: 44px; height: 44px; flex: none; border-radius: 10px; border: 1px solid #e3e6eb; background: #ffffff; color: #5b6474; cursor: pointer">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.4 11.1l-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"></path></svg>
+          </button>
+          <label for="ask" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">ข้อความ</label>
+          <input id="ask" type="text" placeholder="เช่น ขอเพิ่มงวดแก้ไขอีก 1 รอบ" style="flex: 1; min-width: 0; min-height: 44px; padding: 0 14px; border: 1px solid #cfd5dd; border-radius: 10px; font: inherit; font-size: 15px">
+          <button type="button" style="min-height: 44px; padding: 0 16px; border-radius: 10px; border: 0; background: #0f766e; color: #ffffff; font: inherit; font-weight: 600; cursor: pointer">ส่ง</button>
+        </form>
+      </section>
+
+      <section aria-label="ร่างสัญญา" style="flex: 1.2 1 520px; min-width: 0; background: #ffffff; border: 1px solid #e3e6eb; border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 18px">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px">
+          <h2 style="margin: 0; font-size: 17px; font-weight: 600">ร่างสัญญา</h2>
+          <span style="padding: 3px 10px; border-radius: 999px; background: #f1f3f6; color: #5b6474; font-size: 13px">ยังไม่ส่ง</span>
+        </div>
+
+        <div style="display: flex; flex-wrap: wrap; gap: 14px">
+          <label style="flex: 1 1 240px; min-width: 0; display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 500">ชื่องาน
+            <input type="text" value="โลโก้ร้านกาแฟบ้านสวน" style="min-height: 44px; padding: 0 12px; border: 1px solid #cfd5dd; border-radius: 10px; font: inherit; font-weight: 400">
+          </label>
+          <label style="flex: 1 1 240px; min-width: 0; display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 500">
+            <sc-if value="{{isBuy}}" hint-placeholder-val="{{ true }}"><span>ผู้ขาย (อีเมลหรือ address)</span></sc-if>
+            <sc-if value="{{isSell}}" hint-placeholder-val="{{ false }}"><span>ผู้ซื้อ (อีเมลหรือ address)</span></sc-if>
+            <input type="text" value="0x41B9…7e20" style="min-height: 44px; padding: 0 12px; border: 1px solid #cfd5dd; border-radius: 10px; font: inherit; font-family: 'Geist Mono', monospace; font-size: 14px; font-weight: 400">
+          </label>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 12px">
+          <div style="font-size: 14px; font-weight: 600">งวดงาน</div>
+
+          <div style="border: 1px solid #e3e6eb; border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px">
+            <div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px">
+              <span style="font-weight: 600">งวด 1 · แบบร่างโลโก้ 3 แบบ</span>
+              <span style="font-weight: 600; font-variant-numeric: tabular-nums">150 USDC</span>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px">
+              <span style="padding: 3px 10px; border-radius: 999px; background: #e6f4f2; color: #0f766e; font-size: 13px; font-weight: 500">มีไฟล์แนบ</span>
+            </div>
+            <div style="font-size: 14px; color: #374151">เงื่อนไขรับงาน
+              <ul style="margin: 4px 0 0; padding-left: 20px; color: #5b6474">
+                <li>3 แบบที่แนวคิดต่างกันชัดเจน</li>
+                <li>ไฟล์ PNG กว้างอย่างน้อย 2000 px</li>
+              </ul>
+            </div>
+          </div>
+
+          <div style="border: 1px solid #e3e6eb; border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px">
+            <div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px">
+              <span style="font-weight: 600">งวด 2 · ไฟล์ต้นฉบับ + คู่มือแบรนด์</span>
+              <span style="font-weight: 600; font-variant-numeric: tabular-nums">350 USDC</span>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px">
+              <span style="padding: 3px 10px; border-radius: 999px; background: #e6f4f2; color: #0f766e; font-size: 13px; font-weight: 500">มีไฟล์แนบ</span>
+            </div>
+            <div style="font-size: 14px; color: #374151">เงื่อนไขรับงาน
+              <ul style="margin: 4px 0 0; padding-left: 20px; color: #5b6474">
+                <li>ไฟล์ SVG, AI และ PNG ของแบบที่เลือก</li>
+                <li>คู่มือแบรนด์อย่างน้อย 10 หน้า (สี ฟอนต์ การใช้งาน)</li>
+                <li>แก้ไขได้ 2 รอบก่อนส่งงานจริง</li>
+              </ul>
+            </div>
+          </div>
+
+          <button type="button" style="align-self: flex-start; min-height: 42px; padding: 0 14px; border-radius: 10px; border: 1px dashed #cfd5dd; background: #ffffff; color: #0f766e; font: inherit; font-size: 14px; font-weight: 500; cursor: pointer">+ เพิ่มงวด</button>
+        </div>
+
+        <div style="display: flex; flex-wrap: wrap; gap: 14px">
+          <label style="flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 500">ระยะเวลาตรวจงานต่องวด
+            <select style="min-height: 44px; padding: 0 10px; border: 1px solid #cfd5dd; border-radius: 10px; font: inherit; font-weight: 400; background: #ffffff">
+              <option>1 วัน</option>
+              <option selected>3 วัน</option>
+              <option>7 วัน</option>
+            </select>
+          </label>
+          <div style="flex: 2 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 6px; font-size: 14px">
+            <span style="font-weight: 500">คนกลาง (arbiter)</span>
+            <div style="min-height: 44px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 12px; border: 1px solid #e3e6eb; border-radius: 10px; background: #f6f7f9">
+              <span>Agentic Wallet Arbitration</span>
+              <span style="font-size: 13px; color: #15803d; font-weight: 500">ไม่ใช่คู่กรณี ✓</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="border-top: 1px solid #e3e6eb; padding-top: 16px; display: flex; flex-direction: column; gap: 12px">
+          <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px">
+            <span style="color: #5b6474">รวมทั้งหมด</span>
+            <span style="font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums">500 USDC</span>
+          </div>
+          <sc-if value="{{isBuy}}" hint-placeholder-val="{{ true }}">
+            <p style="margin: 0; background: #e9effd; color: #1e3a8a; border-radius: 10px; padding: 12px 14px; font-size: 14px">เมื่อกดส่ง เงิน 500 USDC จะถูกล็อกใน smart contract ทันที ผู้ขายจึงเห็นว่ามีเงินจริง ถ้ายังไม่มีใครตอบรับ คุณยกเลิกและรับเงินคืนได้ทุกเมื่อ</p>
+          </sc-if>
+          <sc-if value="{{isSell}}" hint-placeholder-val="{{ false }}">
+            <p style="margin: 0; background: #e9effd; color: #1e3a8a; border-radius: 10px; padding: 12px 14px; font-size: 14px">ยังไม่มีเงินถูกล็อกจนกว่าผู้ซื้อจะตอบรับ ถ้าขายไฟล์ที่ทำเสร็จแล้ว แนบไฟล์ได้เลย ระบบจะสร้าง preview และผลตรวจให้ผู้ซื้อดูก่อนตัดสินใจ</p>
+          </sc-if>
+          <div style="display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px">
+            <button type="button" style="min-height: 46px; padding: 0 18px; border-radius: 10px; border: 1px solid #e3e6eb; background: #ffffff; color: #111827; font: inherit; font-weight: 500; cursor: pointer">บันทึกร่าง</button>
+            <a href="Dashboard.dc.html" style="display: inline-flex; align-items: center; min-height: 46px; padding: 0 20px; border-radius: 10px; background: #0f766e; color: #ffffff; text-decoration: none; font-weight: 600">ส่งข้อเสนอ</a>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1250}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const role = (this.state && this.state.role) || 'buy';
+    return {
+      isBuy: role === 'buy',
+      isSell: role === 'sell',
+      pickBuy: () => this.setState({ role: 'buy' }),
+      pickSell: () => this.setState({ role: 'sell' })
+    };
+  }
+}
+</script>
+</body>
+</html>
