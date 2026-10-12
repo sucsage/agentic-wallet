@@ -1,6 +1,12 @@
-import { contractApiStub } from "@/lib/api-stub";
+import { roleAddresses } from "@/lib/chain";
+import { ATTACKER } from "@/lib/config";
+import { errorResponse } from "@/lib/guard";
+import { samples } from "@/lib/samples";
 
-/** Sample documents are embedded in the browser mockup; no server data source is active. */
 export async function GET() {
-  return contractApiStub();
+  try {
+    return Response.json(samples(roleAddresses().contractor, ATTACKER));
+  } catch (err) {
+    return errorResponse(err);
+  }
 }
