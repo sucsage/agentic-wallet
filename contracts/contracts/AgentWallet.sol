@@ -103,6 +103,7 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
     event Unpaused(address indexed by);
     event AgentTransfer(address indexed key, address indexed to, uint256 amount);
     event AgentMilestoneReleased(address indexed key, address indexed escrow, uint256 dealId, uint256 index, uint256 amount);
+    event AgentFileApproved(address indexed key, address indexed escrow, uint256 dealId, uint256 index, uint256 amount);
     event ProposalCreated(uint256 indexed id, address indexed proposer, Kind kind, address target, uint256 amount, string reason);
     event ProposalApproved(uint256 indexed id, address indexed approver, uint256 approvals);
     event ProposalExecuted(uint256 indexed id);
@@ -249,6 +250,21 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
         _spend(msg.sender, amount);
         MilestoneEscrow(escrow).release(dealId, index);
         emit AgentMilestoneReleased(msg.sender, escrow, dealId, index, amount);
+    }
+
+    /// @notice Approves delivered work on a FileEscrow deal the wallet is buying. The milestone's
+    ///         amount counts against the agent's caps now, because approving is what commits it to
+    ///         the seller (paid at once without a file, or once the key goes unchallenged).
+    function agentApproveFile(address escrow, uint256 dealId, uint256 index)
+        external
+        onlyAgent
+        whenNotPaused
+        nonReentrant
+    {
+        uint256 amount = _checkFileRelease(escrow, dealId, index);
+        _spend(msg.sender, amount);
+        FileEscrow(escrow).approve(dealId, index);
+        emit AgentFileApproved(msg.sender, escrow, dealId, index, amount);
     }
 
     // ----------------------------------------------------------------------------------------
@@ -491,12 +507,26 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
             || selector == FileEscrow.reclaim.selector;
         if (!(dealOnly && data.length == 36) && !(dealAndIndex && data.length == 68)) revert InvalidProposal();
 
-        FileEscrow.Deal memory d = FileEscrow(escrow).getDeal(abi.decode(_args(data), (uint256)));
+        FileEscrow.Deal memory d = _buyerDeal(escrow, abi.decode(_args(data), (uint256)), locksOrPays);
+        if (selector == FileEscrow.accept.selector) _checkArbiter(d.arbiter);
+    }
+
+    /// @dev Validates an approval the agent makes on its own: an allowlisted FileEscrow, a deal this
+    ///      wallet buys in its own token from an allowlisted seller. Returns the milestone amount.
+    function _checkFileRelease(address escrow, uint256 dealId, uint256 index) private view returns (uint256) {
+        if (!allowedFileEscrow[escrow]) revert FileEscrowNotAllowed(escrow);
+        _buyerDeal(escrow, dealId, true);
+        return FileEscrow(escrow).getMilestone(dealId, index).amount;
+    }
+
+    /// @dev Loads a FileEscrow deal this wallet is the buyer of. `paying` = the action locks or
+    ///      releases the wallet's money, so the token must be the wallet's and the seller allowlisted.
+    function _buyerDeal(address escrow, uint256 dealId, bool paying) private view returns (FileEscrow.Deal memory d) {
+        d = FileEscrow(escrow).getDeal(dealId);
         if (d.buyer != address(this)) revert NotPayerOfDeal();
-        if (locksOrPays) {
+        if (paying) {
             if (address(d.token) != address(token)) revert WrongToken();
             if (!allowedRecipient[d.seller]) revert RecipientNotAllowed(d.seller);
-            if (selector == FileEscrow.accept.selector) _checkArbiter(d.arbiter);
         }
     }
 

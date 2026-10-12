@@ -530,6 +530,62 @@ describe("AgentWallet", async function () {
           const padded = `${call(fileEscrow, "accept", [0n])}${"00".repeat(32)}` as `0x${string}`;
           await viem.assertions.revertWithCustomError(propose(padded), wallet, "InvalidProposal");
         });
+
+        it("agent approves small delivered work on its own, counted against its caps", async () => {
+          const { fileEscrow, asAgent, wallet, asSeller } = await acceptedSellerOffer();
+          await asSeller.write.deliver([0n, 0n, keccak256(toHex("logo.svg")), "ipfs://enc"]);
+
+          await viem.assertions.emitWithArgs(
+            asAgent.write.agentApproveFile([fileEscrow.address, 0n, 0n]),
+            wallet,
+            "AgentFileApproved",
+            [getAddress(agent.account.address), getAddress(fileEscrow.address), 0n, 0n, usd(300)],
+          );
+          assert.equal((await fileEscrow.read.getMilestone([0n, 0n])).status, 2); // Approved
+          assert.equal(await wallet.read.remainingToday([agent.account.address]), usd(700));
+        });
+
+        it("agent cannot approve above its cap, on others' deals, from a rogue escrow, or for a dropped seller", async () => {
+          const ctx = await acceptedSellerOffer();
+          const { usdc, fileEscrow, asAgent, asStranger, wallet, asSeller } = ctx;
+
+          // Deal 1: a delivered 800 milestone, above the agent's 500 per-tx cap.
+          await asSeller.write.offerToSell([wallet.address, arbiter.account.address, usdc.address, fileTerms(800), REVIEW, ""]);
+          await runCall(ctx, usdc.address, encodeFunctionData({ abi: usdc.abi, functionName: "approve", args: [fileEscrow.address, usd(800)] }));
+          await runCall(ctx, fileEscrow.address, call(fileEscrow, "accept", [1n]));
+          await asSeller.write.deliver([1n, 0n, keccak256(toHex("big.svg")), "ipfs://enc"]);
+          await viem.assertions.revertWithCustomErrorWithArgs(
+            asAgent.write.agentApproveFile([fileEscrow.address, 1n, 0n]),
+            wallet,
+            "ExceedsPerTxLimit",
+            [usd(800), usd(500)],
+          );
+
+          // Deal 2: between strangers.
+          const asStrangerSeller = await fileEscrowAs(fileEscrow, stranger);
+          await asStrangerSeller.write.offerToSell([evil.account.address, arbiter.account.address, usdc.address, fileTerms(1), REVIEW, ""]);
+          await viem.assertions.revertWithCustomError(asAgent.write.agentApproveFile([fileEscrow.address, 2n, 0n]), wallet, "NotPayerOfDeal");
+
+          // A FileEscrow the owner never allowlisted, and a caller that is not the agent.
+          const rogue = await viem.deployContract("FileEscrow");
+          await viem.assertions.revertWithCustomErrorWithArgs(
+            asAgent.write.agentApproveFile([rogue.address, 0n, 0n]),
+            wallet,
+            "FileEscrowNotAllowed",
+            [getAddress(rogue.address)],
+          );
+          await viem.assertions.revertWithCustomError(asStranger.write.agentApproveFile([fileEscrow.address, 0n, 0n]), wallet, "NotAgent");
+
+          // The owner drops the seller: the agent can no longer approve their work.
+          await asSeller.write.deliver([0n, 0n, keccak256(toHex("logo.svg")), "ipfs://enc"]);
+          await wallet.write.setRecipient([contractor.account.address, false]);
+          await viem.assertions.revertWithCustomErrorWithArgs(
+            asAgent.write.agentApproveFile([fileEscrow.address, 0n, 0n]),
+            wallet,
+            "RecipientNotAllowed",
+            [getAddress(contractor.account.address)],
+          );
+        });
       });
 
       it("only the owner manages the FileEscrow allowlist", async () => {
