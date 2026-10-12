@@ -1,9 +1,13 @@
 "use client";
 
-import { useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
+import { cloneElement, isValidElement, useState, type CSSProperties, type FormEvent, type ReactElement, type ReactNode } from "react";
+import { TxStatus } from "@/components/tx-status";
+import type { TxOutcome } from "@/lib/chain";
+import { setLang, translateMockupText, useT } from "@/lib/i18n";
 
 type View = "Overview" | "Agent Chat" | "Approvals" | "Escrow Deal" | "Policy & Audit Log";
 type Milestone = { name: string; amount: string; status: string; detail: string; tone: string };
+type TxPreview = "idle" | "loading" | "success" | "reverted" | "error";
 
 const C = { bg: "#0f0f0f", card: "#161616", inset: "#101010", border: "#333", line: "#2a2a2a", text: "#f4f4f4", muted: "#a3a3a3", quiet: "#8c8c8c", yellow: "#ffff2a", blue: "#55a0fb", teal: "#3dd6c0", green: "#8fef82", purple: "#b07cff", red: "#ff6b70" };
 const card: CSSProperties = { background: C.card, border: `1px solid ${C.border}`, borderRadius: 15 };
@@ -23,13 +27,34 @@ function AppLink({ children, onClick, active }: { children: ReactNode; onClick: 
   return <button onClick={onClick} style={{ width: "100%", textAlign: "left", color: active ? C.text : C.muted, background: active ? "#222" : "transparent", border: active ? `1px solid ${C.border}` : "1px solid transparent", borderRadius: 9, padding: "11px 12px", cursor: "pointer", fontSize: 13, fontWeight: active ? 650 : 500 }}>{children}</button>;
 }
 
+function localizeTree(node: ReactNode, lang: "en" | "th"): ReactNode {
+  if (typeof node === "string") return translateMockupText(node, lang);
+  if (Array.isArray(node)) return node.map((child) => localizeTree(child, lang));
+  if (!isValidElement(node)) return node;
+
+  const props = node.props as Record<string, unknown>;
+  const localizedProps = Object.fromEntries(
+    Object.entries(props).map(([key, value]) => [
+      key,
+      key === "children"
+        ? localizeTree(value as ReactNode, lang)
+        : ["aria-label", "placeholder", "title"].includes(key) && typeof value === "string"
+          ? translateMockupText(value, lang)
+          : value,
+    ]),
+  );
+  return cloneElement(node as ReactElement<Record<string, unknown>>, localizedProps);
+}
+
 export default function HomePage() {
+  const { t, lang } = useT();
   const [view, setView] = useState<View>("Overview");
   const [paused, setPaused] = useState(false);
   const [approved, setApproved] = useState(false);
   const [message, setMessage] = useState("");
   const [chatReply, setChatReply] = useState("I read the purchase order and drafted a 3-milestone escrow deal. Milestone 2 is above your $500 per-transaction cap, so it needs two human approvals before funding.");
   const [toast, setToast] = useState("");
+  const [txPreview, setTxPreview] = useState<TxPreview>("idle");
 
   const notify = (text: string) => { setToast(text); window.setTimeout(() => setToast(""), 3200); };
   const sendMessage = (e: FormEvent) => {
@@ -45,6 +70,14 @@ export default function HomePage() {
     { name: "M2 · FAT Report", amount: "$2,000", status: approved ? "Approved · demo" : "Review · 1/2 approved", detail: "Evidence verified, but $2,000 is above the $500 cap. The agent opened a proposal for Approver A and B.", tone: C.yellow },
     { name: "M3 · SAT Report", amount: "$1,600", status: "Refused", detail: "The SAT report is incomplete, so the agent will not release funds. New evidence can be submitted in a later version.", tone: C.red },
   ];
+
+  const demoHash = `0x${"a".repeat(64)}` as `0x${string}`;
+  const demoOutcome: TxOutcome | null =
+    txPreview === "success"
+      ? { status: "success", hash: demoHash, url: `https://sepolia.basescan.org/tx/${demoHash}` }
+      : txPreview === "reverted"
+        ? { status: "reverted", hash: demoHash, url: `https://sepolia.basescan.org/tx/${demoHash}`, error: t("tx.preview.revertReason") }
+        : null;
 
   function overview() {
     return <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
@@ -64,6 +97,21 @@ export default function HomePage() {
         <section><h2 style={{ margin: "0 0 16px", fontSize: 25 }}>Active Milestones</h2><div style={{ display: "flex", flexDirection: "column", gap: 13 }}>{milestones.map((m, i) => <div key={m.name} style={{ ...card, minHeight: 87, padding: "17px 22px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}><div style={{ display: "flex", alignItems: "center", gap: 15, minWidth: 0 }}><span style={{ width: 14, height: 14, flex: "0 0 14px", borderRadius: "50%", background: i === 0 ? "#43ff2a" : m.tone }} /><div style={{ minWidth: 0 }}><strong style={{ fontSize: 16 }}>{m.name}</strong><div style={{ color: m.tone, fontSize: 12, marginTop: 4 }}>{i === 0 ? "Contract 0x8f…3A2b · evidence on-chain" : i === 1 ? "$2,000 is above cap · needs 2 human approvals" : "Agent refused · evidence incomplete"}</div></div></div><div style={{ textAlign: "right", flex: "0 0 auto" }}><strong style={{ display: "block", fontSize: 16 }}>{m.amount} mUSDC</strong><span style={{ display: "inline-block", marginTop: 6, border: i === 0 ? 0 : `1px solid ${m.tone}`, borderRadius: 5, padding: "4px 9px", background: i === 0 ? "#247a2a" : "transparent", color: i === 0 ? "#fff" : m.tone, fontSize: 11, fontWeight: 600 }}>{i === 1 && approved ? "Approved · demo" : m.status}</span></div></div>)}</div></section>
         <section><h2 style={{ margin: "0 0 16px", fontSize: 25 }}>Agent Activity</h2><div style={{ ...card, padding: "15px 20px" }}>{[["10:42", "Evidence verified", "FAT_Report.pdf hash 0x4c…9e1 found on-chain.", C.green, "✓"], ["10:43", "Guard 1 · Tier 2 check", "Within caps, payee on allowlist, injection scan clean.", C.blue, "ⓘ"], ["10:44", "Tier 1 proposal created", "$2,000 exceeds cap. Waiting for Approver B.", C.yellow, "⚠"], ["10:51", "Attack blocked", "Invoice asked to send funds to 0xBad. Contract reverted: RecipientNotAllowed.", C.red, "⬡"]].map(([time, title, detail, color, icon]) => <div key={String(title)} style={{ display: "grid", gridTemplateColumns: "18px 1fr", gap: 10, padding: "8px 0 10px" }}><span style={{ color: String(color), fontSize: 16, lineHeight: 1.2 }}>{icon}</span><div><div style={{ display: "flex", gap: 9, alignItems: "baseline", flexWrap: "wrap", fontSize: 12 }}><span style={{ color: C.muted }}>{time}</span><strong style={{ color: String(color) }}>{title}</strong></div><div style={{ ...muted, fontSize: 11, lineHeight: 1.45, marginTop: 3 }}>{detail}</div></div></div>)}</div></section>
       </div>
+      <Panel>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
+          <div><Label>{t("tx.preview.title")}</Label><p style={{ ...muted, fontSize: 12, margin: "7px 0 0" }}>{t("tx.preview.description")}</p></div>
+          <span style={pill(C.yellow)}>{t("tx.preview.mockData")}</span>
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, margin: "14px 0" }}>
+          {([["loading", "tx.preview.loadingButton"], ["success", "tx.preview.successButton"], ["reverted", "tx.preview.revertedButton"], ["error", "tx.preview.errorButton"], ["idle", "tx.preview.resetButton"]] as const).map(([state, labelKey]) => <button key={state} onClick={() => setTxPreview(state)} style={button(txPreview === state)}>{t(labelKey)}</button>)}
+        </div>
+        <TxStatus
+          loading={txPreview === "loading"}
+          error={txPreview === "error" ? t("tx.preview.exampleError") : null}
+          outcome={demoOutcome}
+        />
+        {(txPreview === "success" || txPreview === "reverted") && <p style={{ color: C.quiet, fontSize: 11, margin: "8px 0 0" }}>{t("tx.preview.dummyHash")}</p>}
+      </Panel>
     </div>;
   }
 
@@ -96,9 +144,9 @@ export default function HomePage() {
   return <div style={{ minHeight: "100vh", background: C.bg, color: C.text, fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
     <style jsx global>{`*{box-sizing:border-box}body{margin:0;background:${C.bg};color:${C.text}}button,input{font:inherit}button{transition:background .16s,border-color .16s,opacity .16s}button:hover{filter:brightness(1.15)}@media(max-width:900px){.mp-shell{grid-template-columns:1fr!important}.mp-sidebar{position:static!important;width:auto!important;height:auto!important;border-right:0!important;border-bottom:1px solid ${C.line};padding:14px!important}.mp-nav{display:flex!important;overflow:auto}.mp-nav button{min-width:max-content;width:auto!important}.mp-main{padding:20px!important}}`}</style>
     <div className="mp-shell" style={{ display: "grid", gridTemplateColumns: "218px minmax(0,1fr)", minHeight: "100vh" }}>
-      <aside className="mp-sidebar" style={{ position: "sticky", top: 0, height: "100vh", borderRight: `1px solid ${C.line}`, padding: "22px 14px", display: "flex", flexDirection: "column", gap: 22, background: "#111" }}><div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 8px" }}><span style={{ display: "grid", placeItems: "center", width: 32, height: 32, background: C.yellow, color: "#111", borderRadius: 9, fontWeight: 850, fontSize: 14 }}>M</span><div><strong style={{ fontSize: 14 }}>MilestonePay</strong><div style={{ color: C.quiet, fontSize: 10, marginTop: 2 }}>AGENT WALLET</div></div></div><div className="mp-nav" style={{ display: "flex", flexDirection: "column", gap: 5 }}>{nav.map((item, i) => <AppLink key={item} active={view === item} onClick={() => setView(item)}>{["◫", "✳", "▣", "◇", "≡"][i]}　{item}</AppLink>)}</div><div style={{ marginTop: "auto", border: `1px solid ${C.line}`, borderRadius: 10, padding: 12, color: C.muted, fontSize: 11, lineHeight: 1.55 }}><strong style={{ color: C.yellow }}>MOCKUP MODE</strong><br />Local sample data only.<br />No contacts or contract calls.</div></aside>
-      <main className="mp-main" style={{ minWidth: 0, padding: "26px clamp(20px, 3vw, 44px) 40px" }}><header style={{ maxWidth: 1200, margin: "0 auto 25px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, borderBottom: `1px solid ${C.line}`, paddingBottom: 14 }}><div style={{ color: C.quiet, fontSize: 12 }}>Workspace <span style={{ color: C.border }}> / </span><strong style={{ color: C.muted, fontWeight: 550 }}>{view}</strong></div><div style={{ display: "flex", alignItems: "center", gap: 10 }}><button aria-label="Notifications" title="Notifications" onClick={() => notify("You’re all caught up.")} style={{ width: 34, height: 34, display: "grid", placeItems: "center", border: 0, background: "transparent", color: "#fff", cursor: "pointer" }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg></button><button onClick={() => notify("Thanks for your feedback on the MilestonePay preview.")} style={{ ...button(), padding: "8px 13px", color: "#fff" }}>Feedback</button><span style={{ color: C.quiet, fontSize: 11, marginLeft: 4 }}>DEMO · FICTIONAL DATA</span><span style={pill(paused ? C.yellow : C.green)}><span style={{ width: 6, height: 6, background: paused ? C.yellow : C.green, borderRadius: 9 }} />{paused ? "Paused" : "Agent active"}</span></div></header><div style={{ maxWidth: 1200, margin: "0 auto" }}>{page}</div><footer style={{ maxWidth: 1200, margin: "24px auto 0", paddingTop: 14, borderTop: `1px solid ${C.line}`, color: C.quiet, fontSize: 10 }}>MilestonePay preview · Fictional names, addresses and activity · All actions stay in this browser page</footer></main>
+      <aside className="mp-sidebar" style={{ position: "sticky", top: 0, height: "100vh", borderRight: `1px solid ${C.line}`, padding: "22px 14px", display: "flex", flexDirection: "column", gap: 22, background: "#111" }}><div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 8px" }}><span style={{ display: "grid", placeItems: "center", width: 32, height: 32, background: C.yellow, color: "#111", borderRadius: 9, fontWeight: 850, fontSize: 14 }}>M</span><div><strong style={{ fontSize: 14 }}>MilestonePay</strong><div style={{ color: C.quiet, fontSize: 10, marginTop: 2 }}>AGENT WALLET</div></div></div><div className="mp-nav" style={{ display: "flex", flexDirection: "column", gap: 5 }}>{nav.map((item, i) => <AppLink key={item} active={view === item} onClick={() => setView(item)}>{["◫", "✳", "▣", "◇", "≡"][i]}　{translateMockupText(item, lang)}</AppLink>)}</div><div style={{ marginTop: "auto", border: `1px solid ${C.line}`, borderRadius: 10, padding: 12, color: C.muted, fontSize: 11, lineHeight: 1.55 }}><strong style={{ color: C.yellow }}>{translateMockupText("MOCKUP MODE", lang)}</strong><br />{translateMockupText("Local sample data only.", lang)}<br />{translateMockupText("No contacts or contract calls.", lang)}</div></aside>
+      <main className="mp-main" style={{ minWidth: 0, padding: "26px clamp(20px, 3vw, 44px) 40px" }}><header style={{ maxWidth: 1200, margin: "0 auto 25px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, borderBottom: `1px solid ${C.line}`, paddingBottom: 14 }}><div style={{ color: C.quiet, fontSize: 12 }}>{translateMockupText("Workspace", lang)} <span style={{ color: C.border }}> / </span><strong style={{ color: C.muted, fontWeight: 550 }}>{translateMockupText(view, lang)}</strong></div><div style={{ display: "flex", alignItems: "center", gap: 10 }}><button aria-label={translateMockupText("Notifications", lang)} title={translateMockupText("Notifications", lang)} onClick={() => notify("You’re all caught up.")} style={{ width: 34, height: 34, display: "grid", placeItems: "center", border: 0, background: "transparent", color: "#fff", cursor: "pointer" }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg></button><button onClick={() => setLang(lang === "en" ? "th" : "en")} style={{ ...button(), padding: "8px 13px", color: "#fff" }}>{lang === "en" ? "ไทย" : "English"}</button><button onClick={() => notify("Thanks for your feedback on the MilestonePay preview.")} style={{ ...button(), padding: "8px 13px", color: "#fff" }}>{translateMockupText("Feedback", lang)}</button><span style={{ color: C.quiet, fontSize: 11, marginLeft: 4 }}>{translateMockupText("DEMO · FICTIONAL DATA", lang)}</span><span style={pill(paused ? C.yellow : C.green)}><span style={{ width: 6, height: 6, background: paused ? C.yellow : C.green, borderRadius: 9 }} />{translateMockupText(paused ? "Paused" : "Agent active", lang)}</span></div></header><div style={{ maxWidth: 1200, margin: "0 auto" }}>{localizeTree(page, lang)}</div><footer style={{ maxWidth: 1200, margin: "24px auto 0", paddingTop: 14, borderTop: `1px solid ${C.line}`, color: C.quiet, fontSize: 10 }}>{translateMockupText("MilestonePay preview · Fictional names, addresses and activity · All actions stay in this browser page", lang)}</footer></main>
     </div>
-    {toast && <div role="status" style={{ position: "fixed", right: 22, bottom: 22, maxWidth: 380, background: "#252525", color: C.text, border: `1px solid ${C.border}`, borderRadius: 10, padding: "13px 16px", boxShadow: "0 12px 35px #0008", fontSize: 12 }}>{toast}</div>}
+    {toast && <div role="status" style={{ position: "fixed", right: 22, bottom: 22, maxWidth: 380, background: "#252525", color: C.text, border: `1px solid ${C.border}`, borderRadius: 10, padding: "13px 16px", boxShadow: "0 12px 35px #0008", fontSize: 12 }}>{translateMockupText(toast, lang)}</div>}
   </div>;
 }

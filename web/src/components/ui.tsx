@@ -4,6 +4,8 @@ import type { ActionResult } from "@/lib/actions";
 import { trServer, useT } from "@/lib/i18n";
 import type { AuditEntry, WalletState } from "@/lib/state";
 
+import { TxStatus } from "./tx-status";
+
 export type Workspace = WalletState & { audit: AuditEntry[]; model: string | null };
 
 export const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
@@ -42,32 +44,17 @@ export function TxLink({ hash, url }: { hash: string; url: string | null }) {
 
 /** Compact rendering of an action's policy decision and on-chain outcome. */
 export function Outcome({ result }: { result: ActionResult }) {
-  const { t, lang } = useT();
-  const o = result.outcome;
+  const { lang } = useT();
   return (
     <div className="flex flex-col gap-1">
       <div className="flex flex-wrap items-center gap-2">
         {result.decision && <Tier route={result.decision.route} tier={result.decision.tier} />}
-        {o?.status === "success" && (
-          <span className="pill bg-ok-soft text-ok">
-            {t("outcome.confirmed")} <TxLink hash={o.hash} url={o.url} />
-          </span>
-        )}
-        {o?.status === "reverted" && (
-          <span className="pill bg-bad-soft text-bad">
-            {t("outcome.reverted")} {o.error} <TxLink hash={o.hash} url={o.url} />
-          </span>
-        )}
-        {o?.status === "rejected" && (
-          <span className="pill bg-bad-soft text-bad">
-            {t("outcome.rejected")} {o.error}
-          </span>
-        )}
       </div>
       {result.decision && (
         <p className="text-xs text-muted">{result.decision.reasons.map((r) => trServer(r, lang)).join(" · ")}</p>
       )}
       {result.detail && <p className="text-xs text-muted">{trServer(result.detail, lang)}</p>}
+      <TxStatus outcome={result.outcome} />
     </div>
   );
 }
