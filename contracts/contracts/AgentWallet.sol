@@ -452,7 +452,8 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
     }
 
     /// @dev Generic calls are limited to setting up escrow deals: token.approve(escrow, x),
-    ///      escrow.createDeal(allowlisted payee, ...), escrow.fund(id) and escrow.dispute(id, i).
+    ///      escrow.createDeal(allowlisted payee, ...), escrow.fund(id) and escrow.dispute(id, i),
+    ///      plus the buyer's side of a FileEscrow deal (see `_checkFileCall`).
     ///      Anything that moves funds out (transfer, release) must use its dedicated, checked path.
     function _checkCall(address target, bytes memory data) private view {
         if (data.length < 4) revert InvalidProposal();
@@ -460,7 +461,9 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
         if (target == address(token)) {
             if (selector != IERC20.approve.selector || data.length != 68) revert InvalidProposal();
             (address spender,) = abi.decode(_args(data), (address, uint256));
-            if (!allowedEscrow[spender]) revert EscrowNotAllowed(spender);
+            if (!allowedEscrow[spender] && !allowedFileEscrow[spender]) revert EscrowNotAllowed(spender);
+        } else if (allowedFileEscrow[target]) {
+            _checkFileCall(target, data);
         } else if (allowedEscrow[target]) {
             if (selector == MilestoneEscrow.createDeal.selector) {
                 (address payee, address arbiter, address dealToken,,) =
@@ -473,6 +476,27 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
             }
         } else {
             revert InvalidProposal();
+        }
+    }
+
+    /// @dev The buyer's moves on a FileEscrow deal this wallet is the buyer of: accept, approve,
+    ///      dispute, reclaim, cancel. accept locks the wallet's money and approve releases it, so
+    ///      both get the same seller/token checks as every other payment path; accept also agrees
+    ///      to the arbiter, so it must be neutral. The rest can only return money or stop a deal.
+    function _checkFileCall(address escrow, bytes memory data) private view {
+        bytes4 selector = bytes4(data);
+        bool locksOrPays = selector == FileEscrow.accept.selector || selector == FileEscrow.approve.selector;
+        bool dealOnly = selector == FileEscrow.accept.selector || selector == FileEscrow.cancel.selector;
+        bool dealAndIndex = selector == FileEscrow.approve.selector || selector == FileEscrow.dispute.selector
+            || selector == FileEscrow.reclaim.selector;
+        if (!(dealOnly && data.length == 36) && !(dealAndIndex && data.length == 68)) revert InvalidProposal();
+
+        FileEscrow.Deal memory d = FileEscrow(escrow).getDeal(abi.decode(_args(data), (uint256)));
+        if (d.buyer != address(this)) revert NotPayerOfDeal();
+        if (locksOrPays) {
+            if (address(d.token) != address(token)) revert WrongToken();
+            if (!allowedRecipient[d.seller]) revert RecipientNotAllowed(d.seller);
+            if (selector == FileEscrow.accept.selector) _checkArbiter(d.arbiter);
         }
     }
 
