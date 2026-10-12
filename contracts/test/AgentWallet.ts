@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { network } from "hardhat";
-import { encodeFunctionData, getAddress, keccak256, toHex } from "viem";
+import { encodeFunctionData, getAddress, keccak256, toHex, zeroHash } from "viem";
 
 const usd = (n: number) => BigInt(Math.round(n * 1e6));
 const DAY = 24 * 60 * 60;
@@ -57,6 +57,9 @@ describe("AgentWallet", async function () {
       encodeFunctionData({ abi: escrow.abi, functionName: "fund", args: [0n] }),
     ]);
 
+    const fileEscrow = await viem.deployContract("FileEscrow");
+    await wallet.write.setFileEscrow([fileEscrow.address, true]);
+
     const as = async <T extends "AgentWallet" | "MilestoneEscrow">(
       name: T,
       address: `0x${string}`,
@@ -66,6 +69,7 @@ describe("AgentWallet", async function () {
     return {
       usdc,
       escrow,
+      fileEscrow,
       wallet,
       asAgent: await as("AgentWallet", wallet.address, agent),
       asA: await as("AgentWallet", wallet.address, approverA),
@@ -311,6 +315,122 @@ describe("AgentWallet", async function () {
           [judge],
         );
       }
+    });
+
+    describe("SetupFileDeal: a FileEscrow offer to buy", () => {
+      const REVIEW = 3n * BigInt(DAY);
+      const fileTerms = (...amounts: number[]) =>
+        amounts.map((n) => ({ amount: usd(n), hasFile: true, workHash: zeroHash }));
+
+      it("locks the payment in the offer in one approval round", async () => {
+        const { usdc, fileEscrow, asAgent, asA, asB, wallet } = await networkHelpers.loadFixture(deploy);
+        const data = encodeFunctionData({
+          abi: fileEscrow.abi,
+          functionName: "offerToBuy",
+          args: [contractor.account.address, arbiter.account.address, usdc.address, fileTerms(400, 600), REVIEW, "logo"],
+        });
+        await asAgent.write.propose([4, fileEscrow.address, 0n, 0n, data, "logo commission, 2 milestones"]);
+        await asA.write.approve([0n]);
+        await asB.write.approve([0n]);
+
+        const deal = await fileEscrow.read.getDeal([0n]);
+        assert.equal(deal.buyer, getAddress(wallet.address));
+        assert.equal(deal.seller, getAddress(contractor.account.address));
+        assert.equal(deal.total, usd(1_000));
+        assert.equal(deal.status, 0); // Proposed: waiting for the seller to accept
+        assert.equal(await usdc.read.balanceOf([fileEscrow.address]), usd(1_000));
+        assert.equal(await usdc.read.allowance([wallet.address, fileEscrow.address]), 0n);
+      });
+
+      it("rejects an offer that is unsafe for the buyer", async () => {
+        const { usdc, escrow, fileEscrow, asAgent, wallet } = await networkHelpers.loadFixture(deploy);
+        const evilAddr = getAddress(evil.account.address);
+        const ownerAddr = getAddress(owner.account.address);
+        const otherToken = await viem.deployContract("MockUSDC");
+        const offer = (seller: `0x${string}`, judge: `0x${string}`, token: `0x${string}`) =>
+          encodeFunctionData({
+            abi: fileEscrow.abi,
+            functionName: "offerToBuy",
+            args: [seller, judge, token, fileTerms(100), REVIEW, ""],
+          });
+        const good = offer(contractor.account.address, arbiter.account.address, usdc.address);
+
+        // Only allowlisted FileEscrows, and never a MilestoneEscrow in their place.
+        const rogue = await viem.deployContract("FileEscrow");
+        await viem.assertions.revertWithCustomErrorWithArgs(
+          asAgent.write.propose([4, rogue.address, 0n, 0n, good, "x"]),
+          wallet,
+          "FileEscrowNotAllowed",
+          [getAddress(rogue.address)],
+        );
+        await viem.assertions.revertWithCustomErrorWithArgs(
+          asAgent.write.propose([4, escrow.address, 0n, 0n, good, "x"]),
+          wallet,
+          "FileEscrowNotAllowed",
+          [getAddress(escrow.address)],
+        );
+        // Seller must be allowlisted, the arbiter neutral, the token the wallet's own.
+        await viem.assertions.revertWithCustomErrorWithArgs(
+          asAgent.write.propose([4, fileEscrow.address, 0n, 0n, offer(evilAddr, arbiter.account.address, usdc.address), "x"]),
+          wallet,
+          "RecipientNotAllowed",
+          [evilAddr],
+        );
+        await viem.assertions.revertWithCustomErrorWithArgs(
+          asAgent.write.propose([4, fileEscrow.address, 0n, 0n, offer(contractor.account.address, ownerAddr, usdc.address), "x"]),
+          wallet,
+          "ArbiterNotNeutral",
+          [ownerAddr],
+        );
+        await viem.assertions.revertWithCustomError(
+          asAgent.write.propose([4, fileEscrow.address, 0n, 0n, offer(contractor.account.address, arbiter.account.address, otherToken.address), "x"]),
+          wallet,
+          "WrongToken",
+        );
+        // Only offerToBuy, and no stray amount/index.
+        const sell = encodeFunctionData({
+          abi: fileEscrow.abi,
+          functionName: "offerToSell",
+          args: [contractor.account.address, arbiter.account.address, usdc.address, fileTerms(100), REVIEW, ""],
+        });
+        await viem.assertions.revertWithCustomError(
+          asAgent.write.propose([4, fileEscrow.address, 0n, 0n, sell, "x"]),
+          wallet,
+          "InvalidProposal",
+        );
+        await viem.assertions.revertWithCustomError(
+          asAgent.write.propose([4, fileEscrow.address, 1n, 0n, good, "x"]),
+          wallet,
+          "InvalidProposal",
+        );
+      });
+
+      it("re-checks the seller when the proposal executes", async () => {
+        const { usdc, fileEscrow, asAgent, asA, asB, wallet } = await networkHelpers.loadFixture(deploy);
+        const data = encodeFunctionData({
+          abi: fileEscrow.abi,
+          functionName: "offerToBuy",
+          args: [contractor.account.address, arbiter.account.address, usdc.address, fileTerms(100), REVIEW, ""],
+        });
+        await asAgent.write.propose([4, fileEscrow.address, 0n, 0n, data, "x"]);
+        await wallet.write.setRecipient([contractor.account.address, false]);
+        await asA.write.approve([0n]);
+        await viem.assertions.revertWithCustomErrorWithArgs(
+          asB.write.approve([0n]),
+          wallet,
+          "RecipientNotAllowed",
+          [getAddress(contractor.account.address)],
+        );
+      });
+
+      it("only the owner manages the FileEscrow allowlist", async () => {
+        const { fileEscrow, asStranger, wallet } = await networkHelpers.loadFixture(deploy);
+        await viem.assertions.revertWithCustomError(
+          asStranger.write.setFileEscrow([fileEscrow.address, false]),
+          wallet,
+          "OwnableUnauthorizedAccount",
+        );
+      });
     });
 
     it("agent can draft deal setup calls that humans approve", async () => {
