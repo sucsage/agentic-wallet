@@ -6,6 +6,8 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {Ownable, Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
+import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import {MilestoneEscrow} from "./MilestoneEscrow.sol";
 import {FileEscrow} from "./file-exchange/FileEscrow.sol";
 
@@ -64,9 +66,33 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
         uint32 approvals;
         bool executed;
         bool cancelled;
+        /// @dev EIP-712 digest of the owner's signed mandate that ran it; 0 = approved the normal way.
+        bytes32 mandateHash;
+    }
+
+    /// @notice An action the owner authorizes by signing it (EIP-712) instead of sending a transaction.
+    ///         The signed fields cover everything that executes; `nonce` lets the owner sign the same
+    ///         action twice on purpose. For a SetupFileDeal, `amount` is the total the offer locks,
+    ///         so the wallet's signing prompt shows it in plain numbers. `reasonHash` keeps the
+    ///         reason's text off-chain (PDPA): only its hash is signed and nothing is stored.
+    struct Mandate {
+        Kind kind;
+        address target;
+        uint256 amount;
+        uint256 index;
+        bytes data;
+        bytes32 reasonHash;
+        uint256 nonce;
+        uint64 deadline;
     }
 
     uint64 public constant PROPOSAL_TTL = 3 days;
+
+    bytes32 public constant MANDATE_TYPEHASH = keccak256(
+        "Mandate(uint8 kind,address target,uint256 amount,uint256 index,bytes data,bytes32 reasonHash,uint256 nonce,uint64 deadline)"
+    );
+    bytes32 private constant DOMAIN_TYPEHASH =
+        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
 
     /// @notice The only token the agent may spend (the settlement stablecoin).
     IERC20 public immutable token;
@@ -91,6 +117,8 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
 
     Proposal[] private _proposals;
     mapping(uint256 => mapping(address => bool)) public hasApproved;
+    /// @notice Mandates already run or revoked, by EIP-712 digest: each signature works once.
+    mapping(bytes32 => bool) public mandateUsed;
 
     event SessionSet(address indexed key, uint64 expiresAt, uint256 maxPerTx, uint256 dailyLimit);
     event SessionRevoked(address indexed key);
@@ -109,6 +137,8 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
     event ProposalExecuted(uint256 indexed id);
     event ProposalCancelled(uint256 indexed id, address indexed by);
     event OwnerExecuted(address indexed target, uint256 value, bytes data);
+    event MandateExecuted(bytes32 indexed digest, uint256 indexed id);
+    event MandateRevoked(bytes32 indexed digest);
 
     error WalletPaused();
     error NotAgent();
@@ -129,6 +159,9 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
     error AlreadyApproved();
     error InvalidThreshold();
     error InvalidSession();
+    error InvalidMandate();
+    error MandateExpired();
+    error MandateAlreadyUsed();
 
     constructor(Config memory c) Ownable(c.owner) {
         token = c.token;
@@ -282,25 +315,7 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
         if (!isActiveSession(msg.sender) && !isApprover[msg.sender] && msg.sender != owner()) revert NotAuthorized();
         if (threshold == 0) revert InvalidThreshold();
         _checkProposal(kind, target, amount, index, data);
-
-        id = _proposals.length;
-        _proposals.push(
-            Proposal({
-                kind: kind,
-                proposer: msg.sender,
-                target: target,
-                amount: amount,
-                index: index,
-                data: data,
-                reason: reason,
-                expiresAt: uint64(block.timestamp) + PROPOSAL_TTL,
-                approverEpoch: approverEpoch,
-                approvals: 0,
-                executed: false,
-                cancelled: false
-            })
-        );
-        emit ProposalCreated(id, msg.sender, kind, target, amount, reason);
+        id = _record(kind, target, amount, index, data, reason, bytes32(0));
     }
 
     function approve(uint256 id) external onlyApprover whenNotPaused nonReentrant {
@@ -322,6 +337,63 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
         if (msg.sender != p.proposer && !isApprover[msg.sender] && msg.sender != owner()) revert NotAuthorized();
         p.cancelled = true;
         emit ProposalCancelled(id, msg.sender);
+    }
+
+    // ----------------------------------------------------------------------------------------
+    // Owner mandates (EIP-712): approve by signature, no transaction from the owner
+    // ----------------------------------------------------------------------------------------
+
+    /// @notice Runs an action the owner signed off-chain, in one transaction anyone may send (the
+    ///         agent, typically). It passes the same checks as any proposal and is recorded as one,
+    ///         with its digest in `mandateHash`. It needs no approver votes: the owner can already do
+    ///         anything through `execute`, and a mandate is narrower than that.
+    function executeMandate(Mandate calldata m, bytes calldata signature)
+        external
+        whenNotPaused
+        nonReentrant
+        returns (uint256 id)
+    {
+        if (block.timestamp > m.deadline) revert MandateExpired();
+        bytes32 digest = mandateDigest(m);
+        if (mandateUsed[digest]) revert MandateAlreadyUsed();
+        // Checked against the CURRENT owner: a mandate signed by a previous owner is void.
+        if (!SignatureChecker.isValidSignatureNow(owner(), digest, signature)) revert InvalidMandate();
+        mandateUsed[digest] = true;
+
+        _checkProposal(m.kind, m.target, m.amount, m.index, m.data);
+        id = _record(m.kind, m.target, m.amount, m.index, m.data, "", digest);
+        Proposal storage p = _proposals[id];
+        p.executed = true;
+        _executeProposal(p);
+        emit MandateExecuted(digest, id);
+        emit ProposalExecuted(id);
+    }
+
+    /// @notice Voids a mandate the owner signed but no longer wants run (e.g. the signature leaked).
+    function revokeMandate(bytes32 digest) external onlyOwner {
+        mandateUsed[digest] = true;
+        emit MandateRevoked(digest);
+    }
+
+    /// @notice The EIP-712 digest the owner signs for `m`, bound to this wallet and chain.
+    function mandateDigest(Mandate calldata m) public view returns (bytes32) {
+        bytes32 domain = keccak256(
+            abi.encode(DOMAIN_TYPEHASH, keccak256("AgentWallet"), keccak256("1"), block.chainid, address(this))
+        );
+        bytes32 structHash = keccak256(
+            abi.encode(
+                MANDATE_TYPEHASH,
+                m.kind,
+                m.target,
+                m.amount,
+                m.index,
+                keccak256(m.data),
+                m.reasonHash,
+                m.nonce,
+                m.deadline
+            )
+        );
+        return MessageHashUtils.toTypedDataHash(domain, structHash);
     }
 
     // ----------------------------------------------------------------------------------------
@@ -425,8 +497,8 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
             if (amount != 0 || index != 0) revert InvalidProposal();
             _decodeSetupDeal(target, data);
         } else {
-            if (amount != 0 || index != 0) revert InvalidProposal();
-            _decodeFileOffer(target, data);
+            // `amount` must state the total the offer locks, so approvers and signers see it.
+            if (amount != _decodeFileOffer(target, data) || index != 0) revert InvalidProposal();
         }
     }
 
@@ -543,6 +615,36 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
         for (uint256 i = 0; i < args.length; i++) {
             args[i] = data[i + 4];
         }
+    }
+
+    function _record(
+        Kind kind,
+        address target,
+        uint256 amount,
+        uint256 index,
+        bytes calldata data,
+        string memory reason,
+        bytes32 mandateHash
+    ) private returns (uint256 id) {
+        id = _proposals.length;
+        _proposals.push(
+            Proposal({
+                kind: kind,
+                proposer: msg.sender,
+                target: target,
+                amount: amount,
+                index: index,
+                data: data,
+                reason: reason,
+                expiresAt: uint64(block.timestamp) + PROPOSAL_TTL,
+                approverEpoch: approverEpoch,
+                approvals: 0,
+                executed: false,
+                cancelled: false,
+                mandateHash: mandateHash
+            })
+        );
+        emit ProposalCreated(id, msg.sender, kind, target, amount, reason);
     }
 
     function _openProposal(uint256 id) private view returns (Proposal storage p) {

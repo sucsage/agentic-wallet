@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { network } from "hardhat";
-import { encodeFunctionData, getAddress, keccak256, toHex, zeroHash } from "viem";
+import { encodeFunctionData, getAddress, hashTypedData, keccak256, toHex, zeroHash } from "viem";
 
 const usd = (n: number) => BigInt(Math.round(n * 1e6));
 const DAY = 24 * 60 * 60;
@@ -329,7 +329,7 @@ describe("AgentWallet", async function () {
           functionName: "offerToBuy",
           args: [contractor.account.address, arbiter.account.address, usdc.address, fileTerms(400, 600), REVIEW, "logo"],
         });
-        await asAgent.write.propose([4, fileEscrow.address, 0n, 0n, data, "logo commission, 2 milestones"]);
+        await asAgent.write.propose([4, fileEscrow.address, usd(1_000), 0n, data, "logo commission, 2 milestones"]);
         await asA.write.approve([0n]);
         await asB.write.approve([0n]);
 
@@ -398,8 +398,16 @@ describe("AgentWallet", async function () {
           wallet,
           "InvalidProposal",
         );
+        // `amount` must state the 100 the offer locks: not more, less or zero.
+        for (const wrong of [0n, usd(99), usd(101)]) {
+          await viem.assertions.revertWithCustomError(
+            asAgent.write.propose([4, fileEscrow.address, wrong, 0n, good, "x"]),
+            wallet,
+            "InvalidProposal",
+          );
+        }
         await viem.assertions.revertWithCustomError(
-          asAgent.write.propose([4, fileEscrow.address, 1n, 0n, good, "x"]),
+          asAgent.write.propose([4, fileEscrow.address, usd(100), 1n, good, "x"]),
           wallet,
           "InvalidProposal",
         );
@@ -412,7 +420,7 @@ describe("AgentWallet", async function () {
           functionName: "offerToBuy",
           args: [contractor.account.address, arbiter.account.address, usdc.address, fileTerms(100), REVIEW, ""],
         });
-        await asAgent.write.propose([4, fileEscrow.address, 0n, 0n, data, "x"]);
+        await asAgent.write.propose([4, fileEscrow.address, usd(100), 0n, data, "x"]);
         await wallet.write.setRecipient([contractor.account.address, false]);
         await asA.write.approve([0n]);
         await viem.assertions.revertWithCustomErrorWithArgs(
@@ -495,7 +503,7 @@ describe("AgentWallet", async function () {
             args: [contractor.account.address, arbiter.account.address, usdc.address, fileTerms(200), REVIEW, ""],
           });
           const id = await wallet.read.proposalCount();
-          await ctx.asAgent.write.propose([4, fileEscrow.address, 0n, 0n, offer, "x"]);
+          await ctx.asAgent.write.propose([4, fileEscrow.address, usd(200), 0n, offer, "x"]);
           await ctx.asA.write.approve([id]);
           await ctx.asB.write.approve([id]);
           await runCall(ctx, fileEscrow.address, call(fileEscrow, "cancel", [1n]));
@@ -673,6 +681,162 @@ describe("AgentWallet", async function () {
         wallet,
         "NotAgent",
       );
+    });
+  });
+
+  describe("Owner mandates: approve by EIP-712 signature", () => {
+    const MANDATE_TYPES = {
+      Mandate: [
+        { name: "kind", type: "uint8" },
+        { name: "target", type: "address" },
+        { name: "amount", type: "uint256" },
+        { name: "index", type: "uint256" },
+        { name: "data", type: "bytes" },
+        { name: "reasonHash", type: "bytes32" },
+        { name: "nonce", type: "uint256" },
+        { name: "deadline", type: "uint64" },
+      ],
+    } as const;
+
+    type Mandate = {
+      kind: number;
+      target: `0x${string}`;
+      amount: bigint;
+      index: bigint;
+      data: `0x${string}`;
+      reasonHash: `0x${string}`;
+      nonce: bigint;
+      deadline: bigint;
+    };
+
+    async function domain(walletAddress: `0x${string}`) {
+      return { name: "AgentWallet", version: "1", chainId: await publicClient.getChainId(), verifyingContract: walletAddress };
+    }
+
+    async function sign(signer: typeof owner, walletAddress: `0x${string}`, m: Mandate) {
+      return signer.signTypedData({ domain: await domain(walletAddress), types: MANDATE_TYPES, primaryType: "Mandate", message: m });
+    }
+
+    /** The owner pays the contractor 2,000: four times the agent's per-tx cap. */
+    async function payContractor(nonce: bigint, overrides: Partial<Mandate> = {}): Promise<Mandate> {
+      const now = BigInt(await networkHelpers.time.latest());
+      return {
+        kind: 0,
+        target: getAddress(contractor.account.address),
+        amount: usd(2_000),
+        index: 0n,
+        data: "0x",
+        // The reason's text stays off-chain (PDPA); only its hash is signed.
+        reasonHash: keccak256(toHex("FAT passed, signed off by the owner")),
+        nonce,
+        deadline: now + BigInt(DAY),
+        ...overrides,
+      };
+    }
+
+    it("the owner signs, anyone relays it, and it runs at once", async () => {
+      const { usdc, asAgent, wallet } = await networkHelpers.loadFixture(deploy);
+      const m = await payContractor(1n);
+      const signature = await sign(owner, wallet.address, m);
+
+      await asAgent.write.executeMandate([m, signature]);
+      assert.equal(await usdc.read.balanceOf([contractor.account.address]), usd(2_000));
+
+      const digest = hashTypedData({ domain: await domain(wallet.address), types: MANDATE_TYPES, primaryType: "Mandate", message: m });
+      assert.equal(await wallet.read.mandateDigest([m]), digest);
+      const p = await wallet.read.getProposal([0n]);
+      assert.equal(p.mandateHash, digest);
+      assert.equal(p.executed, true);
+      assert.equal(p.approvals, 0);
+      assert.equal(p.reason, ""); // nothing personal stored on-chain
+    });
+
+    it("a file-deal mandate states the total it locks, and must match the offer", async () => {
+      const { usdc, fileEscrow, asAgent, wallet } = await networkHelpers.loadFixture(deploy);
+      const offer = encodeFunctionData({
+        abi: fileEscrow.abi,
+        functionName: "offerToBuy",
+        args: [
+          contractor.account.address,
+          arbiter.account.address,
+          usdc.address,
+          [{ amount: usd(300), hasFile: true, workHash: zeroHash }],
+          3n * BigInt(DAY),
+          "",
+        ],
+      });
+      const fileDeal = (amount: bigint) =>
+        payContractor(1n, { kind: 4, target: getAddress(fileEscrow.address), amount, data: offer });
+
+      // Signed as 100 while the offer locks 300: refused, so the signing prompt can't understate it.
+      const understated = await fileDeal(usd(100));
+      await viem.assertions.revertWithCustomError(
+        asAgent.write.executeMandate([understated, await sign(owner, wallet.address, understated)]),
+        wallet,
+        "InvalidProposal",
+      );
+
+      const m = await fileDeal(usd(300));
+      await asAgent.write.executeMandate([m, await sign(owner, wallet.address, m)]);
+      const deal = await fileEscrow.read.getDeal([0n]);
+      assert.equal(deal.buyer, getAddress(wallet.address));
+      assert.equal(deal.total, usd(300));
+    });
+
+    it("cannot be replayed, altered, forged, used late, or used to bypass the policy", async () => {
+      const { asAgent, asA, wallet } = await networkHelpers.loadFixture(deploy);
+      const m = await payContractor(1n);
+      const signature = await sign(owner, wallet.address, m);
+      await asAgent.write.executeMandate([m, signature]);
+
+      await viem.assertions.revertWithCustomError(asAgent.write.executeMandate([m, signature]), wallet, "MandateAlreadyUsed");
+
+      const m2 = await payContractor(2n);
+      const sig2 = await sign(owner, wallet.address, m2);
+      await viem.assertions.revertWithCustomError(
+        asAgent.write.executeMandate([{ ...m2, amount: usd(3_000) }, sig2]),
+        wallet,
+        "InvalidMandate",
+      );
+      await viem.assertions.revertWithCustomError(
+        asAgent.write.executeMandate([m2, await sign(approverA, wallet.address, m2)]),
+        wallet,
+        "InvalidMandate",
+      );
+
+      // Even the owner's own signature cannot pay someone off the allowlist.
+      const evilAddr = getAddress(evil.account.address);
+      const toEvil = await payContractor(3n, { target: evilAddr });
+      await viem.assertions.revertWithCustomErrorWithArgs(
+        asAgent.write.executeMandate([toEvil, await sign(owner, wallet.address, toEvil)]),
+        wallet,
+        "RecipientNotAllowed",
+        [evilAddr],
+      );
+
+      await asA.write.pause();
+      await viem.assertions.revertWithCustomError(asAgent.write.executeMandate([m2, sig2]), wallet, "WalletPaused");
+      await wallet.write.unpause();
+
+      await networkHelpers.time.increase(DAY + 1);
+      await viem.assertions.revertWithCustomError(asAgent.write.executeMandate([m2, sig2]), wallet, "MandateExpired");
+    });
+
+    it("the owner can revoke a signed mandate, and a new owner voids the old owner's signatures", async () => {
+      const { asAgent, asStranger, wallet } = await networkHelpers.loadFixture(deploy);
+      const m = await payContractor(1n);
+      const signature = await sign(owner, wallet.address, m);
+      const digest = await wallet.read.mandateDigest([m]);
+
+      await viem.assertions.revertWithCustomError(asStranger.write.revokeMandate([digest]), wallet, "OwnableUnauthorizedAccount");
+      await wallet.write.revokeMandate([digest]);
+      await viem.assertions.revertWithCustomError(asAgent.write.executeMandate([m, signature]), wallet, "MandateAlreadyUsed");
+
+      const m2 = await payContractor(2n);
+      const sig2 = await sign(owner, wallet.address, m2);
+      await wallet.write.transferOwnership([stranger.account.address]);
+      await asStranger.write.acceptOwnership();
+      await viem.assertions.revertWithCustomError(asAgent.write.executeMandate([m2, sig2]), wallet, "InvalidMandate");
     });
   });
 
