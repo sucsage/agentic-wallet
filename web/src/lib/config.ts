@@ -38,6 +38,13 @@ export const config = {
       factory: addr("FACTORY_ADDRESS"),
     };
   },
+  /** v0.8 Mock Bank contracts. Kept apart from `contracts` so setups without them keep working. */
+  get bankContracts() {
+    return {
+      mthb: addr("MTHB_ADDRESS"),
+      fileEscrow: addr("FILE_ESCROW_ADDRESS"),
+    };
+  },
   /** Neutral dispute resolver for every deal: never the buyer's or the contractor's own key. */
   get arbiter() {
     return addr("ARBITER_ADDRESS");
@@ -61,6 +68,10 @@ export const config = {
       agent: key("AGENT_PRIVATE_KEY"),
       contractor: key("CONTRACTOR_PRIVATE_KEY"),
     };
+  },
+  /** The Mock Bank's hot key: the only one that may mint mTHB. Must not be the mTHB admin. */
+  get bankKey() {
+    return key("BANK_PRIVATE_KEY");
   },
 };
 

@@ -16,17 +16,21 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
-import { agentWalletAbi, milestoneEscrowAbi, mockUSDCAbi } from "./abis";
+import { agentWalletAbi, fileEscrowAbi, milestoneEscrowAbi, mockTHBAbi, mockUSDCAbi } from "./abis";
 import { config, explorerTx } from "./config";
 
-const ERROR_ABI = [...agentWalletAbi, ...milestoneEscrowAbi, ...mockUSDCAbi].filter((i) => i.type === "error");
+const ERROR_ABI = [...agentWalletAbi, ...milestoneEscrowAbi, ...mockUSDCAbi, ...mockTHBAbi, ...fileEscrowAbi].filter(
+  (i) => i.type === "error",
+);
 
-export type Role = "owner" | "agent" | "contractor";
+/** `bank` is the Mock Bank server, not a person: it only mints mTHB. */
+export type Role = "owner" | "agent" | "contractor" | "bank";
 
 export const ROLE_LABEL: Record<Role, string> = {
   owner: "Owner",
   agent: "AI Agent",
   contractor: "Contractor",
+  bank: "Mock Bank",
 };
 
 let _public: ReturnType<typeof makePublic> | undefined;
@@ -41,13 +45,13 @@ const accounts = new Map<Role, Account>();
 export function account(role: Role): Account {
   let a = accounts.get(role);
   if (!a) {
-    a = privateKeyToAccount(config.keys[role]);
+    a = privateKeyToAccount(role === "bank" ? config.bankKey : config.keys[role]);
     accounts.set(role, a);
   }
   return a;
 }
 
-export function roleAddresses(): Record<Role, Address> {
+export function roleAddresses(): Record<Exclude<Role, "bank">, Address> {
   return {
     owner: account("owner").address,
     agent: account("agent").address,
@@ -74,7 +78,15 @@ function serialize<T>(role: Role, fn: () => Promise<T>): Promise<T> {
 export type TxOutcome =
   | { status: "success"; hash: Hex; url: string | null; result?: unknown }
   | { status: "reverted"; hash: Hex; url: string | null; error: string }
-  | { status: "rejected"; error: string };
+  /** `definite`: the contract itself refused (simulation reverted), so nothing was or will be mined.
+   *  Without it the failure may be the network's, and the transaction may still have landed. */
+  | { status: "rejected"; error: string; definite?: true };
+
+/** True when the error is the contract refusing the call, not the RPC or network failing. */
+function isContractRevert(err: unknown): boolean {
+  if (!(err instanceof Error && "walk" in err)) return false;
+  return (err as BaseError).walk((e) => (e as Error).name === "ContractFunctionRevertedError") !== null;
+}
 
 /** Turns a viem error into a short readable reason, e.g. `RecipientNotAllowed(0xBad…)`. */
 export function revertReason(err: unknown): string {
@@ -146,7 +158,9 @@ export async function send<
     simulated = await pc.simulateContract({ ...(call as any), account: account(role) });
   } catch (err) {
     simulationError = revertReason(err);
-    if (!opts.force) return { status: "rejected", error: simulationError };
+    if (!opts.force) {
+      return isContractRevert(err) ? { status: "rejected", error: simulationError, definite: true } : { status: "rejected", error: simulationError };
+    }
   }
 
   return serialize(role, async () => {
