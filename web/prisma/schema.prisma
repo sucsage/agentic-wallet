@@ -18,8 +18,9 @@ model Wallet {
   createdBlock BigInt
   createdAt    DateTime
 
-  proposals Proposal[]
-  events    Event[]
+  proposals  Proposal[]
+  events     Event[]
+  UserWallet UserWallet[]
 
   @@index([owner])
 }
@@ -99,4 +100,158 @@ model IndexerSyncState {
   contractAddress String   @id
   lastSyncedBlock BigInt
   updatedAt       DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------------------------
+// Mock Bank (demo only): simulated baht, not real money. Amounts are satang (integer minor units).
+// Every mTHB on-chain is backed by baht in the single RESERVE account: reserve balance == totalSupply.
+// ---------------------------------------------------------------------------------------------
+
+enum BankAccountKind {
+  USER
+  RESERVE
+}
+
+enum BankTransferKind {
+  /// Demo money entering the bank (a sandbox's seed). The only kind with no source account.
+  DEPOSIT
+  /// Buyer → reserve, right before mTHB is minted for a deal.
+  FUND
+  /// Reserve → buyer, when funding failed for certain or a deal refunds.
+  REFUND
+  /// Reserve → seller (or buyer), after the tokens are redeemed on-chain.
+  PAYOUT
+}
+
+model BankAccount {
+  id           String          @id @default(cuid())
+  kind         BankAccountKind @default(USER)
+  /// The on-chain address this account belongs to (a sandbox's AgentWallet, or a seller). Null for the reserve.
+  ownerAddress String?         @unique
+  label        String
+  /// Never negative: a debit only happens together with a balance check in the same statement.
+  balance      BigInt          @default(0)
+  createdAt    DateTime        @default(now())
+
+  outgoing BankTransfer[] @relation("outgoing")
+  incoming BankTransfer[] @relation("incoming")
+}
+
+model BankTransfer {
+  id             String           @id @default(cuid())
+  /// One key per action, e.g. "deal-123:fund"; the database refuses a second transfer with it.
+  idempotencyKey String           @unique
+  kind           BankTransferKind
+  fromId         String?
+  toId           String
+  amount         BigInt
+  /// The on-chain transaction this transfer mirrors (mint or redeem), once known.
+  txHash         String?
+  createdAt      DateTime         @default(now())
+
+  /// Restrict: a deleted account must never turn a transfer into what looks like a deposit.
+  from BankAccount? @relation("outgoing", fields: [fromId], references: [id], onDelete: Restrict)
+  to   BankAccount  @relation("incoming", fields: [toId], references: [id])
+
+  @@index([fromId])
+  @@index([toId])
+}
+
+// ---------------------------------------------------------------------------------------------
+// Auth (Better Auth) and user profiles. Created directly in the database; mirrored here so that
+// `prisma db push` keeps these tables instead of dropping them.
+// ---------------------------------------------------------------------------------------------
+
+enum WalletRole {
+  OWNER
+  APPROVER
+  CONTRACTOR
+  VIEWER
+}
+
+model User {
+  id            String       @id
+  name          String
+  email         String       @unique
+  emailVerified Boolean      @default(false)
+  image         String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime
+  Account       Account[]
+  Profile       Profile?
+  Session       Session[]
+  UserWallet    UserWallet[]
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime
+  User                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, accountId])
+  @@index([userId])
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime
+  ipAddress String?
+  userAgent String?
+  userId    String
+  User      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime
+
+  @@index([identifier])
+}
+
+model Profile {
+  userId       String    @id
+  firstName    String?
+  lastName     String?
+  phone        String?
+  dateOfBirth  DateTime? @db.Date
+  organization String?
+  jobTitle     String?
+  country      String?   @db.Char(2)
+  locale       String    @default("en")
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime
+  User         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserWallet {
+  userId        String
+  walletAddress String
+  role          WalletRole @default(OWNER)
+  label         String?
+  createdAt     DateTime   @default(now())
+  User          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  Wallet        Wallet     @relation(fields: [walletAddress], references: [address], onDelete: Cascade)
+
+  @@id([userId, walletAddress])
+  @@index([walletAddress])
 }

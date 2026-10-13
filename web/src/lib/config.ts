@@ -71,6 +71,7 @@ export const walletDefaults = {
   sessionDays: 7n,
   threshold: 1n,
   seed: 10_000_000_000n, // 10,000 mUSDC
+  bankSeed: 1_000_000n, // 10,000 baht in the Mock Bank, in satang
 };
 
 /** A fixed attacker address used by the injection demos. Never allowlisted. */

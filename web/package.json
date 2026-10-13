@@ -9,6 +9,7 @@
     "lint": "eslint",
     "e2e": "tsx --conditions=react-server --env-file=.env.local scripts/e2e.mts",
     "agent-eval": "tsx --conditions=react-server --env-file=.env.local scripts/agent-eval.mts",
+    "bank-check": "tsx --conditions=react-server --env-file=.env scripts/bank-check.mts",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
