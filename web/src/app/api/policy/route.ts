@@ -1,7 +1,7 @@
 import { getAddress } from "viem";
 
 import { agentWalletAbi } from "@/lib/abis";
-import { publicClient, roleAddresses } from "@/lib/chain";
+import { publicClient } from "@/lib/chain";
 import { config } from "@/lib/config";
 import { errorResponse, requireBankWallet } from "@/lib/guard";
 import { listFriends } from "@/lib/social";
@@ -12,9 +12,8 @@ export async function GET() {
   try {
     const { user, wallet } = await requireBankWallet();
     const [state, friends] = await Promise.all([readWallet(wallet), listFriends(user.id)]);
-    // Candidates the allowlist could hold: the demo contractor and friends' wallets; the chain decides.
+    // Candidates the allowlist could hold: friends' wallets; the chain decides.
     const candidates = [
-      { address: roleAddresses().contractor, label: "Demo contractor", friendshipId: null as string | null },
       ...friends.filter((f) => f.wallet && f.status === "ACCEPTED").map((f) => ({ address: getAddress(f.wallet!), label: f.name, friendshipId: f.friendshipId })),
     ];
     const allowed = await Promise.all(

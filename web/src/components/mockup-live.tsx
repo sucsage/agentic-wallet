@@ -398,7 +398,7 @@ export function LiveChat() {
   }
 
   const suggestions = [
-    `Hire the demo contractor for a logo · ${currency === "THB" ? "฿5,000" : "¥1,000"} · 2 milestones`,
+    `Hire a friend for a logo · ${currency === "THB" ? "฿5,000" : "¥1,000"} · 2 milestones`,
     "What is my balance and limit?",
     "List my deals",
   ];

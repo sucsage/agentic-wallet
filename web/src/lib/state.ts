@@ -457,10 +457,7 @@ async function readAllowedRecipients(
   const checked = await Promise.all(
     [...candidates.values()].map(async (address) => ({
       address,
-      label:
-        address.toLowerCase() === contractor.toLowerCase()
-          ? "Contractor"
-          : address,
+      label: address,
       allowed: await pc.readContract({
         address: wallet,
         abi: agentWalletAbi,
@@ -471,8 +468,9 @@ async function readAllowedRecipients(
     })),
   );
 
+  // Wallets made before the demo contractor was retired still allow it on-chain; it is not a payee users chose.
   return checked
-    .filter((recipient) => recipient.allowed)
+    .filter((recipient) => recipient.allowed && recipient.address.toLowerCase() !== contractor.toLowerCase())
     .map(({ address, label }) => ({ address, label }));
 }
 

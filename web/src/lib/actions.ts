@@ -48,7 +48,8 @@ export async function createWorkspace(
         dailyLimit: limits.dailyLimit,
         approvers: [roles.owner],
         threshold: walletDefaults.threshold,
-        recipients: [roles.contractor],
+        // Bank wallets start with an empty allowlist: users add friends as payees themselves.
+        recipients: bankToken ? [] : [roles.contractor],
         escrows: [config.contracts.escrow],
       },
       // Bank wallets hold no idle money; the factory could not mint mTHB / mCNY anyway.
