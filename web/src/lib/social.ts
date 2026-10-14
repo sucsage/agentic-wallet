@@ -8,6 +8,7 @@ import { agentWalletAbi } from "./abis";
 import { approveDraft } from "./bank/drafts";
 import { type TxOutcome, publicClient, send } from "./chain";
 import { db } from "./db";
+import { primaryWalletAddress } from "./user-wallets";
 
 /**
  * Friends and groups.
@@ -33,9 +34,9 @@ export type FriendView = {
   allowlisted: boolean;
 };
 
-async function walletOf(userId: string): Promise<Address | null> {
-  const link = await db.userWallet.findFirst({ where: { userId }, orderBy: { createdAt: "asc" } });
-  return link ? getAddress(link.walletAddress) : null;
+/** A user's primary wallet: the one their bank account pays for (see user-wallets.ts). */
+function walletOf(userId: string): Promise<Address | null> {
+  return primaryWalletAddress(userId);
 }
 
 async function isAllowlisted(wallet: Address | null, recipient: Address | null): Promise<boolean> {

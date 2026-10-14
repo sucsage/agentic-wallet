@@ -429,7 +429,8 @@ async function readAllowedRecipients(
 
   // Mapping ดึง keys ทั้งหมดไม่ได้ จึงรวบรวม address จาก events ก่อน
   const candidates = new Map<string, Address>();
-  const chunkSize = 2_000n;
+  // Blocks come every 2 s on the private chain; big ranges keep this to a call or two per read.
+  const chunkSize = 10_000n;
 
   for (
     let fromBlock = createdAtBlock;

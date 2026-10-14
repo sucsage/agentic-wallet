@@ -5,6 +5,7 @@ import { type Address, getAddress } from "viem";
 import { agentWalletAbi } from "./abis";
 import { getSession } from "./auth";
 import { customerOfUser } from "./bank/customers";
+import { primaryWalletAddress } from "./user-wallets";
 import { publicClient, roleAddresses } from "./chain";
 import { db } from "./db";
 
@@ -59,9 +60,9 @@ export async function requireAdmin() {
 /** The signed-in customer's agent wallet (the one their bank account pays for). */
 export async function requireBankWallet() {
   const { user, customer } = await requireCustomer();
-  const link = await db.userWallet.findFirst({ where: { userId: user.id }, orderBy: { createdAt: "asc" } });
-  if (!link) throw new HttpError(409, "Create your agent wallet first");
-  return { user, customer, wallet: await demoWallet(link.walletAddress) };
+  const primary = await primaryWalletAddress(user.id);
+  if (!primary) throw new HttpError(409, "Create your agent wallet first");
+  return { user, customer, wallet: await demoWallet(primary) };
 }
 
 /** A sandbox wallet that belongs to the signed-in user (UserWallet row) and to this demo on-chain. */

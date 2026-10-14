@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { Address, Hex } from "viem";
+import { type Address, type Hex, getAddress } from "viem";
 
 import { publicClient, roleAddresses } from "./chain";
 import { config } from "./config";
@@ -35,18 +35,41 @@ export async function linkNewWallet(userId: string, address: Address, txHash: He
   });
 }
 
-/** The user's wallets, newest first, with open proposal counts from the indexed tables. */
+/**
+ * The one wallet that is "the user's": the wallet their bank account pays for. Every part of the
+ * app (chat, friends, policy, deals) must use this, so they never act on different wallets.
+ * Falls back to the oldest linked wallet for users from before bank-backed wallets.
+ */
+export async function primaryWalletAddress(userId: string): Promise<Address | null> {
+  const links = await db.userWallet.findMany({ where: { userId }, orderBy: { createdAt: "asc" } });
+  if (links.length === 0) return null;
+  const backed = await db.bankAccount.findMany({
+    where: { customer: { userId }, ownerAddress: { in: links.map((l) => l.walletAddress.toLowerCase()) } },
+    select: { ownerAddress: true },
+  });
+  const primary = backed.length
+    ? links.find((l) => l.walletAddress.toLowerCase() === backed[0].ownerAddress)
+    : links[0];
+  return getAddress((primary ?? links[0]).walletAddress);
+}
+
+/** The user's wallets, primary first, with open proposal counts from the indexed tables. */
 export async function listUserWallets(userId: string) {
-  return db.userWallet.findMany({
-    where: { userId },
-    orderBy: { createdAt: "desc" },
+  const [rows, primary] = await Promise.all([
+    db.userWallet.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
     include: {
       wallet: {
         select: {
           createdAt: true,
-          _count: { select: { proposals: { where: { status: "OPEN" } }, events: true } },
+            _count: { select: { proposals: { where: { status: "OPEN" } }, events: true } },
+          },
         },
       },
-    },
-  });
+    }),
+    primaryWalletAddress(userId),
+  ]);
+  // Screens use wallets[0]; it must be the primary wallet.
+  return rows.sort((a, b) => Number(b.walletAddress === primary) - Number(a.walletAddress === primary));
 }
