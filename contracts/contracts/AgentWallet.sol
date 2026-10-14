@@ -6,7 +6,10 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {Ownable, Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
+import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import {MilestoneEscrow} from "./MilestoneEscrow.sol";
+import {FileEscrow} from "./file-exchange/FileEscrow.sol";
 
 /// @title AgentWallet
 /// @notice A smart-contract wallet that an AI agent can operate through scoped, expiring session keys.
@@ -26,7 +29,8 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
         Transfer,
         ReleaseMilestone,
         Call,
-        SetupDeal
+        SetupDeal,
+        SetupFileDeal
     }
 
     /// @notice Full initial policy, so a wallet can be deployed ready to use in one transaction.
@@ -55,16 +59,40 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
         address target; // Transfer: recipient. Other kinds: contract.
         uint256 amount; // Transfer: token amount. ReleaseMilestone: dealId.
         uint256 index; // ReleaseMilestone: milestone index.
-        bytes data; // Call: calldata. SetupDeal: escrow.createDeal calldata.
+        bytes data; // Call: calldata. SetupDeal: escrow.createDeal calldata. SetupFileDeal: offerToBuy calldata.
         string reason;
         uint64 expiresAt;
         uint64 approverEpoch;
         uint32 approvals;
         bool executed;
         bool cancelled;
+        /// @dev EIP-712 digest of the owner's signed mandate that ran it; 0 = approved the normal way.
+        bytes32 mandateHash;
+    }
+
+    /// @notice An action the owner authorizes by signing it (EIP-712) instead of sending a transaction.
+    ///         The signed fields cover everything that executes; `nonce` lets the owner sign the same
+    ///         action twice on purpose. For a SetupFileDeal, `amount` is the total the offer locks,
+    ///         so the wallet's signing prompt shows it in plain numbers. `reasonHash` keeps the
+    ///         reason's text off-chain (PDPA): only its hash is signed and nothing is stored.
+    struct Mandate {
+        Kind kind;
+        address target;
+        uint256 amount;
+        uint256 index;
+        bytes data;
+        bytes32 reasonHash;
+        uint256 nonce;
+        uint64 deadline;
     }
 
     uint64 public constant PROPOSAL_TTL = 3 days;
+
+    bytes32 public constant MANDATE_TYPEHASH = keccak256(
+        "Mandate(uint8 kind,address target,uint256 amount,uint256 index,bytes data,bytes32 reasonHash,uint256 nonce,uint64 deadline)"
+    );
+    bytes32 private constant DOMAIN_TYPEHASH =
+        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
 
     /// @notice The only token the agent may spend (the settlement stablecoin).
     IERC20 public immutable token;
@@ -77,6 +105,9 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
 
     mapping(address => bool) public allowedRecipient;
     mapping(address => bool) public allowedEscrow;
+    /// @dev Kept apart from `allowedEscrow`: FileEscrow returns differently shaped deals, so one
+    ///      escrow kind's checks must never be applied to the other.
+    mapping(address => bool) public allowedFileEscrow;
 
     mapping(address => bool) public isApprover;
     uint256 public approverCount;
@@ -86,22 +117,28 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
 
     Proposal[] private _proposals;
     mapping(uint256 => mapping(address => bool)) public hasApproved;
+    /// @notice Mandates already run or revoked, by EIP-712 digest: each signature works once.
+    mapping(bytes32 => bool) public mandateUsed;
 
     event SessionSet(address indexed key, uint64 expiresAt, uint256 maxPerTx, uint256 dailyLimit);
     event SessionRevoked(address indexed key);
     event RecipientSet(address indexed recipient, bool allowed);
     event EscrowSet(address indexed escrow, bool allowed);
+    event FileEscrowSet(address indexed escrow, bool allowed);
     event ApproverSet(address indexed approver, bool allowed);
     event ThresholdSet(uint256 threshold);
     event Paused(address indexed by);
     event Unpaused(address indexed by);
     event AgentTransfer(address indexed key, address indexed to, uint256 amount);
     event AgentMilestoneReleased(address indexed key, address indexed escrow, uint256 dealId, uint256 index, uint256 amount);
+    event AgentFileApproved(address indexed key, address indexed escrow, uint256 dealId, uint256 index, uint256 amount);
     event ProposalCreated(uint256 indexed id, address indexed proposer, Kind kind, address target, uint256 amount, string reason);
     event ProposalApproved(uint256 indexed id, address indexed approver, uint256 approvals);
     event ProposalExecuted(uint256 indexed id);
     event ProposalCancelled(uint256 indexed id, address indexed by);
     event OwnerExecuted(address indexed target, uint256 value, bytes data);
+    event MandateExecuted(bytes32 indexed digest, uint256 indexed id);
+    event MandateRevoked(bytes32 indexed digest);
 
     error WalletPaused();
     error NotAgent();
@@ -109,6 +146,7 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
     error NotAuthorized();
     error RecipientNotAllowed(address recipient);
     error EscrowNotAllowed(address escrow);
+    error FileEscrowNotAllowed(address escrow);
     error ArbiterNotNeutral(address arbiter);
     error ExceedsPerTxLimit(uint256 amount, uint256 maxPerTx);
     error ExceedsDailyLimit(uint256 amount, uint256 remaining);
@@ -121,6 +159,9 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
     error AlreadyApproved();
     error InvalidThreshold();
     error InvalidSession();
+    error InvalidMandate();
+    error MandateExpired();
+    error MandateAlreadyUsed();
 
     constructor(Config memory c) Ownable(c.owner) {
         token = c.token;
@@ -178,6 +219,11 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
 
     function setEscrow(address escrow, bool allowed) external onlyOwner {
         _setEscrow(escrow, allowed);
+    }
+
+    function setFileEscrow(address escrow, bool allowed) external onlyOwner {
+        allowedFileEscrow[escrow] = allowed;
+        emit FileEscrowSet(escrow, allowed);
     }
 
     function setApprover(address approver, bool allowed) external onlyOwner {
@@ -239,6 +285,21 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
         emit AgentMilestoneReleased(msg.sender, escrow, dealId, index, amount);
     }
 
+    /// @notice Approves delivered work on a FileEscrow deal the wallet is buying. The milestone's
+    ///         amount counts against the agent's caps now, because approving is what commits it to
+    ///         the seller (paid at once without a file, or once the key goes unchallenged).
+    function agentApproveFile(address escrow, uint256 dealId, uint256 index)
+        external
+        onlyAgent
+        whenNotPaused
+        nonReentrant
+    {
+        uint256 amount = _checkFileRelease(escrow, dealId, index);
+        _spend(msg.sender, amount);
+        FileEscrow(escrow).approve(dealId, index);
+        emit AgentFileApproved(msg.sender, escrow, dealId, index, amount);
+    }
+
     // ----------------------------------------------------------------------------------------
     // Tier 1: propose -> human approval
     // ----------------------------------------------------------------------------------------
@@ -254,25 +315,7 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
         if (!isActiveSession(msg.sender) && !isApprover[msg.sender] && msg.sender != owner()) revert NotAuthorized();
         if (threshold == 0) revert InvalidThreshold();
         _checkProposal(kind, target, amount, index, data);
-
-        id = _proposals.length;
-        _proposals.push(
-            Proposal({
-                kind: kind,
-                proposer: msg.sender,
-                target: target,
-                amount: amount,
-                index: index,
-                data: data,
-                reason: reason,
-                expiresAt: uint64(block.timestamp) + PROPOSAL_TTL,
-                approverEpoch: approverEpoch,
-                approvals: 0,
-                executed: false,
-                cancelled: false
-            })
-        );
-        emit ProposalCreated(id, msg.sender, kind, target, amount, reason);
+        id = _record(kind, target, amount, index, data, reason, bytes32(0));
     }
 
     function approve(uint256 id) external onlyApprover whenNotPaused nonReentrant {
@@ -294,6 +337,63 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
         if (msg.sender != p.proposer && !isApprover[msg.sender] && msg.sender != owner()) revert NotAuthorized();
         p.cancelled = true;
         emit ProposalCancelled(id, msg.sender);
+    }
+
+    // ----------------------------------------------------------------------------------------
+    // Owner mandates (EIP-712): approve by signature, no transaction from the owner
+    // ----------------------------------------------------------------------------------------
+
+    /// @notice Runs an action the owner signed off-chain, in one transaction anyone may send (the
+    ///         agent, typically). It passes the same checks as any proposal and is recorded as one,
+    ///         with its digest in `mandateHash`. It needs no approver votes: the owner can already do
+    ///         anything through `execute`, and a mandate is narrower than that.
+    function executeMandate(Mandate calldata m, bytes calldata signature)
+        external
+        whenNotPaused
+        nonReentrant
+        returns (uint256 id)
+    {
+        if (block.timestamp > m.deadline) revert MandateExpired();
+        bytes32 digest = mandateDigest(m);
+        if (mandateUsed[digest]) revert MandateAlreadyUsed();
+        // Checked against the CURRENT owner: a mandate signed by a previous owner is void.
+        if (!SignatureChecker.isValidSignatureNow(owner(), digest, signature)) revert InvalidMandate();
+        mandateUsed[digest] = true;
+
+        _checkProposal(m.kind, m.target, m.amount, m.index, m.data);
+        id = _record(m.kind, m.target, m.amount, m.index, m.data, "", digest);
+        Proposal storage p = _proposals[id];
+        p.executed = true;
+        _executeProposal(p);
+        emit MandateExecuted(digest, id);
+        emit ProposalExecuted(id);
+    }
+
+    /// @notice Voids a mandate the owner signed but no longer wants run (e.g. the signature leaked).
+    function revokeMandate(bytes32 digest) external onlyOwner {
+        mandateUsed[digest] = true;
+        emit MandateRevoked(digest);
+    }
+
+    /// @notice The EIP-712 digest the owner signs for `m`, bound to this wallet and chain.
+    function mandateDigest(Mandate calldata m) public view returns (bytes32) {
+        bytes32 domain = keccak256(
+            abi.encode(DOMAIN_TYPEHASH, keccak256("AgentWallet"), keccak256("1"), block.chainid, address(this))
+        );
+        bytes32 structHash = keccak256(
+            abi.encode(
+                MANDATE_TYPEHASH,
+                m.kind,
+                m.target,
+                m.amount,
+                m.index,
+                keccak256(m.data),
+                m.reasonHash,
+                m.nonce,
+                m.deadline
+            )
+        );
+        return MessageHashUtils.toTypedDataHash(domain, structHash);
     }
 
     // ----------------------------------------------------------------------------------------
@@ -393,9 +493,29 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
         } else if (kind == Kind.Call) {
             if (amount != 0 || index != 0) revert InvalidProposal();
             _checkCall(target, data);
-        } else {
+        } else if (kind == Kind.SetupDeal) {
             if (amount != 0 || index != 0) revert InvalidProposal();
             _decodeSetupDeal(target, data);
+        } else {
+            // `amount` must state the total the offer locks, so approvers and signers see it.
+            if (amount != _decodeFileOffer(target, data) || index != 0) revert InvalidProposal();
+        }
+    }
+
+    /// @dev SetupFileDeal = approve + FileEscrow.offerToBuy in one human-approved step, so the
+    ///      payment is locked the moment the offer is made. The seller must be allowlisted, the deal
+    ///      must settle in the wallet's token and the arbiter must not be on the buyer's side.
+    ///      Returns the total the offer locks.
+    function _decodeFileOffer(address escrow, bytes memory data) private view returns (uint256 total) {
+        if (!allowedFileEscrow[escrow]) revert FileEscrowNotAllowed(escrow);
+        if (data.length < 4 || bytes4(data) != FileEscrow.offerToBuy.selector) revert InvalidProposal();
+        (address seller, address arbiter, address dealToken, FileEscrow.MilestoneTerms[] memory terms,,) =
+            abi.decode(_args(data), (address, address, address, FileEscrow.MilestoneTerms[], uint64, string));
+        if (!allowedRecipient[seller]) revert RecipientNotAllowed(seller);
+        if (dealToken != address(token)) revert WrongToken();
+        _checkArbiter(arbiter);
+        for (uint256 i = 0; i < terms.length; i++) {
+            total += terms[i].amount;
         }
     }
 
@@ -420,7 +540,8 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
     }
 
     /// @dev Generic calls are limited to setting up escrow deals: token.approve(escrow, x),
-    ///      escrow.createDeal(allowlisted payee, ...), escrow.fund(id) and escrow.dispute(id, i).
+    ///      escrow.createDeal(allowlisted payee, ...), escrow.fund(id) and escrow.dispute(id, i),
+    ///      plus the buyer's side of a FileEscrow deal (see `_checkFileCall`).
     ///      Anything that moves funds out (transfer, release) must use its dedicated, checked path.
     function _checkCall(address target, bytes memory data) private view {
         if (data.length < 4) revert InvalidProposal();
@@ -428,7 +549,9 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
         if (target == address(token)) {
             if (selector != IERC20.approve.selector || data.length != 68) revert InvalidProposal();
             (address spender,) = abi.decode(_args(data), (address, uint256));
-            if (!allowedEscrow[spender]) revert EscrowNotAllowed(spender);
+            if (!allowedEscrow[spender] && !allowedFileEscrow[spender]) revert EscrowNotAllowed(spender);
+        } else if (allowedFileEscrow[target]) {
+            _checkFileCall(target, data);
         } else if (allowedEscrow[target]) {
             if (selector == MilestoneEscrow.createDeal.selector) {
                 (address payee, address arbiter, address dealToken,,) =
@@ -441,6 +564,41 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
             }
         } else {
             revert InvalidProposal();
+        }
+    }
+
+    /// @dev The buyer's moves on a FileEscrow deal this wallet is the buyer of: accept, approve,
+    ///      dispute, reclaim, cancel. accept locks the wallet's money and approve releases it, so
+    ///      both get the same seller/token checks as every other payment path; accept also agrees
+    ///      to the arbiter, so it must be neutral. The rest can only return money or stop a deal.
+    function _checkFileCall(address escrow, bytes memory data) private view {
+        bytes4 selector = bytes4(data);
+        bool locksOrPays = selector == FileEscrow.accept.selector || selector == FileEscrow.approve.selector;
+        bool dealOnly = selector == FileEscrow.accept.selector || selector == FileEscrow.cancel.selector;
+        bool dealAndIndex = selector == FileEscrow.approve.selector || selector == FileEscrow.dispute.selector
+            || selector == FileEscrow.reclaim.selector;
+        if (!(dealOnly && data.length == 36) && !(dealAndIndex && data.length == 68)) revert InvalidProposal();
+
+        FileEscrow.Deal memory d = _buyerDeal(escrow, abi.decode(_args(data), (uint256)), locksOrPays);
+        if (selector == FileEscrow.accept.selector) _checkArbiter(d.arbiter);
+    }
+
+    /// @dev Validates an approval the agent makes on its own: an allowlisted FileEscrow, a deal this
+    ///      wallet buys in its own token from an allowlisted seller. Returns the milestone amount.
+    function _checkFileRelease(address escrow, uint256 dealId, uint256 index) private view returns (uint256) {
+        if (!allowedFileEscrow[escrow]) revert FileEscrowNotAllowed(escrow);
+        _buyerDeal(escrow, dealId, true);
+        return FileEscrow(escrow).getMilestone(dealId, index).amount;
+    }
+
+    /// @dev Loads a FileEscrow deal this wallet is the buyer of. `paying` = the action locks or
+    ///      releases the wallet's money, so the token must be the wallet's and the seller allowlisted.
+    function _buyerDeal(address escrow, uint256 dealId, bool paying) private view returns (FileEscrow.Deal memory d) {
+        d = FileEscrow(escrow).getDeal(dealId);
+        if (d.buyer != address(this)) revert NotPayerOfDeal();
+        if (paying) {
+            if (address(d.token) != address(token)) revert WrongToken();
+            if (!allowedRecipient[d.seller]) revert RecipientNotAllowed(d.seller);
         }
     }
 
@@ -457,6 +615,36 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
         for (uint256 i = 0; i < args.length; i++) {
             args[i] = data[i + 4];
         }
+    }
+
+    function _record(
+        Kind kind,
+        address target,
+        uint256 amount,
+        uint256 index,
+        bytes calldata data,
+        string memory reason,
+        bytes32 mandateHash
+    ) private returns (uint256 id) {
+        id = _proposals.length;
+        _proposals.push(
+            Proposal({
+                kind: kind,
+                proposer: msg.sender,
+                target: target,
+                amount: amount,
+                index: index,
+                data: data,
+                reason: reason,
+                expiresAt: uint64(block.timestamp) + PROPOSAL_TTL,
+                approverEpoch: approverEpoch,
+                approvals: 0,
+                executed: false,
+                cancelled: false,
+                mandateHash: mandateHash
+            })
+        );
+        emit ProposalCreated(id, msg.sender, kind, target, amount, reason);
     }
 
     function _openProposal(uint256 id) private view returns (Proposal storage p) {
@@ -478,13 +666,20 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
         } else if (p.kind == Kind.Call) {
             _checkCall(p.target, p.data);
             Address.functionCall(p.target, p.data);
-        } else {
+        } else if (p.kind == Kind.SetupDeal) {
             (address payee, address arbiter, uint256[] memory amounts, string memory termsURI, uint256 total) =
                 _decodeSetupDeal(p.target, p.data);
             MilestoneEscrow escrow = MilestoneEscrow(p.target);
             token.forceApprove(address(escrow), total);
             uint256 dealId = escrow.createDeal(payee, arbiter, token, amounts, termsURI);
             escrow.fund(dealId);
+        } else {
+            // Re-check: the allowlists may have changed since the proposal was created.
+            uint256 total = _decodeFileOffer(p.target, p.data);
+            token.forceApprove(p.target, total);
+            Address.functionCall(p.target, p.data);
+            // offerToBuy pulls exactly `total`; clear any leftover so nothing stays approved.
+            token.forceApprove(p.target, 0);
         }
     }
 }

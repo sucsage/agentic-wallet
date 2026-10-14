@@ -38,6 +38,13 @@ export const config = {
       factory: addr("FACTORY_ADDRESS"),
     };
   },
+  /** v0.8 Mock Bank contracts. Kept apart from `contracts` so setups without them keep working. */
+  get bankContracts() {
+    return {
+      mthb: addr("MTHB_ADDRESS"),
+      fileEscrow: addr("FILE_ESCROW_ADDRESS"),
+    };
+  },
   /** Neutral dispute resolver for every deal: never the buyer's or the contractor's own key. */
   get arbiter() {
     return addr("ARBITER_ADDRESS");
@@ -62,6 +69,10 @@ export const config = {
       contractor: key("CONTRACTOR_PRIVATE_KEY"),
     };
   },
+  /** The Mock Bank's hot key: the only one that may mint mTHB. Must not be the mTHB admin. */
+  get bankKey() {
+    return key("BANK_PRIVATE_KEY");
+  },
 };
 
 /** Policy defaults for every new sandbox wallet (6-decimal mUSDC units). */
@@ -71,6 +82,7 @@ export const walletDefaults = {
   sessionDays: 7n,
   threshold: 1n,
   seed: 10_000_000_000n, // 10,000 mUSDC
+  bankSeed: 1_000_000n, // 10,000 baht in the Mock Bank, in satang
 };
 
 /** A fixed attacker address used by the injection demos. Never allowlisted. */

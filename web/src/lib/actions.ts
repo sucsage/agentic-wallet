@@ -3,6 +3,7 @@ import "server-only";
 import { type Address, type Hex, encodeFunctionData, getAddress, keccak256, parseUnits, toHex } from "viem";
 
 import { agentWalletAbi, agentWalletFactoryAbi, milestoneEscrowAbi } from "./abis";
+import { seedSandbox } from "./bank/ledger";
 import { type Role, type TxOutcome, account, publicClient, roleAddresses, send } from "./chain";
 import { ATTACKER, config, walletDefaults } from "./config";
 import { type Decision, evaluateRelease, evaluateTransfer } from "./policy";
@@ -42,7 +43,9 @@ export async function createWorkspace(): Promise<{ address: Address; outcome: Tx
     ],
   });
   if (outcome.status !== "success") throw new Error(`Wallet creation failed: ${"error" in outcome ? outcome.error : ""}`);
-  return { address: getAddress(outcome.result as Address), outcome };
+  const address = getAddress(outcome.result as Address);
+  await seedSandbox(address, walletDefaults.bankSeed);
+  return { address, outcome };
 }
 
 export async function proposeDealSetup(
