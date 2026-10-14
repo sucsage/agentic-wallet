@@ -4,7 +4,7 @@ import { config } from "@/lib/config";
 import { HttpError, errorResponse, rateLimit, requireCustomer } from "@/lib/guard";
 import { linkNewWallet } from "@/lib/user-wallets";
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 /**
  * Creates the signed-in customer's agent wallet. It settles in their bank's currency (mTHB or

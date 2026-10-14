@@ -5,7 +5,7 @@ import { agentWalletAbi } from "@/lib/abis";
 import { send } from "@/lib/chain";
 import { HttpError, errorResponse, rateLimit, requireBankWallet } from "@/lib/guard";
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 /**
  * Owner action: removes a payee from the allowlist. Adding goes through a friend

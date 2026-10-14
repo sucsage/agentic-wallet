@@ -334,7 +334,7 @@ function DraftCard({ draft, currency, onApprove }: { draft: DraftView; currency:
 
 export function LiveChat() {
   const lang = useLang();
-  const { me, wallet, drafts, refresh, status } = useAppData();
+  const { me, wallet, drafts, refresh, status, error: setupError } = useAppData();
   const [items, setItems] = useState<ChatItem[]>([]);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -418,8 +418,19 @@ export function LiveChat() {
               <h1>AI Chat</h1>
               <span className="aw-agent-online">
                 <i />
-                {status === "creating-wallet" ? "Setting up your agent wallet…" : address ? "Agent online" : "Loading…"}
+                {status === "creating-wallet"
+                  ? "Setting up your agent wallet (about 10 s)…"
+                  : address
+                    ? "Agent online"
+                    : status === "error"
+                      ? "Wallet setup failed"
+                      : "Loading…"}
               </span>
+              {status === "error" && !address && (
+                <Button variant="outline" onClick={() => void refresh()}>
+                  Retry setup
+                </Button>
+              )}
             </div>
             <span className="aw-policy-pill">Policy guard on</span>
           </header>
@@ -437,6 +448,7 @@ export function LiveChat() {
                 ))}
               </div>
             </article>
+            {status === "error" && setupError && <p className="aw-bank-error">{setupError}</p>}
             {items.map((item, idx) =>
               item.kind === "user" ? (
                 <div className="aw-ai-user-message" key={idx}>

@@ -6,7 +6,7 @@ import { account, publicClient, send } from "@/lib/chain";
 import { HttpError, errorResponse, rateLimit, requireBankWallet } from "@/lib/guard";
 import { walletUnits } from "@/lib/state";
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 /** Highest caps a user can set: the Mock Bank's own per-mint cap bounds a single deal anyway. */
 const MAX = { THB: { perTx: 10_000, perDay: 100_000 }, CNY: { perTx: 2_000, perDay: 20_000 } } as const;

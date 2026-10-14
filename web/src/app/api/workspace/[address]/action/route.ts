@@ -13,7 +13,7 @@ import {
 import { HttpError, userWallet, errorResponse, rateLimit } from "@/lib/guard";
 import { readDeals } from "@/lib/state";
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 const Body = z.discriminatedUnion("type", [
   z.object({ type: z.literal("approve"), id: z.number().int().min(0) }),

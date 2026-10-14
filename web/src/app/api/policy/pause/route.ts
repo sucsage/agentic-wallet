@@ -3,7 +3,7 @@ import { z } from "zod";
 import { pause, unpause } from "@/lib/actions";
 import { HttpError, errorResponse, rateLimit, requireBankWallet } from "@/lib/guard";
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 /** Emergency stop (Tier 3) or resume. Pausing blocks the agent and every proposal on-chain. */
 export async function POST(req: Request) {

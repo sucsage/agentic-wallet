@@ -70,7 +70,12 @@ export function AppDataProvider({ enabled, children }: { enabled: boolean; child
         creating.current = true;
         setMe(current);
         setStatus("creating-wallet");
-        await api("/api/workspace", { method: "POST" });
+        try {
+          await api("/api/workspace", { method: "POST" });
+        } finally {
+          // Allow "Retry setup" after a failure; on success the wallet now exists anyway.
+          creating.current = false;
+        }
         current = await api<Me>("/api/me");
       }
       setMe(current);

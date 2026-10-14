@@ -3,7 +3,7 @@ import { z } from "zod";
 import { HttpError, errorResponse, rateLimit, requireCustomer } from "@/lib/guard";
 import { SocialError, setFriendPayee } from "@/lib/social";
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 /**
  * Owner action (Tier 1, the user's click): lets the agent pay this friend's wallet, or stops it.

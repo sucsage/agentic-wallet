@@ -41,7 +41,8 @@ function rpcTransport() {
 }
 
 function makePublic() {
-  const base = createPublicClient({ chain: config.chain, transport: rpcTransport() });
+  // Receipts are polled every second: blocks come every 2 s on the private chain (viem waits 4 s by default).
+  const base = createPublicClient({ chain: config.chain, transport: rpcTransport(), pollingInterval: 1_000 });
   // Every contract read sees at least what this process already confirmed (see freshBlock), unless
   // the caller pinned a block itself. Without this, a page read right after a write can show the old state.
   return base.extend((c) => ({
