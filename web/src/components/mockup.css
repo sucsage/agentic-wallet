@@ -258,7 +258,7 @@
 .aw-agent-tier{min-height:39px;display:flex;align-items:center;gap:9px;margin:7px 0;padding:7px 10px;border-radius:10px;background:#1b1b1b}
 .aw-agent-tier i{padding:5px 9px;border-radius:16px;font-size:9px;font-style:normal;white-space:nowrap}
 .aw-agent-tier i.tier0{background:#0b3020;color:#14d875}.aw-agent-tier i.tier1{background:#36290b;color:#ffb000}.aw-agent-tier i.tier2{background:#102747;color:#408eff}.aw-agent-tier i.tier3{background:#351619;color:#ff4c52}
-.aw-agent-tier span{color:#999;font-size:10px;line-height:1.45}
+.aw-agent-tier span{color:#b8b8b8;font-size:10px;font-weight:500;line-height:1.45}
 .aw-ai-agent-panel hr{height:1px;margin:10px 0;border:0;background:#303030}
 .aw-ai-agent-panel>small{color:#777;font-size:10px}
 .aw-ai-limit{display:flex;justify-content:space-between;margin:16px 0;color:#999;font-size:11px}
@@ -816,13 +816,20 @@
 .aw-summary-ai>p{margin:8px 0;font-size:10px;line-height:1.55}
 .aw-summary-ai>div span{padding:3px 7px}
 
-.aw-ai-agent-panel .aw-agent-panel-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
-.aw-ai-agent-panel .aw-agent-panel-heading h2{margin:0}
+.aw-ai-agent-panel .aw-agent-panel-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:0}
+.aw-ai-agent-panel .aw-agent-panel-heading h2{margin:0 0 14px}
+.aw-ai-agent-panel{transition:transform .55s cubic-bezier(.22,.8,.24,1),width .55s cubic-bezier(.22,.8,.24,1)}
+.aw-agent-panel-slide{min-width:0;flex:1;max-height:720px;overflow:hidden;filter:blur(0);transition:max-height .55s cubic-bezier(.22,.8,.24,1),filter .55s cubic-bezier(.22,.8,.24,1)}
 .aw-agent-panel-heading>button{width:30px;height:30px;flex:none;display:grid;place-items:center;padding:0;border:1px solid #303030;border-radius:8px;background:#111;color:#aaa;cursor:pointer}
 .aw-agent-panel-heading>button:hover{background:#1b1b1b;color:#fff}
 .aw-agent-panel-heading>button svg{width:16px;height:16px;stroke:currentColor;stroke-width:1.5}
-.aw-agent-panel-content{max-height:720px;overflow:hidden;opacity:1;transition:max-height .42s ease,opacity .3s ease}
-.aw-ai-agent-panel.is-closed .aw-agent-panel-content{max-height:0;opacity:0}
+.aw-agent-panel-content{overflow:hidden}
+.aw-agent-panel-content>small{color:#b3b3b3;font-size:11px;font-weight:600}
+.aw-agent-panel-content .aw-ai-limit,.aw-agent-panel-content .aw-ai-recent{color:#b0b0b0}
+.aw-ai-agent-panel.is-closed{min-width:0;min-height:44px;height:44px;padding:0;border-color:transparent;background:transparent;transform:translate(16px,-12px)}
+.aw-ai-agent-panel.is-closed .aw-agent-panel-slide{max-height:0;filter:blur(4px)}
+@media(min-width:901px){.aw-ai-chat-layout{padding-left:clamp(18px,2.3vw,40px);padding-right:clamp(18px,2.3vw,40px);grid-template-columns:minmax(0,1fr) auto;gap:14px}.aw-ai-agent-panel{width:clamp(280px,28vw,380px)}.aw-ai-chat-layout.agent-panel-collapsed{grid-template-columns:minmax(0,1fr) auto}.aw-ai-chat-layout.agent-panel-collapsed .aw-ai-agent-panel{justify-self:end;width:44px;overflow:visible}.aw-ai-chat-layout.agent-panel-collapsed .aw-agent-panel-heading{justify-content:flex-end}.aw-ai-chat-layout.agent-panel-collapsed .aw-agent-panel-heading>button{background:#111;border-color:#303030}}
+@media(max-width:900px){.aw-ai-chat-layout.agent-panel-collapsed .aw-ai-agent-panel{justify-self:end;width:44px;overflow:visible}.aw-ai-chat-layout.agent-panel-collapsed .aw-agent-panel-heading{justify-content:flex-end}.aw-ai-chat-layout.agent-panel-collapsed .aw-ai-agent-panel.is-closed{margin-bottom:0}}
 .aw-summary-activity td:last-child.debit{color:#ff4b53}
 .aw-summary-activity td:last-child.credit{color:#00d574}
 .aw-summary-activity td:last-child small{font-size:9px}
