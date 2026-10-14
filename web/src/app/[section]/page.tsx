@@ -5,7 +5,7 @@ import type { ScreenName } from "@/components/mockup-ui";
 const screens: Record<string, ScreenName> = {
   approvals: "รออนุมัติ",
   summary: "กระเป๋",
-  friends: "เพื่อน",
+  contacts: "เพื่อน",
   groups: "กลุ่ม",
   policy: "นโยบาย & Allowlist",
   profile: "ความเป็นส่วนตัว",

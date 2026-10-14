@@ -16,7 +16,7 @@ type Route = "landing" | "login" | "bank-authorize" | `รายละเอี�
 const SECTION_PATHS: Partial<Record<ScreenName, string>> = {
   "รออนุมัติ": "/approvals",
   "กระเป๋": "/summary",
-  "เพื่อน": "/friends",
+  "เพื่อน": "/contacts",
   "กลุ่ม": "/groups",
   "นโยบาย & Allowlist": "/policy",
   "ความเป็นส่วนตัว": "/profile",

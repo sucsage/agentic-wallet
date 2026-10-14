@@ -807,6 +807,22 @@
 .aw-summary-activity td:nth-child(2) b{font-weight:700}
 .aw-summary-activity td:last-child{min-width:115px;text-align:right;font-weight:700}
 .aw-summary-activity th:last-child{text-align:right;min-width:115px}
+
+/* Slightly reduce the AI summary card while preserving its hierarchy. */
+.aw-summary-ai{padding:12px 14px}
+.aw-summary-ai-head>b{font-size:11px}
+.aw-summary-ai-head>b span{width:21px;height:21px}
+.aw-summary-ai-head>small,.aw-summary-ai>div span{font-size:7px}
+.aw-summary-ai>p{margin:8px 0;font-size:10px;line-height:1.55}
+.aw-summary-ai>div span{padding:3px 7px}
+
+.aw-ai-agent-panel .aw-agent-panel-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.aw-ai-agent-panel .aw-agent-panel-heading h2{margin:0}
+.aw-agent-panel-heading>button{width:30px;height:30px;flex:none;display:grid;place-items:center;padding:0;border:1px solid #303030;border-radius:8px;background:#111;color:#aaa;cursor:pointer}
+.aw-agent-panel-heading>button:hover{background:#1b1b1b;color:#fff}
+.aw-agent-panel-heading>button svg{width:16px;height:16px;stroke:currentColor;stroke-width:1.5}
+.aw-agent-panel-content{max-height:720px;overflow:hidden;opacity:1;transition:max-height .42s ease,opacity .3s ease}
+.aw-ai-agent-panel.is-closed .aw-agent-panel-content{max-height:0;opacity:0}
 .aw-summary-activity td:last-child.debit{color:#ff4b53}
 .aw-summary-activity td:last-child.credit{color:#00d574}
 .aw-summary-activity td:last-child small{font-size:9px}
