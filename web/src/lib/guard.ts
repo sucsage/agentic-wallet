@@ -49,6 +49,14 @@ export async function requireCustomer() {
   return { user, customer };
 }
 
+/** The signed-in customer's agent wallet (the one their bank account pays for). */
+export async function requireBankWallet() {
+  const { user, customer } = await requireCustomer();
+  const link = await db.userWallet.findFirst({ where: { userId: user.id }, orderBy: { createdAt: "asc" } });
+  if (!link) throw new HttpError(409, "Create your agent wallet first");
+  return { user, customer, wallet: await demoWallet(link.walletAddress) };
+}
+
 /** A sandbox wallet that belongs to the signed-in user (UserWallet row) and to this demo on-chain. */
 export async function userWallet(raw: string): Promise<Address> {
   const user = await requireUser();
