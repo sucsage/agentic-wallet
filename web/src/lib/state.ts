@@ -1,6 +1,6 @@
 import "server-only";
 
-import { type Abi, type Address, type Hex, decodeEventLog, decodeFunctionData, formatUnits, getAddress, pad, toHex } from "viem";
+import { type Abi, type Address, type Hex, decodeEventLog, decodeFunctionData, formatUnits, getAddress, pad, toHex, parseAbiItem } from "viem";
 
 import { agentWalletAbi, fileEscrowAbi, milestoneEscrowAbi, mockUSDCAbi } from "./abis";
 import { type Role, ROLE_LABEL, publicClient, roleAddresses } from "./chain";
@@ -414,6 +414,67 @@ export async function readAudit(wallet: Address, fromBlock: bigint, dealIds: num
   }
 }
 
+
+async function readAllowedRecipients(
+  wallet: Address,
+  createdAtBlock: bigint,
+) {
+  const pc = publicClient();
+  const contractor = roleAddresses().contractor;
+  const blockNumber = await pc.getBlockNumber();
+
+  const event = parseAbiItem(
+    "event RecipientSet(address indexed recipient, bool allowed)",
+  );
+
+  // Mapping ดึง keys ทั้งหมดไม่ได้ จึงรวบรวม address จาก events ก่อน
+  const candidates = new Map<string, Address>();
+  const chunkSize = 2_000n;
+
+  for (
+    let fromBlock = createdAtBlock;
+    fromBlock <= blockNumber;
+    fromBlock += chunkSize
+  ) {
+    const end = fromBlock + chunkSize - 1n;
+
+    const logs = await pc.getLogs({
+      address: wallet,
+      event,
+      fromBlock,
+      toBlock: end < blockNumber ? end : blockNumber,
+      strict: true,
+    });
+
+    for (const log of logs) {
+      const address = getAddress(log.args.recipient);
+      candidates.set(address.toLowerCase(), address);
+    }
+  }
+
+  // ตรวจสถานะจริง เพราะบางรายอาจถูกถอดออกภายหลัง
+  const checked = await Promise.all(
+    [...candidates.values()].map(async (address) => ({
+      address,
+      label:
+        address.toLowerCase() === contractor.toLowerCase()
+          ? "Contractor"
+          : address,
+      allowed: await pc.readContract({
+        address: wallet,
+        abi: agentWalletAbi,
+        functionName: "allowedRecipient",
+        args: [address],
+        blockNumber,
+      }),
+    })),
+  );
+
+  return checked
+    .filter((recipient) => recipient.allowed)
+    .map(({ address, label }) => ({ address, label }));
+}
+
 export async function readWallet(addressInput: string) {
   const wallet = getAddress(addressInput);
   const pc = publicClient();
@@ -424,7 +485,7 @@ export async function readWallet(addressInput: string) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     pc.readContract({ address: wallet, abi: agentWalletAbi, functionName, args } as any) as Promise<any>;
 
-  const [owner, paused, session, remaining, threshold, epoch, createdAtBlock, balance, ownerApproves, contractorOk, escrowOk] =
+  const [owner, paused, session, remaining, threshold, epoch, createdAtBlock, balance, ownerApproves, escrowOk] =
     await Promise.all([
       read("owner") as Promise<Address>,
       read("paused") as Promise<boolean>,
@@ -440,10 +501,10 @@ export async function readWallet(addressInput: string) {
         args: [wallet],
       }),
       read("isApprover", [roles.owner]) as Promise<boolean>,
-      read("allowedRecipient", [roles.contractor]) as Promise<boolean>,
       read("allowedEscrow", [config.contracts.escrow]) as Promise<boolean>,
     ]);
 
+  const recipients = await readAllowedRecipients(wallet,createdAtBlock);
   const [expiresAt, maxPerTx, dailyLimit] = session;
   const [deals, fileDeals] = await Promise.all([readDeals(wallet, units), readFileDeals(wallet, units)]);
   const proposals = (await readProposals(wallet, epoch, units)).map((p) => {
@@ -476,8 +537,10 @@ export async function readWallet(addressInput: string) {
     approvers: [{ role: "owner" as Role, address: roles.owner, active: ownerApproves }],
     threshold: Number(threshold),
     allowlist: {
-      recipients: contractorOk ? [{ address: roles.contractor, label: "Contractor" }] : [],
-      escrows: escrowOk ? [{ address: config.contracts.escrow, label: "MilestoneEscrow" }] : [],
+      recipients,
+      escrows: escrowOk 
+        ? [{ address: config.contracts.escrow, label: "MilestoneEscrow" }] 
+        : [],
     },
     roles,
     deals,
