@@ -1,10 +1,11 @@
-import { redirect } from "next/navigation";
+import type { Metadata } from "next";
+import { MockupApp } from "@/components/mockup-app";
 
-import { LoginPanel } from "@/components/login-panel";
-import { getSession } from "@/lib/auth";
+export const metadata: Metadata = {
+  title: "Log in · MilestonePay",
+  description: "Log in to MilestonePay with your bank.",
+};
 
-export default async function LoginPage() {
-  if (await getSession()) redirect("/profile");
-  // Google / Apple are gone; the Mock Bank sign-in screen (authClient.mockBank.*) replaces this panel.
-  return <LoginPanel providers={{ google: false, apple: false }} />;
+export default function LoginPage() {
+  return <MockupApp initialRoute="login" />;
 }
