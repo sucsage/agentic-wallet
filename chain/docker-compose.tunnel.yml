@@ -1,0 +1,9 @@
+# Chain server behind a tunnel (Tailscale Funnel, ngrok, Cloudflare Tunnel): for a home PC with no
+# public IP or domain. The tunnel provides HTTPS and the public URL; Caddy still demands X-Chain-Key.
+#   docker compose -f docker-compose.yml -f docker-compose.server.yml -f docker-compose.tunnel.yml up -d
+#   then point the tunnel at http://127.0.0.1:8080 (e.g. `tailscale funnel --bg 8080`).
+# chain/.env: CHAIN_DOMAIN=:8080 and CHAIN_API_KEY=<openssl rand -hex 32>.
+services:
+  gateway:
+    ports: !override
+      - "127.0.0.1:8080:8080"

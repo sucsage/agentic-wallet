@@ -89,6 +89,22 @@ Vercel (web + signing keys) ──HTTPS + X-Chain-Key──▶ Caddy gateway ─
    `BESU_RPC_URL=https://<CHAIN_DOMAIN> CHAIN_API_KEY=<key> bash scripts/deploy-besu.sh`, then
    `cd web && DB_SCHEMA=besu npx prisma db push`.
 
+**Chain server on a home PC (Windows, no domain, no public IP)** — use a tunnel instead of a domain:
+
+1. Install Docker Desktop (WSL 2) and Tailscale; in Windows power settings set sleep to *Never*,
+   and let Docker Desktop and Tailscale start at sign-in.
+2. Copy the `chain/` folder prepared by `setup-besu.sh --config-only`. In `chain/.env` set
+   `CHAIN_DOMAIN=:8080` and `CHAIN_API_KEY=<openssl rand -hex 32>`.
+3. In PowerShell, in `chain/`:
+   `docker compose -f docker-compose.yml -f docker-compose.server.yml -f docker-compose.tunnel.yml up -d`
+   (Caddy listens on 127.0.0.1:8080 only and still demands the key).
+4. `tailscale funnel --bg 8080` gives a fixed public URL `https://<pc>.<tailnet>.ts.net` with HTTPS.
+   Use it as `RPC_URL` in Vercel and as `BESU_RPC_URL` when deploying. (ngrok's free static domain
+   works the same way: `ngrok http --url=<name>.ngrok-free.app 8080`.)
+
+The chain is only up while the PC is: keep it powered and online during the review and the final,
+and keep the Base Sepolia deployment as a fallback.
+
 **Vercel env**: the values from `.secrets/besu.env`, plus `RPC_URL=https://<CHAIN_DOMAIN>`,
 `CHAIN_API_KEY=<key>`, `DB_SCHEMA=besu` and the usual keys, database and LLM settings.
 
