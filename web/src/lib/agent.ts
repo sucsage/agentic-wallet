@@ -550,3 +550,28 @@ export async function runAgent(
   }
   return { reply: "I stopped after too many steps. Please check the activity log.", steps };
 }
+
+/**
+ * Explains a money summary in a few sentences. The model gets only aggregated numbers and deal
+ * titles the user wrote: no names, account numbers or addresses (PDPA: minimum data to the LLM).
+ */
+export async function explainSummary(aggregates: unknown, lang: "en" | "th" = "en"): Promise<string> {
+  const { client, model } = llm();
+  const response = await client.beta.messages
+    .stream({
+      model,
+      max_tokens: 1200,
+      system:
+        "You are the CFO assistant of a small business using Agentic Wallet. Explain the given income and spending summary " +
+        "in 4-6 short bullet points: what went out, what came in, what stands out, and the tax estimate with its caveat. " +
+        "Use only the numbers given; never invent figures. Amounts are in the stated currency." +
+        (lang === "th" ? " Reply in Thai." : ""),
+      messages: [{ role: "user", content: JSON.stringify(aggregates) }],
+    })
+    .finalMessage();
+  return response.content
+    .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
+    .map((b) => b.text)
+    .join("\n")
+    .trim();
+}

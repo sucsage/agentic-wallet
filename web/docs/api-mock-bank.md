@@ -67,3 +67,69 @@ Every existing `/api/workspace/:address/...` route now also returns `token: { sy
 in the wallet state, and all amounts in it are already formatted for that token.
 
 `401` = not signed in → go to the bank login. `403` = signed in without a bank (old account) → sign in again.
+
+---
+
+# Deals, approvals, policy, social, summary
+
+All need the session cookie and an agent wallet (created by the first `/api/me` visit through the
+app shell, or `POST /api/workspace`). Amounts in these responses are **decimal strings in the bank's
+currency** (`"1000.00"` = ฿1,000.00), except `/api/summary`, which uses plain numbers.
+
+## Deals (FileEscrow, paid just in time from the bank)
+
+| method + path | what |
+|---|---|
+| `GET /api/deals` | `{ deals: [{ id, role: "buyer"\|"seller", counterparty, counterpartyLabel, title, total, status: "Proposed"\|"Active"\|"Cancelled", reviewHours, milestones: [{ index, amount, hasFile, status, deadline }] }], drafts: [open drafts] }` |
+| `GET /api/deals/:id` | the deal plus `title, summary, demoSeller, canCancel`, and per milestone `name, acceptance, moves: ["approve"\|"dispute"\|"reclaim"]`, `deliverable` (demo file text + sha256 once the key is out) |
+| `POST /api/deals/:id/action` | body `{ action: "approve"\|"dispute"\|"reclaim"\|"cancel", index }` → `{ tier: 1\|2, outcome }`. Approve uses the agent alone within its caps (Tier 2), else the owner's mandate (Tier 1) |
+
+Milestone status: `Pending → Delivered → Approved → KeyReleased → Released`, or `Disputed` / `Refunded`.
+`deadline` (unix seconds) ends the current window: the buyer's review while `Delivered`, the challenge
+window while `KeyReleased`. The **demo contractor** (the only seller for now) accepts, delivers, releases
+the key and claims by itself; payouts and refunds settle to the bank automatically. Poll `GET /api/deals/:id`
+every few seconds to see it move.
+
+Drafts: `GET /api/workspace/:address/drafts`, approve with `POST /api/workspace/:address/drafts/:id/approve`
+(the chat's "Approve & lock").
+
+## Approvals
+
+`GET /api/approvals` → `{ count, drafts: [...], reviews: [{ dealId, title, index, amount, reviewUntil, tier }], groupVotes: [{ proposalId, group, title, yes }], proposals: [...] }` — use `count` for the sidebar badge.
+
+## Policy
+
+| method + path | what |
+|---|---|
+| `GET /api/policy` | `{ wallet, explorer, token, paused, threshold, session: { maxPerTx, dailyLimit, remainingToday, expiresAt, active }, recipients: [{ address, label, friendshipId, allowed }], escrows: { milestone, file }, tiers }` |
+| `PUT /api/policy/limits` | body `{ maxPerTx, dailyLimit }` in the currency (max ฿10,000 / ฿100,000; ¥2,000 / ¥20,000) |
+| `POST /api/policy/pause` | body `{ paused: true\|false, reason? }` — Tier 3 emergency stop / resume |
+| `DELETE /api/policy/recipients` | body `{ address }` — remove a payee |
+
+## Friends (same bank only)
+
+| method + path | what |
+|---|---|
+| `GET /api/friends` | `{ friends: [{ friendshipId, userId, name, username, status: "PENDING"\|"ACCEPTED", direction: "incoming"\|"outgoing"\|"mutual", wallet, allowlisted }] }` |
+| `POST /api/friends` | body `{ username }` — request (asking someone who asked you accepts) |
+| `POST /api/friends/:friendshipId` | accept an incoming request |
+| `DELETE /api/friends/:friendshipId` | decline / unfriend |
+| `PUT /api/friends/:friendshipId/payee` | body `{ allowed }` — let the agent pay this friend (on-chain, Tier 1). Being friends alone never does this |
+
+## Groups (shared decisions, no pooled money)
+
+| method + path | what |
+|---|---|
+| `GET /api/groups` | `{ groups: [{ id, name, currency, threshold, members: [{ userId, name, role }], openProposals }] }` |
+| `POST /api/groups` | body `{ name, memberIds: [friend userIds], threshold }` (N of M, creator included) |
+| `GET /api/groups/:id` | group + `proposals: [{ id, title, milestones, status: "OPEN"\|"EXECUTED"\|"REJECTED"\|"FAILED", yes, no, myVote, dealId }]` |
+| `POST /api/groups/:id/proposals` | body `{ draftId }` — put one of your drafts to the vote (your yes counts) |
+| `POST /api/groups/proposals/:proposalId/vote` | body `{ approve }` — the vote reaching the threshold locks the deal from the proposer's bank |
+
+## Summary (CFO)
+
+| method + path | what |
+|---|---|
+| `GET /api/summary?from=2026-01-01&to=2027-01-01` | `{ currency, totals: { income, spent, refunds, net, openingDeposits }, months: [...], deals: [{ title, spent, refunded }], tax: { kind, year, income, taxable, tax, vatWarning, notes } \| null }` (Thai tax; null for CNY) |
+| `POST /api/summary/ai` | body `{ lang: "en"\|"th" }` → `{ summary: "markdown bullets", numbers }`. The AI sees aggregates only |
+| `GET /api/summary/export` | CSV download (Excel / Sheets) |

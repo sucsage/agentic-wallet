@@ -35,7 +35,15 @@ export const ROLE_LABEL: Record<Role, string> = {
 
 let _public: ReturnType<typeof makePublic> | undefined;
 function makePublic() {
-  return createPublicClient({ chain: config.chain, transport: http(config.rpcUrl) });
+  const base = createPublicClient({ chain: config.chain, transport: http(config.rpcUrl) });
+  // Every contract read sees at least what this process already confirmed (see freshBlock), unless
+  // the caller pinned a block itself. Without this, a page read right after a write can show the old state.
+  return base.extend((c) => ({
+    readContract: ((args: Parameters<typeof c.readContract>[0]) =>
+      args.blockNumber !== undefined || args.blockTag !== undefined
+        ? c.readContract(args)
+        : atFreshBlock((blockNumber) => c.readContract({ ...args, blockNumber }))) as typeof c.readContract,
+  })) as unknown as typeof base;
 }
 export function publicClient() {
   return (_public ??= makePublic());
@@ -97,11 +105,17 @@ function isContractRevert(err: unknown): boolean {
 let confirmedBlock = 0n;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** A block number no older than any transaction this process has confirmed. */
+let lastFresh: { n: bigint; at: number } | null = null;
+
+/** A block number no older than any transaction this process has confirmed (reused for 1 s). */
 export async function freshBlock(): Promise<bigint> {
+  if (lastFresh && lastFresh.n >= confirmedBlock && Date.now() - lastFresh.at < 1000) return lastFresh.n;
   for (let i = 0; i < 20; i++) {
     const n = await publicClient().getBlockNumber({ cacheTime: 0 });
-    if (n >= confirmedBlock) return n;
+    if (n >= confirmedBlock) {
+      lastFresh = { n, at: Date.now() };
+      return n;
+    }
     await sleep(500);
   }
   return confirmedBlock;

@@ -20,12 +20,15 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  sessions     Session[]
-  accounts     Account[]
-  profile      Profile?
-  wallets      UserWallet[]
-  bankCustomer BankCustomer?
-  dealDrafts   DealDraft[]
+  sessions        Session[]
+  accounts        Account[]
+  profile         Profile?
+  wallets         UserWallet[]
+  bankCustomer    BankCustomer?
+  dealDrafts      DealDraft[]
+  friendsAsked    Friendship[]  @relation("friendRequester")
+  friendsReceived Friendship[]  @relation("friendAddressee")
+  groups          GroupMember[]
 }
 
 model Session {
@@ -344,4 +347,91 @@ model DealDraft {
   updatedAt     DateTime        @updatedAt
 
   @@index([userId, walletAddress])
+}
+
+// ---------------------------------------------------------------------------------------------
+// Social: friends and groups. Being friends never allowlists anyone: adding a friend as a payee
+// is a separate owner action. A group deal needs `threshold` member votes before the proposer's
+// own bank account is debited, so a group shares decisions, not a pot of idle money.
+// ---------------------------------------------------------------------------------------------
+
+enum FriendshipStatus {
+  PENDING
+  ACCEPTED
+}
+
+model Friendship {
+  id          String           @id @default(cuid())
+  requesterId String
+  addresseeId String
+  requester   User             @relation("friendRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  addressee   User             @relation("friendAddressee", fields: [addresseeId], references: [id], onDelete: Cascade)
+  status      FriendshipStatus @default(PENDING)
+  createdAt   DateTime         @default(now())
+  acceptedAt  DateTime?
+
+  @@unique([requesterId, addresseeId])
+  @@index([addresseeId])
+}
+
+enum GroupRole {
+  ADMIN
+  MEMBER
+}
+
+model Group {
+  id          String   @id @default(cuid())
+  name        String
+  currency    Currency
+  createdById String
+  /// Member votes a group deal needs before it is locked (N of M).
+  threshold   Int
+  createdAt   DateTime @default(now())
+
+  members   GroupMember[]
+  proposals GroupProposal[]
+}
+
+model GroupMember {
+  groupId  String
+  userId   String
+  group    Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role     GroupRole @default(MEMBER)
+  joinedAt DateTime  @default(now())
+
+  @@id([groupId, userId])
+  @@index([userId])
+}
+
+enum GroupProposalStatus {
+  OPEN
+  REJECTED
+  EXECUTED
+  FAILED
+}
+
+model GroupProposal {
+  id         String              @id @default(cuid())
+  groupId    String
+  group      Group               @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  proposerId String
+  /// The proposer's bank-deal draft; it is locked from the proposer's account once approved.
+  draftId    String              @unique
+  status     GroupProposalStatus @default(OPEN)
+  createdAt  DateTime            @default(now())
+
+  votes GroupVote[]
+
+  @@index([groupId])
+}
+
+model GroupVote {
+  proposalId String
+  userId     String
+  proposal   GroupProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  approve    Boolean
+  createdAt  DateTime      @default(now())
+
+  @@id([proposalId, userId])
 }
