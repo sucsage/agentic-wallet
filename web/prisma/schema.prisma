@@ -244,6 +244,8 @@ model BankCustomer {
   user        User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
   /// When the customer last agreed to let the app use the linked accounts.
   consentedAt DateTime?
+  /// Reviewer access to the chain explorer (/admin/chain). Set only by scripts/make-admin.mts.
+  isAdmin     Boolean          @default(false)
   createdAt   DateTime         @default(now())
 
   accounts BankAccount[]

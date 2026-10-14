@@ -24,6 +24,13 @@ export default defineConfig({
       chainType: "l1",
       url: "http://127.0.0.1:8545",
     },
+    // Private Besu chain (../chain): reachable on loopback only, gas is free.
+    besu: {
+      type: "http",
+      chainType: "l1",
+      url: "http://127.0.0.1:8555",
+      accounts: [configVariable("DEPLOYER_PRIVATE_KEY")],
+    },
     baseSepolia: {
       type: "http",
       chainType: "op",

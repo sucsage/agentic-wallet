@@ -9,6 +9,9 @@ export default defineConfig({
   schema: "prisma/schema.prisma",
   datasource: {
     // Schema changes go over the direct (non-pooled) Neon connection.
-    url: env("DIRECT_URL"),
+    // DB_SCHEMA (e.g. "besu") pushes the schema into that Postgres schema instead of "public".
+    url: process.env.DB_SCHEMA
+      ? `${env("DIRECT_URL")}${env("DIRECT_URL").includes("?") ? "&" : "?"}schema=${process.env.DB_SCHEMA}`
+      : env("DIRECT_URL"),
   },
 });

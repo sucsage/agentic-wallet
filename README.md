@@ -65,6 +65,33 @@ The chat agent needs one LLM provider: `LLM_BASE_URL` + `LLM_API_KEY` (any Anthr
 2. `./scripts/deploy-base-sepolia.sh`: deploys contracts, funds the other role keys, writes `.secrets/vercel.env`.
 3. Import the repo in Vercel with root directory `web/`, then paste `.secrets/vercel.env` plus the LLM variables (`LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`).
 
+## Private chain (Hyperledger Besu) — closed system with an admin explorer
+
+The app can run on its own permissioned chain instead of a public testnet: QBFT, chain id 20261020,
+free gas, **RPC on 127.0.0.1 only** (the web server is its only client) and an **account allowlist**
+so only the server's keys can send transactions. Reviewers verify transaction hashes in the app's
+admin explorer at `/admin/chain` (admins only). App data lives in the `besu` Postgres schema, apart
+from the Base Sepolia data in `public`.
+
+On a new machine (needs Docker, Node 22, `.secrets/base-sepolia.env` and `web/.env.local` with the
+database and LLM settings, copied over privately — they are not in git):
+
+```bash
+colima start --cpu 2 --memory 3          # or Docker Desktop
+cd contracts && npm ci && cd ../web && npm ci && cd ..
+bash scripts/setup-besu.sh               # genesis + validator key, start chain, deploy, db push
+```
+
+Then merge `.secrets/besu.env` into `web/.env.local` and add `DB_SCHEMA=besu`, start the app
+(`cd web && npm run dev`), sign up in the app, and grant yourself the explorer:
+
+```bash
+cd web && npx tsx --conditions=react-server --env-file=.env.local scripts/make-admin.mts thai <username>
+```
+
+Stop the chain with `cd chain && docker compose down` (keeps its data; `down -v` wipes it). To go back
+to Base Sepolia, restore the Base Sepolia values in `web/.env.local` and remove `DB_SCHEMA`.
+
 ## Contracts
 
 ```bash

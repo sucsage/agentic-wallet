@@ -49,6 +49,13 @@ export async function requireCustomer() {
   return { user, customer };
 }
 
+/** A reviewer: a bank customer flagged isAdmin (only scripts/make-admin.mts sets it). */
+export async function requireAdmin() {
+  const { user, customer } = await requireCustomer();
+  if (!customer.isAdmin) throw new HttpError(403, "Admins only");
+  return { user, customer };
+}
+
 /** The signed-in customer's agent wallet (the one their bank account pays for). */
 export async function requireBankWallet() {
   const { user, customer } = await requireCustomer();
