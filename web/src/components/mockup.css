@@ -1442,3 +1442,13 @@
 .aw-ai-markdown code{padding:1px 4px;border-radius:4px;background:#ffffff14;font-size:.92em}
 .aw-ai-markdown table{border-collapse:collapse;margin:4px 0}
 .aw-ai-markdown th,.aw-ai-markdown td{padding:3px 8px;border:1px solid #333}
+.aw-live-ok{margin:8px 0;color:#36d399;font-size:11px}
+.aw-approval-empty{margin:4px 0 10px;color:#777;font-size:11px}
+.aw-group-card{cursor:pointer}
+.aw-gw-proposal{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:8px 0;padding:12px;border:1px solid #2a2a2a;border-radius:10px}
+.aw-gw-proposal>div:first-child{display:flex;flex-direction:column;gap:4px}
+.aw-gw-actions{display:flex;gap:8px}
+.aw-group-wallet-votes select{width:100%;height:34px;margin:8px 0;border:1px solid #333;border-radius:8px;background:#151515;color:#eee}
+.aw-create-field{display:flex;flex-direction:column;gap:6px;margin:8px 0}
+.aw-create-field input{height:34px;padding:0 10px;border:1px solid #333;border-radius:8px;background:#151515;color:#eee}
+.aw-invite-friend-list{display:grid;gap:6px;margin:6px 0 10px}

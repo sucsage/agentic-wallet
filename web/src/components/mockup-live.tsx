@@ -9,7 +9,7 @@ import type { DraftView } from "@/lib/bank/drafts";
 import { authClient } from "@/lib/auth-client";
 import { localizeMockupNode, useLang } from "@/lib/i18n";
 
-import { type AccountView, api, lockedInDeals, money, tokenMoney, useAppData } from "./app-data";
+import { type AccountView, api, download, lockedInDeals, money, tokenMoney, useAppData } from "./app-data";
 import { Button, Card, PageTitle } from "./mockup-ui";
 import type { BankChoice } from "./mockup-screens";
 
@@ -723,7 +723,14 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
                 </tr>
               )}
               {visible.map((r) => (
-                <tr key={r.key}>
+                <tr
+                  key={r.key}
+                  tabIndex={r.id.startsWith("D-") ? 0 : -1}
+                  onClick={() => r.id.startsWith("D-") && go(`รายละเอียดดีล ${r.id}`)}
+                  onKeyDown={(e) => {
+                    if ((e.key === "Enter" || e.key === " ") && r.id.startsWith("D-")) go(`รายละเอียดดีล ${r.id}`);
+                  }}
+                >
                   <td>
                     <span className="aw-deal-id">{r.id}</span>
                     <span className="aw-deal-name">
@@ -848,7 +855,7 @@ export function LivePrivacy() {
             <h2>Your data</h2>
             <p>On-chain we store only hashes of the deal terms. Names, titles and chat stay in our database, which you can export or delete.</p>
             <div>
-              <Button variant="outline" onClick={() => (window.location.href = "/api/me/export")}>
+              <Button variant="outline" onClick={() => download("/api/me/export")}>
                 Download my data (JSON)
               </Button>
             </div>

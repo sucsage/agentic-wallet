@@ -36,6 +36,8 @@ type AppData = {
   me: Me | null;
   wallet: WalletState | null;
   drafts: DraftView[];
+  /** Sidebar counts: things waiting for the user's approval, incoming friend requests. */
+  badges: { approvals: number; friends: number };
   refresh: () => Promise<void>;
 };
 
@@ -58,6 +60,7 @@ export function AppDataProvider({ enabled, children }: { enabled: boolean; child
   const [me, setMe] = useState<Me | null>(null);
   const [wallet, setWallet] = useState<WalletState | null>(null);
   const [drafts, setDrafts] = useState<DraftView[]>([]);
+  const [badges, setBadges] = useState({ approvals: 0, friends: 0 });
   const creating = useRef(false);
 
   const refresh = useCallback(async () => {
@@ -79,6 +82,11 @@ export function AppDataProvider({ enabled, children }: { enabled: boolean; child
         ]);
         setWallet(state);
         setDrafts(d.drafts);
+        const [approvals, friends] = await Promise.all([
+          api<{ count: number }>("/api/approvals").catch(() => ({ count: 0 })),
+          api<{ friends: { direction: string }[] }>("/api/friends").catch(() => ({ friends: [] })),
+        ]);
+        setBadges({ approvals: approvals.count, friends: friends.friends.filter((f) => f.direction === "incoming").length });
       }
       setError(null);
       setStatus("ready");
@@ -98,12 +106,12 @@ export function AppDataProvider({ enabled, children }: { enabled: boolean; child
     if (enabled) void refresh();
   }, [enabled, refresh]);
 
-  return <Ctx.Provider value={{ status, error, me, wallet, drafts, refresh }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ status, error, me, wallet, drafts, badges, refresh }}>{children}</Ctx.Provider>;
 }
 
 export function useAppData(): AppData {
   const v = useContext(Ctx);
-  if (!v) return { status: "signed-out", error: null, me: null, wallet: null, drafts: [], refresh: async () => {} };
+  if (!v) return { status: "signed-out", error: null, me: null, wallet: null, drafts: [], badges: { approvals: 0, friends: 0 }, refresh: async () => {} };
   return v;
 }
 
@@ -130,4 +138,12 @@ export function lockedInDeals(wallet: WalletState | null): number {
     .flatMap((d) => d.milestones)
     .filter((m) => !["Released", "Refunded"].includes(m.status))
     .reduce((t, m) => t + Number(m.amount), 0);
+}
+
+/** Downloads an API file response (CSV, JSON export) without leaving the page. */
+export function download(url: string) {
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "";
+  a.click();
 }
