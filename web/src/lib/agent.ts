@@ -11,6 +11,7 @@ import {
   releaseMilestone,
   transfer,
 } from "./actions";
+import { friendLabels } from "./social";
 import { DraftError, type DraftView, createDraft, draftView } from "./bank/drafts";
 import { type WalletState, readWallet, walletUnits } from "./state";
 
@@ -280,10 +281,10 @@ function dealsSummary(s: WalletState) {
         status: m.status,
         evidence: m.evidence
           ? {
-              title: m.evidence.title,
-              hash: m.evidenceHash,
-              text_untrusted: m.evidence.text?.slice(0, 4000),
-            }
+            title: m.evidence.title,
+            hash: m.evidenceHash,
+            text_untrusted: m.evidence.text?.slice(0, 4000),
+          }
           : null,
       })),
     })),
@@ -338,8 +339,30 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
   const input = parsed.data as Record<string, unknown>;
   switch (name) {
     case "get_wallet_status": {
-      const s = await readWallet(wallet);
-      return { tool: name, input, summary: JSON.stringify(walletSummary(s)) };
+      const [state, labels] = await Promise.all([
+        readWallet(wallet),
+        userId
+          ? friendLabels(userId)
+          : Promise.resolve(new Map<string, string>()),
+      ]);
+
+      const summary = walletSummary(state);
+
+      return {
+        tool: name,
+        input,
+        summary: JSON.stringify({
+          ...summary,
+          allowlisted_recipients: summary.allowlisted_recipients.map(
+            (recipient) => ({
+              ...recipient,
+              label:
+                labels.get(recipient.address.toLowerCase()) ??
+                recipient.label,
+            }),
+          ),
+        }),
+      };
     }
     case "list_deals": {
       const s = await readWallet(wallet);
@@ -467,15 +490,15 @@ export async function runAgent(
     userContent.push(
       attachment.kind === "pdf"
         ? {
-            type: "document",
-            title: attachment.name,
-            source: { type: "base64", media_type: "application/pdf", data: attachment.base64 },
-          }
+          type: "document",
+          title: attachment.name,
+          source: { type: "base64", media_type: "application/pdf", data: attachment.base64 },
+        }
         : {
-            type: "document",
-            title: attachment.name,
-            source: { type: "text", media_type: "text/plain", data: attachment.text },
-          },
+          type: "document",
+          title: attachment.name,
+          source: { type: "text", media_type: "text/plain", data: attachment.text },
+        },
     );
     userContent.push({
       type: "text",
