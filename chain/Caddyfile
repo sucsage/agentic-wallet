@@ -1,0 +1,14 @@
+# Gateway to the private chain's JSON-RPC. Only POSTs carrying the shared key get through.
+{$CHAIN_DOMAIN} {
+	request_body {
+		max_size 1MB
+	}
+	@allowed {
+		method POST
+		header X-Chain-Key {$CHAIN_API_KEY}
+	}
+	handle @allowed {
+		reverse_proxy validator1:8545
+	}
+	respond "Forbidden" 403
+}

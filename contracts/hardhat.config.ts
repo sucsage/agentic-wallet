@@ -24,11 +24,13 @@ export default defineConfig({
       chainType: "l1",
       url: "http://127.0.0.1:8545",
     },
-    // Private Besu chain (../chain): reachable on loopback only, gas is free.
+    // Private Besu chain (../chain), gas is free. Local: loopback RPC. Chain server: its HTTPS
+    // gateway in BESU_RPC_URL, which needs the shared key in CHAIN_API_KEY.
     besu: {
       type: "http",
       chainType: "l1",
-      url: "http://127.0.0.1:8555",
+      url: process.env.BESU_RPC_URL ?? "http://127.0.0.1:8555",
+      httpHeaders: process.env.CHAIN_API_KEY ? { "x-chain-key": process.env.CHAIN_API_KEY } : {},
       accounts: [configVariable("DEPLOYER_PRIVATE_KEY")],
     },
     baseSepolia: {

@@ -34,8 +34,14 @@ export const ROLE_LABEL: Record<Role, string> = {
 };
 
 let _public: ReturnType<typeof makePublic> | undefined;
+/** HTTP transport to the chain, with the gateway key when the chain sits behind one. */
+function rpcTransport() {
+  const headers = config.rpcHeaders;
+  return http(config.rpcUrl, headers ? { fetchOptions: { headers } } : undefined);
+}
+
 function makePublic() {
-  const base = createPublicClient({ chain: config.chain, transport: http(config.rpcUrl) });
+  const base = createPublicClient({ chain: config.chain, transport: rpcTransport() });
   // Every contract read sees at least what this process already confirmed (see freshBlock), unless
   // the caller pinned a block itself. Without this, a page read right after a write can show the old state.
   return base.extend((c) => ({
@@ -68,7 +74,7 @@ export function roleAddresses(): Record<Exclude<Role, "bank">, Address> {
 }
 
 function walletClient(role: Role) {
-  return createWalletClient({ account: account(role), chain: config.chain, transport: http(config.rpcUrl) });
+  return createWalletClient({ account: account(role), chain: config.chain, transport: rpcTransport() });
 }
 
 // One in-flight transaction per role per server instance, so nonces don't collide.

@@ -41,6 +41,14 @@ export const config = {
     if (!c) throw new Error(`Unsupported CHAIN ${process.env.CHAIN}`);
     return c;
   },
+  /**
+   * Headers for every RPC request. CHAIN_API_KEY is the shared secret the private chain's gateway
+   * (chain/Caddyfile) requires, since Vercel has no fixed IP to allowlist.
+   */
+  get rpcHeaders(): Record<string, string> | undefined {
+    const key = process.env.CHAIN_API_KEY;
+    return key ? { "x-chain-key": key } : undefined;
+  },
   get rpcUrl() {
     return process.env.RPC_URL ?? "http://127.0.0.1:8545";
   },

@@ -6,6 +6,9 @@
 #   3. deploys the contracts and writes .secrets/besu.env;
 #   4. pushes the database schema into the "besu" Postgres schema.
 # Then copy .secrets/besu.env into web/.env.local and add DB_SCHEMA=besu (see README).
+#
+# --config-only: only step 1, for a separate chain server. Copy the chain/ folder to the server and
+# start it there in server mode (see README); then deploy from here through its gateway.
 # Needs: Docker (e.g. colima start), Node, .secrets/base-sepolia.env, web/.env.local with DATABASE_URL/DIRECT_URL.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -44,6 +47,11 @@ PY
     --config-file=/cfg/qbft-config.json --to=/cfg/network --private-key-file-name=key
   V=$(ls chain/network/keys)
   sed "s#__VALIDATOR__#$V#" chain/docker-compose.template.yml > chain/docker-compose.yml
+fi
+
+if [ "${1:-}" = "--config-only" ]; then
+  echo "chain/ is ready. Copy it to the chain server (it holds the validator key, no account keys)."
+  exit 0
 fi
 
 (cd chain && docker compose up -d)

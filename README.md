@@ -68,29 +68,36 @@ The chat agent needs one LLM provider: `LLM_BASE_URL` + `LLM_API_KEY` (any Anthr
 ## Private chain (Hyperledger Besu) — closed system with an admin explorer
 
 The app can run on its own permissioned chain instead of a public testnet: QBFT, chain id 20261020,
-free gas, **RPC on 127.0.0.1 only** (the web server is its only client) and an **account allowlist**
-so only the server's keys can send transactions. Reviewers verify transaction hashes in the app's
-admin explorer at `/admin/chain` (admins only). App data lives in the `besu` Postgres schema, apart
-from the Base Sepolia data in `public`.
+free gas, and an **account allowlist** so only the app's keys can send transactions. There is no
+public explorer: reviewers verify transaction hashes in the app at `/admin/chain` (admins only).
+App data for this chain lives in the `besu` Postgres schema (`DB_SCHEMA=besu`), apart from the
+Base Sepolia data in `public`.
 
-On a new machine (needs Docker, Node 22, `.secrets/base-sepolia.env` and `web/.env.local` with the
-database and LLM settings, copied over privately — they are not in git):
-
-```bash
-colima start --cpu 2 --memory 3          # or Docker Desktop
-cd contracts && npm ci && cd ../web && npm ci && cd ..
-bash scripts/setup-besu.sh               # genesis + validator key, start chain, deploy, db push
+```
+Vercel (web + signing keys) ──HTTPS + X-Chain-Key──▶ Caddy gateway ──▶ Besu      (chain server)
 ```
 
-Then merge `.secrets/besu.env` into `web/.env.local` and add `DB_SCHEMA=besu`, start the app
-(`cd web && npm run dev`), sign up in the app, and grant yourself the explorer:
+**Chain server** (any VPS with Docker; it never holds account keys, only the validator key):
 
-```bash
-cd web && npx tsx --conditions=react-server --env-file=.env.local scripts/make-admin.mts thai <username>
-```
+1. On a dev machine with `.secrets/base-sepolia.env`: `bash scripts/setup-besu.sh --config-only`
+   (writes genesis, validator key and allowlist into `chain/`).
+2. Copy the `chain/` folder to the server. Point a DNS name at the server, open ports 80/443,
+   copy `chain/.env.example` to `chain/.env`, set `CHAIN_DOMAIN` and `CHAIN_API_KEY` (`openssl rand -hex 32`).
+3. On the server: `cd chain && docker compose -f docker-compose.yml -f docker-compose.server.yml up -d`.
+   Besu publishes no port; Caddy serves HTTPS and rejects every request without the key (403).
+4. From the dev machine, deploy through the gateway:
+   `BESU_RPC_URL=https://<CHAIN_DOMAIN> CHAIN_API_KEY=<key> bash scripts/deploy-besu.sh`, then
+   `cd web && DB_SCHEMA=besu npx prisma db push`.
 
-Stop the chain with `cd chain && docker compose down` (keeps its data; `down -v` wipes it). To go back
-to Base Sepolia, restore the Base Sepolia values in `web/.env.local` and remove `DB_SCHEMA`.
+**Vercel env**: the values from `.secrets/besu.env`, plus `RPC_URL=https://<CHAIN_DOMAIN>`,
+`CHAIN_API_KEY=<key>`, `DB_SCHEMA=besu` and the usual keys, database and LLM settings.
+
+**Admins**: after a reviewer signs up in the app,
+`cd web && npx tsx --conditions=react-server --env-file=.env.local scripts/make-admin.mts thai <username>`.
+
+**All on one machine** (development): `bash scripts/setup-besu.sh` starts the chain with its RPC on
+127.0.0.1:8555, deploys and pushes the schema; merge `.secrets/besu.env` into `web/.env.local` and
+add `DB_SCHEMA=besu`. Stop with `cd chain && docker compose down` (`down -v` wipes the chain).
 
 ## Contracts
 

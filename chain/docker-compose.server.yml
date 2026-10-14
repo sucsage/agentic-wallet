@@ -1,0 +1,24 @@
+# Chain server mode: the web app runs on Vercel, the chain runs here.
+#   docker compose -f docker-compose.yml -f docker-compose.server.yml up -d
+# Besu publishes no port at all; Caddy is the only way in: HTTPS (automatic certificate for
+# CHAIN_DOMAIN) and a shared secret header (CHAIN_API_KEY) on every request, because Vercel has
+# no fixed IP to allowlist. Besu still accepts transactions only from the server's keys.
+# Set CHAIN_DOMAIN and CHAIN_API_KEY in chain/.env (see .env.example). Open ports 80 and 443.
+services:
+  validator1:
+    ports: !reset []
+  gateway:
+    image: caddy:2.8.4
+    restart: unless-stopped
+    depends_on: [validator1]
+    environment:
+      CHAIN_DOMAIN: ${CHAIN_DOMAIN:?set CHAIN_DOMAIN in chain/.env}
+      CHAIN_API_KEY: ${CHAIN_API_KEY:?set CHAIN_API_KEY in chain/.env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+volumes:
+  caddy-data:

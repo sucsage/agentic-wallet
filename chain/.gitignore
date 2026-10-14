@@ -3,3 +3,4 @@ network/
 qbft-config.json
 permissions_config.toml
 docker-compose.yml
+.env
