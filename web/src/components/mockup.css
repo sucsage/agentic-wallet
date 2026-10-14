@@ -1393,6 +1393,7 @@
 .aw-profile-delete>p{font-size:10px}
 .aw-profile-delete .aw-button{font-size:10px;font-weight:800}
 @media(max-width:760px){.aw-profile-content>.aw-page-title h1{font-size:26px}.aw-profile-content>.aw-page-title p{font-size:11px}.aw-profile-passbooks>header h2,.aw-profile-bottom h2{font-size:14px}.aw-profile-data-card>p{font-size:9px}}
+.aw-app .aw-bank-login-wrap{min-height:calc(100vh - 56px);align-items:center;padding:34px 18px;background:#000}
 
 /* Group wallet readability */
 .aw-group-wallet-heading>div>small{font-size:11px;font-weight:850}
