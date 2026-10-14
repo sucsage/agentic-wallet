@@ -22,6 +22,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 ///           Delivered   --approve-->    Approved     buyer accepts the work (file milestone)
 ///           Delivered   --approve-->    Released     buyer accepts the work (no file: paid at once)
 ///           Approved    --releaseKey--> KeyReleased  seller publishes the key, encrypted to the buyer
+///           KeyReleased --approve-->    Released     buyer confirms the key opens the file: paid at once
 ///           KeyReleased --claim-->      Released     after the challenge window, the seller is paid
 ///
 ///         Every window lasts `reviewPeriod`, agreed in the offer. When a window passes:
@@ -238,9 +239,12 @@ contract FileEscrow is ReentrancyGuard {
 
     /// @notice Accepts the delivered work after checking its preview and verification report.
     ///         A no-file milestone is paid at once; a file milestone now waits for the seller's key.
+    ///         Once the key is out, approving again confirms it opens the file and pays the seller
+    ///         without waiting out the challenge window.
     function approve(uint256 dealId, uint256 index) external nonReentrant {
         (Deal storage d, Milestone storage m) = _active(dealId, index);
         if (msg.sender != d.buyer) revert NotAllowed();
+        if (m.status == Status.KeyReleased) return _payOut(dealId, index, d, m);
         if (m.status != Status.Delivered) revert WrongStatus(m.status);
 
         if (!m.hasFile) {

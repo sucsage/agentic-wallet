@@ -347,15 +347,22 @@ async function doSync(dealId: number): Promise<void> {
           }
         }
         return;
-      case 2: // Approved: hand over the key
+      case 2: // Approved: hand over the key, then confirm it for the buyer
         if (demoSeller) {
           await send("contractor", { address: escrow(), abi: fileEscrowAbi, functionName: "releaseKey", args: [BigInt(dealId), BigInt(i), toHex(randomBytes(32))] });
         } else if (sellerIsUser) {
-          await releaseKeyFor(seller, dealId, i);
+          const out = await releaseKeyFor(seller, dealId, i);
+          if (out.status === "success" && buyerIsUser && (await confirmKeyFor(buyer, dealId, i))) {
+            await settleToWalletBank(seller, token, currency, redeemId("payout", dealId, i), m.amount, "PAYOUT");
+          }
         }
         return;
-      case 3: // KeyReleased: claim once the buyer's challenge window has passed
-        if (!open) {
+      case 3: // KeyReleased: the buyer confirms a key that opens the file; else claim after the window
+        if (open && buyerIsUser && sellerIsUser) {
+          if (await confirmKeyFor(buyer, dealId, i)) {
+            await settleToWalletBank(seller, token, currency, redeemId("payout", dealId, i), m.amount, "PAYOUT");
+          }
+        } else if (!open) {
           if (demoSeller) {
             await send("contractor", { address: escrow(), abi: fileEscrowAbi, functionName: "claim", args: [BigInt(dealId), BigInt(i)] });
           } else if (sellerIsUser) {
@@ -389,6 +396,29 @@ async function releaseKeyFor(seller: Address, dealId: number, index: number): Pr
     args: [BigInt(dealId), BigInt(index), commitment],
   });
   return viaMandate(seller, data, `releaseKey ${dealId}/${index}`);
+}
+
+/**
+ * Confirms a released key for the buyer so the seller is paid at once. The server holds the key,
+ * so it checks that it opens the file whose sha256 is the work hash on-chain; a key that does not
+ * is left for the buyer to dispute inside the window. The buyer already approved the work, so this
+ * spends nothing new (the owner's mandate path, not the agent's capped approval).
+ */
+async function confirmKeyFor(buyer: Address, dealId: number, index: number): Promise<boolean> {
+  const m = await getMilestone(dealId, index);
+  if (m.status !== 3) return false;
+  const d = await db.dealDelivery.findUnique({ where: { escrow_dealId_index: { escrow: escrow(), dealId, index } } });
+  if (!d?.ciphertext || !d.fileKey || !d.iv || !d.tag) return false;
+  try {
+    const dec = createDecipheriv("aes-256-gcm", Buffer.from(d.fileKey, "hex"), Buffer.from(d.iv, "hex"));
+    dec.setAuthTag(Buffer.from(d.tag, "hex"));
+    const bytes = Buffer.concat([dec.update(Buffer.from(d.ciphertext)), dec.final()]);
+    if (`0x${createHash("sha256").update(bytes).digest("hex")}` !== m.workHash.toLowerCase()) return false;
+  } catch {
+    return false;
+  }
+  const out = await viaMandate(buyer, milestoneCall("approve", dealId, index), `confirm key ${dealId}/${index}`);
+  return out.status === "success";
 }
 
 /** Off-chain terms of a deal (title, milestone names), drafted by its buyer. Both parties see them. */

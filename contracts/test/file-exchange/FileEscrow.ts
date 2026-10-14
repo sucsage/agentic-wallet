@@ -127,6 +127,21 @@ describe("FileEscrow", async function () {
       assert.equal((await escrow.read.getMilestone([0n, 0n])).status, STATUS.Released);
     });
 
+    it("a buyer who confirms the key pays the seller at once", async () => {
+      const ctx = await activeFileDeal();
+      const { escrow, asBuyer, asSeller } = ctx;
+      await asSeller.write.deliver([0n, 0n, FILE_HASH, DELIVERY]);
+      await asBuyer.write.approve([0n, 0n]);
+      // Approving twice before the key is out does nothing new: the seller still owes the key.
+      await viem.assertions.revertWithCustomErrorWithArgs(asBuyer.write.approve([0n, 0n]), escrow, "WrongStatus", [STATUS.Approved]);
+      await asSeller.write.releaseKey([0n, 0n, ENCRYPTED_KEY]);
+
+      await viem.assertions.revertWithCustomError(asSeller.write.approve([0n, 0n]), escrow, "NotAllowed");
+      await asBuyer.write.approve([0n, 0n]);
+      assert.equal(await balance(ctx, seller), usd(1_000));
+      assert.equal((await escrow.read.getMilestone([0n, 0n])).status, STATUS.Released);
+    });
+
     it("a ready-made file must match the hash committed in the seller's offer", async () => {
       const { usdc, escrow, asBuyer, asSeller } = await networkHelpers.loadFixture(deploy);
       await asSeller.write.offerToSell([buyer.account.address, arbiter.account.address, usdc.address, [file(1_000, FILE_HASH)], REVIEW, "terms"]);
