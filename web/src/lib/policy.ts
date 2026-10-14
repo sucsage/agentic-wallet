@@ -21,10 +21,10 @@ function isAllowlisted(state: WalletState, address: string) {
 function capCheck(state: WalletState, amount: number): string[] {
   const reasons: string[] = [];
   if (amount > n(state.session.maxPerTx)) {
-    reasons.push(`${amount} mUSDC exceeds the per-transaction cap of ${state.session.maxPerTx}`);
+    reasons.push(`${amount} ${state.token.symbol} exceeds the per-transaction cap of ${state.session.maxPerTx}`);
   }
   if (amount > n(state.session.remainingToday)) {
-    reasons.push(`${amount} mUSDC exceeds today's remaining limit of ${state.session.remainingToday}`);
+    reasons.push(`${amount} ${state.token.symbol} exceeds today's remaining limit of ${state.session.remainingToday}`);
   }
   return reasons;
 }

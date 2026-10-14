@@ -11,7 +11,7 @@ import { db } from "./db";
  * by the indexer; we upsert it here so the link exists right away, and leave the indexer's data
  * alone if it got there first.
  */
-export async function linkNewWallet(userId: string, address: Address, txHash: Hex) {
+export async function linkNewWallet(userId: string, address: Address, txHash: Hex, token: Address = config.contracts.usdc) {
   const receipt = await publicClient().getTransactionReceipt({ hash: txHash });
   const block = await publicClient().getBlock({ blockNumber: receipt.blockNumber });
   const roles = roleAddresses();
@@ -23,7 +23,7 @@ export async function linkNewWallet(userId: string, address: Address, txHash: He
       owner: roles.owner,
       agent: roles.agent,
       creator: receipt.from,
-      token: config.contracts.usdc,
+      token,
       createdBlock: receipt.blockNumber,
       createdAt: new Date(Number(block.timestamp) * 1000),
     },

@@ -16,7 +16,7 @@ import { agentWalletAbi, fileEscrowAbi, mockTHBAbi } from "../abis";
 import { type TxOutcome, account, publicClient, send } from "../chain";
 import { config } from "../config";
 import { db } from "../db";
-import { InsufficientFunds, RESERVE_ID, accountOf, transfer } from "./ledger";
+import { InsufficientFunds, accountOf, reserveIdFor, transfer } from "./ledger";
 
 /**
  * fundJustInTime: pays for a file deal with Mock Bank baht, at the moment the deal is made.
@@ -100,8 +100,14 @@ export type FileOffer = {
   termsURI: string;
 };
 
-/** Builds the mandate for a buyer's offer: the wallet locks `amount` in the escrow when it runs. */
-export function fileOfferMandate(offer: FileOffer, reason: string, validForSeconds = 3_600): Mandate {
+/** Builds the mandate for a buyer's offer: the wallet locks `amount` in the escrow when it runs.
+ *  `token` is the wallet's own token (mTHB by default, mCNY for a Chinese bank customer). */
+export function fileOfferMandate(
+  offer: FileOffer,
+  reason: string,
+  validForSeconds = 3_600,
+  token: Address = config.bankContracts.mthb,
+): Mandate {
   const terms = offer.milestones.map((m) => ({ amount: m.amount, hasFile: m.hasFile, workHash: `0x${"0".repeat(64)}` as Hex }));
   const random = crypto.getRandomValues(new Uint32Array(2));
   return {
@@ -112,7 +118,7 @@ export function fileOfferMandate(offer: FileOffer, reason: string, validForSecon
     data: encodeFunctionData({
       abi: fileEscrowAbi,
       functionName: "offerToBuy",
-      args: [getAddress(offer.seller), config.arbiter, config.bankContracts.mthb, terms, offer.reviewPeriod, offer.termsURI],
+      args: [getAddress(offer.seller), config.arbiter, token, terms, offer.reviewPeriod, offer.termsURI],
     }),
     // Only the reason's hash is signed; its text stays off-chain (PDPA).
     reasonHash: keccak256(toHex(reason)),
@@ -128,7 +134,7 @@ export function ownerSignMandate(wallet: Address, m: Mandate): Promise<Hex> {
 
 export async function fundJustInTime(walletInput: Address, m: Mandate, signature: Hex): Promise<FundingResult> {
   const wallet = getAddress(walletInput);
-  const { mthb, fileEscrow } = config.bankContracts;
+  const { fileEscrow } = config.bankContracts;
   const pc = publicClient();
   const fundingId = hashTypedData(typedMandate(wallet, m));
   const keys = { debit: `funding:${fundingId}:debit`, refund: `funding:${fundingId}:refund` };
@@ -141,7 +147,12 @@ export async function fundJustInTime(walletInput: Address, m: Mandate, signature
     ...extra,
   });
 
-  const minted = () => pc.readContract({ address: mthb, abi: mockTHBAbi, functionName: "minted", args: [fundingId] });
+  // The wallet's bank account decides the currency: which reserve and which token (mTHB / mCNY).
+  const bankAccount = await accountOf(wallet);
+  const mthb = bankAccount ? config.bankToken(bankAccount.currency) : null;
+  const reserveId = bankAccount ? reserveIdFor(bankAccount.currency) : "";
+
+  const minted = () => pc.readContract({ address: mthb!, abi: mockTHBAbi, functionName: "minted", args: [fundingId] });
   const mandateUsed = () =>
     pc.readContract({ address: wallet, abi: agentWalletAbi, functionName: "mandateUsed", args: [fundingId] });
   const debitRow = () => db.bankTransfer.findUnique({ where: { idempotencyKey: keys.debit } });
@@ -153,6 +164,9 @@ export async function fundJustInTime(walletInput: Address, m: Mandate, signature
   const owner = await pc.readContract({ address: wallet, abi: agentWalletAbi, functionName: "owner" });
   const signer = await recoverTypedDataAddress({ ...typedMandate(wallet, m), signature });
   if (signer !== getAddress(owner)) return result("REJECTED", { error: "The mandate is not signed by the wallet owner" });
+  if (!bankAccount) return result("REJECTED", { error: "This wallet has no Mock Bank account" });
+  if (!mthb) return result("REJECTED", { error: `The ${bankAccount.currency} token is not deployed yet` });
+  const token: Address = mthb;
 
   // Resume: an earlier attempt may have got part or all of the way.
   const locked = await findLock(wallet, fundingId);
@@ -161,13 +175,10 @@ export async function fundJustInTime(walletInput: Address, m: Mandate, signature
   // Used but not run as a lock means an earlier attempt revoked it and was refunding.
   if (await mandateUsed()) return compensate();
 
-  const bankAccount = await accountOf(wallet);
-  if (!bankAccount) return result("REJECTED", { error: "This wallet has no Mock Bank account" });
-
   // 2. Debit. The transfer row is the funding record, written before anything happens on-chain.
   const alreadyDebited = (await debitRow()) !== null;
   try {
-    await transfer({ key: keys.debit, kind: "FUND", fromId: bankAccount.id, toId: RESERVE_ID, amount: m.amount });
+    await transfer({ key: keys.debit, kind: "FUND", fromId: bankAccount.id, toId: reserveId, amount: m.amount });
   } catch (err) {
     if (err instanceof InsufficientFunds) return result("REJECTED", { error: "Not enough baht in the bank account" });
     throw err;
@@ -179,7 +190,7 @@ export async function fundJustInTime(walletInput: Address, m: Mandate, signature
     steps.push({ step: "mint", done: true });
   } else {
     const outcome = await send("bank", {
-      address: mthb,
+      address: token,
       abi: mockTHBAbi,
       functionName: "mint",
       args: [wallet, m.amount, fundingId],
@@ -228,7 +239,7 @@ export async function fundJustInTime(walletInput: Address, m: Mandate, signature
     // b. Burn the tokens minted for this funding, so mTHB in circulation matches the reserve again.
     if (await minted()) {
       const redeemed = () =>
-        pc.readContract({ address: mthb, abi: mockTHBAbi, functionName: "redeemed", args: [wallet, fundingId] });
+        pc.readContract({ address: token, abi: mockTHBAbi, functionName: "redeemed", args: [wallet, fundingId] });
       if (await redeemed()) {
         steps.push({ step: "redeem", done: true });
       } else {
@@ -237,7 +248,7 @@ export async function fundJustInTime(walletInput: Address, m: Mandate, signature
           abi: agentWalletAbi,
           functionName: "execute",
           args: [
-            mthb,
+            token,
             0n,
             encodeFunctionData({ abi: mockTHBAbi, functionName: "redeem", args: [m.amount, fundingId] }),
           ],
@@ -251,7 +262,7 @@ export async function fundJustInTime(walletInput: Address, m: Mandate, signature
     const debit = await debitRow();
     if (debit) {
       try {
-        await transfer({ key: keys.refund, kind: "REFUND", fromId: RESERVE_ID, toId: debit.fromId!, amount: debit.amount });
+        await transfer({ key: keys.refund, kind: "REFUND", fromId: reserveId, toId: debit.fromId!, amount: debit.amount });
       } catch (err) {
         return stuck(`could not refund the bank account: ${err instanceof Error ? err.message : String(err)}`);
       }

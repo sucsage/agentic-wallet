@@ -1,6 +1,6 @@
 import "server-only";
 
-import { type BankAccount, type BankTransfer, type BankTransferKind, Prisma } from "@/generated/prisma/client";
+import { type BankAccount, type BankTransfer, type BankTransferKind, type Currency, Prisma } from "@/generated/prisma/client";
 
 import { db } from "../db";
 
@@ -12,12 +12,31 @@ import { db } from "../db";
  * single RESERVE account.
  */
 
+/** The mTHB reserve. Kept as "reserve" so ledgers made before mCNY existed stay valid. */
 export const RESERVE_ID = "reserve";
+
+const RESERVES: Record<Currency, { id: string; label: string }> = {
+  THB: { id: RESERVE_ID, label: "mTHB reserve" },
+  CNY: { id: "reserve-cny", label: "mCNY reserve" },
+};
+
+/** The reserve that backs the on-chain token of `currency`. */
+export function reserveIdFor(currency: Currency): string {
+  return RESERVES[currency].id;
+}
 
 export class InsufficientFunds extends Error {
   constructor(accountId: string, amount: bigint) {
     super(`Account ${accountId} cannot cover ${amount} satang`);
     this.name = "InsufficientFunds";
+  }
+}
+
+/** Money only moves within one currency; converting is out of scope for the demo bank. */
+export class CurrencyMismatch extends Error {
+  constructor(fromId: string, toId: string) {
+    super(`Accounts ${fromId} and ${toId} hold different currencies`);
+    this.name = "CurrencyMismatch";
   }
 }
 
@@ -29,18 +48,19 @@ export class IdempotencyConflict extends Error {
   }
 }
 
-export function reserveAccount(): Promise<BankAccount> {
-  return db.bankAccount.upsert({
-    where: { id: RESERVE_ID },
-    update: {},
-    create: { id: RESERVE_ID, kind: "RESERVE", label: "mTHB reserve" },
-  });
+export function reserveAccount(currency: Currency = "THB"): Promise<BankAccount> {
+  const { id, label } = RESERVES[currency];
+  return db.bankAccount.upsert({ where: { id }, update: {}, create: { id, kind: "RESERVE", label, currency } });
 }
 
 /** One account per on-chain address; opening it again returns the same account. */
-export function openAccount(ownerAddress: string, label: string): Promise<BankAccount> {
+export function openAccount(ownerAddress: string, label: string, currency: Currency = "THB"): Promise<BankAccount> {
   const address = ownerAddress.toLowerCase();
-  return db.bankAccount.upsert({ where: { ownerAddress: address }, update: {}, create: { ownerAddress: address, label } });
+  return db.bankAccount.upsert({
+    where: { ownerAddress: address },
+    update: {},
+    create: { ownerAddress: address, label, currency },
+  });
 }
 
 export function accountOf(ownerAddress: string): Promise<BankAccount | null> {
@@ -65,6 +85,10 @@ export async function transfer(input: {
 
   try {
     return await db.$transaction(async (tx) => {
+      if (fromId) {
+        const ends = await tx.bankAccount.findMany({ where: { id: { in: [fromId, toId] } }, select: { currency: true } });
+        if (new Set(ends.map((a) => a.currency)).size > 1) throw new CurrencyMismatch(fromId, toId);
+      }
       const row = await tx.bankTransfer.create({ data: { idempotencyKey: key, kind, fromId, toId, amount } });
       if (fromId) {
         const debited = await tx.bankAccount.updateMany({

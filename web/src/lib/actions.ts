@@ -2,12 +2,14 @@ import "server-only";
 
 import { type Address, type Hex, encodeFunctionData, getAddress, keccak256, parseUnits, toHex } from "viem";
 
+import type { Currency } from "@/generated/prisma/client";
+
 import { agentWalletAbi, agentWalletFactoryAbi, milestoneEscrowAbi } from "./abis";
 import { seedSandbox } from "./bank/ledger";
 import { type Role, type TxOutcome, account, publicClient, roleAddresses, send } from "./chain";
-import { ATTACKER, config, walletDefaults } from "./config";
+import { ATTACKER, bankWalletDefaults, config, walletDefaults } from "./config";
 import { type Decision, evaluateRelease, evaluateTransfer } from "./policy";
-import { type DealTerms, type EvidenceDoc, readWallet, toDataUri } from "./state";
+import { type DealTerms, type EvidenceDoc, readWallet, toDataUri, walletUnits } from "./state";
 
 export type ActionResult = {
   action: string;
@@ -18,10 +20,20 @@ export type ActionResult = {
 
 const KIND = { Transfer: 0, ReleaseMilestone: 1, Call: 2, SetupDeal: 3 } as const;
 
-/** Deploys a fresh, fully configured sandbox wallet in one transaction. */
-export async function createWorkspace(): Promise<{ address: Address; outcome: TxOutcome }> {
+/**
+ * Deploys a fresh, fully configured sandbox wallet in one transaction.
+ *
+ * With `currency` (a Mock Bank customer's THB or CNY) the wallet settles in mTHB / mCNY and holds
+ * nothing: deals are paid just in time from the customer's bank account (see bank/funding.ts).
+ * Without it, or while that token is not deployed, it is the older mUSDC sandbox with seed money.
+ */
+export async function createWorkspace(
+  opts: { currency?: Currency } = {},
+): Promise<{ address: Address; outcome: TxOutcome; units: { symbol: string; decimals: number } }> {
   const roles = roleAddresses();
   const latest = await publicClient().getBlock();
+  const bankToken = opts.currency ? config.bankToken(opts.currency) : null;
+  const limits = bankToken && opts.currency ? bankWalletDefaults[opts.currency] : walletDefaults;
   const outcome = await send("owner", {
     address: config.contracts.factory,
     abi: agentWalletFactoryAbi,
@@ -29,23 +41,36 @@ export async function createWorkspace(): Promise<{ address: Address; outcome: Tx
     args: [
       {
         owner: roles.owner,
-        token: config.contracts.usdc,
+        token: bankToken ?? config.contracts.usdc,
         agent: roles.agent,
         sessionExpiresAt: latest.timestamp + walletDefaults.sessionDays * 86_400n,
-        maxPerTx: walletDefaults.maxPerTx,
-        dailyLimit: walletDefaults.dailyLimit,
+        maxPerTx: limits.maxPerTx,
+        dailyLimit: limits.dailyLimit,
         approvers: [roles.owner],
         threshold: walletDefaults.threshold,
         recipients: [roles.contractor],
         escrows: [config.contracts.escrow],
       },
-      walletDefaults.seed,
+      // Bank wallets hold no idle money; the factory could not mint mTHB / mCNY anyway.
+      bankToken ? 0n : walletDefaults.seed,
     ],
   });
   if (outcome.status !== "success") throw new Error(`Wallet creation failed: ${"error" in outcome ? outcome.error : ""}`);
   const address = getAddress(outcome.result as Address);
+
+  if (bankToken) {
+    // File deals go through FileEscrow, which the factory's Config cannot allowlist yet.
+    const allow = await send("owner", {
+      address,
+      abi: agentWalletAbi,
+      functionName: "setFileEscrow",
+      args: [config.bankContracts.fileEscrow, true],
+    });
+    if (allow.status !== "success") throw new Error(`Allowlisting FileEscrow failed: ${"error" in allow ? allow.error : ""}`);
+    return { address, outcome, units: { symbol: opts.currency === "CNY" ? "mCNY" : "mTHB", decimals: 2 } };
+  }
   await seedSandbox(address, walletDefaults.bankSeed);
-  return { address, outcome };
+  return { address, outcome, units: { symbol: "mUSDC", decimals: 6 } };
 }
 
 export async function proposeDealSetup(
@@ -68,8 +93,9 @@ export async function proposeDealSetup(
     args: [
       getAddress(input.payee),
       config.arbiter,
-      config.contracts.usdc,
-      input.milestones.map((m) => parseUnits(String(m.amount), 6)),
+      // The deal must settle in the wallet's own token (mUSDC, mTHB or mCNY).
+      (await walletUnits(wallet)).address,
+      input.milestones.map((m) => parseUnits(String(m.amount), state.token.decimals)),
       toDataUri(terms),
     ],
   });
@@ -126,7 +152,7 @@ export async function transfer(wallet: Address, to: string, amount: number, reas
   const state = await readWallet(wallet);
   const decision = evaluateTransfer(state, to, amount);
   if (decision.route === "block") return { action: "transfer", decision };
-  const raw = parseUnits(String(amount), 6);
+  const raw = parseUnits(String(amount), state.token.decimals);
   const recipient = getAddress(to);
   const outcome =
     decision.route === "execute"
@@ -167,6 +193,8 @@ export async function revokeSession(wallet: Address): Promise<ActionResult> {
 
 export async function restoreSession(wallet: Address): Promise<ActionResult> {
   const latest = await publicClient().getBlock();
+  const { currency } = await walletUnits(wallet);
+  const limits = currency ? bankWalletDefaults[currency] : walletDefaults;
   const outcome = await send("owner", {
     address: wallet,
     abi: agentWalletAbi,
@@ -174,8 +202,8 @@ export async function restoreSession(wallet: Address): Promise<ActionResult> {
     args: [
       account("agent").address,
       latest.timestamp + walletDefaults.sessionDays * 86_400n,
-      walletDefaults.maxPerTx,
-      walletDefaults.dailyLimit,
+      limits.maxPerTx,
+      limits.dailyLimit,
     ],
   });
   return { action: "restore_session", outcome };
@@ -209,15 +237,16 @@ export async function submitEvidence(dealId: number, index: number, doc: Evidenc
  * to send "all funds" to an attacker. The transaction is forced on-chain so the revert is provable.
  */
 export async function rawAttack(wallet: Address): Promise<ActionResult> {
+  const units = await walletUnits(wallet);
   const outcome = await send(
     "agent",
     {
       address: wallet,
       abi: agentWalletAbi,
       functionName: "agentTransfer",
-      args: [ATTACKER, parseUnits("5000", 6)],
+      args: [ATTACKER, parseUnits("5000", units.decimals)],
     },
     { force: true },
   );
-  return { action: "raw_attack", outcome, detail: `agentTransfer(${ATTACKER}, 5000 mUSDC) sent without the policy engine` };
+  return { action: "raw_attack", outcome, detail: `agentTransfer(${ATTACKER}, 5000 ${units.symbol}) sent without the policy engine` };
 }

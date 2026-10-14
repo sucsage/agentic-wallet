@@ -8,7 +8,7 @@ datasource db {
 }
 
 // ---------------------------------------------------------------------------
-// Auth (Better Auth core tables). Google + Sign in with Apple, see src/lib/auth.ts.
+// Auth (Better Auth core tables). People sign in through the Mock Bank, see src/lib/mock-bank-auth.ts.
 // ---------------------------------------------------------------------------
 
 model User {
@@ -20,10 +20,11 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  sessions Session[]
-  accounts Account[]
-  profile  Profile?
-  wallets  UserWallet[]
+  sessions     Session[]
+  accounts     Account[]
+  profile      Profile?
+  wallets      UserWallet[]
+  bankCustomer BankCustomer?
 }
 
 model Session {
@@ -204,11 +205,47 @@ enum ProposalStatus {
   STALE
 }
 
+// ---------------------------------------------------------------------------------------------
+// Mock Bank (demo only): simulated baht and yuan, not real money. Amounts are integer minor units
+// (satang, fen). Every mTHB / mCNY on-chain is backed by money in that currency's RESERVE account:
+// reserve balance == totalSupply. Money never moves between currencies.
+// ---------------------------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------------------------
-// Mock Bank (demo only): simulated baht, not real money. Amounts are satang (integer minor units).
-// Every mTHB on-chain is backed by baht in the single RESERVE account: reserve balance == totalSupply.
-// ---------------------------------------------------------------------------------------------
+/// Which demo bank: THB = Mock Bank Thailand, CNY = Mock Bank China.
+enum Currency {
+  THB
+  CNY
+}
+
+enum BankCustomerType {
+  PERSONAL
+  COMPANY
+}
+
+/// A Mock Bank customer. Signing in to the app means signing in here and letting the app use some
+/// of the customer's accounts (like open-banking consent), instead of Google or Apple.
+model BankCustomer {
+  id          String           @id @default(cuid())
+  currency    Currency
+  /// Chosen at sign-up, unique within one bank.
+  username    String
+  displayName String
+  type        BankCustomerType @default(PERSONAL)
+  /// Demo PIN, hashed (scrypt). Never a real bank PIN.
+  pinHash     String
+  failedPins  Int              @default(0)
+  lockedUntil DateTime?
+  /// The app user this customer signs in as; set on the first consent, cleared when the user is deleted.
+  userId      String?          @unique
+  user        User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  /// When the customer last agreed to let the app use the linked accounts.
+  consentedAt DateTime?
+  createdAt   DateTime         @default(now())
+
+  accounts BankAccount[]
+
+  @@unique([currency, username])
+}
 
 enum BankAccountKind {
   USER
@@ -218,7 +255,7 @@ enum BankAccountKind {
 enum BankTransferKind {
   /// Demo money entering the bank (a sandbox's seed). The only kind with no source account.
   DEPOSIT
-  /// Buyer → reserve, right before mTHB is minted for a deal.
+  /// Buyer → reserve, right before mTHB / mCNY is minted for a deal.
   FUND
   /// Reserve → buyer, when funding failed for certain or a deal refunds.
   REFUND
@@ -234,10 +271,21 @@ model BankAccount {
   label        String
   /// Never negative: a debit only happens together with a balance check in the same statement.
   balance      BigInt          @default(0)
+  currency     Currency        @default(THB)
+  /// Passbook number shown to the customer. Null for the reserves and sandbox accounts.
+  accountNo    String?         @unique
+  customerId   String?
+  customer     BankCustomer?   @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  /// Set while the customer lets the app use this account. Only linked accounts are shown or debited.
+  linkedAt     DateTime?
+  /// The linked account the app debits by default.
+  isDefault    Boolean         @default(false)
   createdAt    DateTime        @default(now())
 
   outgoing BankTransfer[] @relation("outgoing")
   incoming BankTransfer[] @relation("incoming")
+
+  @@index([customerId])
 }
 
 model BankTransfer {

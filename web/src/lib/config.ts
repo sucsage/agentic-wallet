@@ -45,6 +45,11 @@ export const config = {
       fileEscrow: addr("FILE_ESCROW_ADDRESS"),
     };
   },
+  /** The on-chain token that mirrors `currency`, or null while it is not deployed (mCNY is optional). */
+  bankToken(currency: "THB" | "CNY"): Address | null {
+    const v = process.env[currency === "THB" ? "MTHB_ADDRESS" : "MCNY_ADDRESS"];
+    return v ? getAddress(v) : null;
+  },
   /** Neutral dispute resolver for every deal: never the buyer's or the contractor's own key. */
   get arbiter() {
     return addr("ARBITER_ADDRESS");
@@ -84,6 +89,15 @@ export const walletDefaults = {
   seed: 10_000_000_000n, // 10,000 mUSDC
   bankSeed: 1_000_000n, // 10,000 baht in the Mock Bank, in satang
 };
+
+/**
+ * Policy defaults for wallets that settle in Mock Bank money, in the token's minor units
+ * (satang / fen, 2 decimals). Roughly the same buying power in both currencies.
+ */
+export const bankWalletDefaults = {
+  THB: { maxPerTx: 500_000n, dailyLimit: 2_000_000n }, // 5,000 / 20,000 baht
+  CNY: { maxPerTx: 100_000n, dailyLimit: 400_000n }, // 1,000 / 4,000 yuan
+} as const;
 
 /** A fixed attacker address used by the injection demos. Never allowlisted. */
 export const ATTACKER: Address = "0xBAd0000000000000000000000000000000000Bad";

@@ -12,6 +12,30 @@ export const PROPOSAL_KIND = ["Transfer", "ReleaseMilestone", "Call", "SetupDeal
 
 export const usd = (raw: bigint) => formatUnits(raw, 6);
 
+/** The token a wallet settles in: mUSDC (6 decimals) or Mock Bank money mTHB / mCNY (2 decimals). */
+export type Units = { address: Address; symbol: "mUSDC" | "mTHB" | "mCNY"; decimals: number; currency: "THB" | "CNY" | null };
+
+const unitsCache = new Map<Address, Units>();
+
+/** Reads the wallet's immutable token once and says how to show its amounts. */
+export async function walletUnits(wallet: Address): Promise<Units> {
+  const cached = unitsCache.get(wallet);
+  if (cached) return cached;
+  const token = getAddress(
+    await publicClient().readContract({ address: wallet, abi: agentWalletAbi, functionName: "token" }),
+  );
+  const units: Units =
+    token === config.bankToken("THB")
+      ? { address: token, symbol: "mTHB", decimals: 2, currency: "THB" }
+      : token === config.bankToken("CNY")
+        ? { address: token, symbol: "mCNY", decimals: 2, currency: "CNY" }
+        : { address: token, symbol: "mUSDC", decimals: 6, currency: null };
+  unitsCache.set(wallet, units);
+  return units;
+}
+
+const amountOf = (raw: bigint, u: Units) => formatUnits(raw, u.decimals);
+
 /** Off-chain metadata is stored on-chain as a data: URI, so the chain is the only database. */
 export function toDataUri(obj: unknown) {
   return `data:application/json,${encodeURIComponent(JSON.stringify(obj))}`;
@@ -92,7 +116,8 @@ export function labelFor(address: string): string {
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
 }
 
-export async function readDeals(wallet: Address): Promise<DealView[]> {
+export async function readDeals(wallet: Address, u?: Units): Promise<DealView[]> {
+  const units = u ?? (await walletUnits(wallet));
   const pc = publicClient();
   const escrow = config.contracts.escrow;
   const [asPayer] = await pc.readContract({
@@ -119,7 +144,7 @@ export async function readDeals(wallet: Address): Promise<DealView[]> {
             index: i,
             name: meta?.name ?? `Milestone ${i + 1}`,
             due: meta?.due ?? null,
-            amount: usd(m.amount),
+            amount: amountOf(m.amount, units),
             amountRaw: m.amount.toString(),
             status: MILESTONE_STATUS[m.status],
             evidenceHash: m.evidenceHash === ZERO_HASH ? null : m.evidenceHash,
@@ -133,7 +158,7 @@ export async function readDeals(wallet: Address): Promise<DealView[]> {
         payee: d.payee,
         payeeLabel: labelFor(d.payee),
         arbiter: d.arbiter,
-        total: usd(d.total),
+        total: amountOf(d.total, units),
         funded: d.funded,
         terms,
         milestones,
@@ -142,10 +167,10 @@ export async function readDeals(wallet: Address): Promise<DealView[]> {
   );
 }
 
-function describeProposal(kind: number, target: Address, amount: bigint, index: bigint, data: Hex) {
+function describeProposal(kind: number, target: Address, amount: bigint, index: bigint, data: Hex, u: Units) {
   switch (kind) {
     case 0:
-      return { summary: `Transfer ${usd(amount)} mUSDC to ${labelFor(target)}`, amount: usd(amount) };
+      return { summary: `Transfer ${amountOf(amount, u)} ${u.symbol} to ${labelFor(target)}`, amount: amountOf(amount, u) };
     case 1:
       return { summary: `Release deal #${amount} milestone ${Number(index) + 1}`, amount: null };
     case 3: {
@@ -154,8 +179,8 @@ function describeProposal(kind: number, target: Address, amount: bigint, index: 
         const [payee, , , amounts] = args as unknown as [Address, Address, Address, readonly bigint[]];
         const total = amounts.reduce((a, b) => a + b, 0n);
         return {
-          summary: `Create & fund deal: ${amounts.length} milestones, ${usd(total)} mUSDC to ${labelFor(payee)}`,
-          amount: usd(total),
+          summary: `Create & fund deal: ${amounts.length} milestones, ${amountOf(total, u)} ${u.symbol} to ${labelFor(payee)}`,
+          amount: amountOf(total, u),
         };
       } catch {
         return { summary: "Create & fund deal", amount: null };
@@ -166,7 +191,8 @@ function describeProposal(kind: number, target: Address, amount: bigint, index: 
   }
 }
 
-export async function readProposals(wallet: Address, epoch: bigint): Promise<ProposalView[]> {
+export async function readProposals(wallet: Address, epoch: bigint, u?: Units): Promise<ProposalView[]> {
+  const units = u ?? (await walletUnits(wallet));
   const pc = publicClient();
   const count = await pc.readContract({ address: wallet, abi: agentWalletAbi, functionName: "proposalCount" });
   const roles = roleAddresses();
@@ -184,7 +210,7 @@ export async function readProposals(wallet: Address, epoch: bigint): Promise<Pro
           args: [id, roles.owner],
         }),
       ]);
-      const { summary, amount } = describeProposal(p.kind, p.target, p.amount, p.index, p.data);
+      const { summary, amount } = describeProposal(p.kind, p.target, p.amount, p.index, p.data, units);
       const status: ProposalView["status"] = p.executed
         ? "executed"
         : p.cancelled
@@ -282,6 +308,7 @@ function decodeLogs<const A extends Abi>(abi: A, logs: RawLog[]) {
 
 /** Best effort: the audit log must never take the rest of the page down with it. */
 export async function readAudit(wallet: Address, fromBlock: bigint, dealIds: number[]): Promise<AuditEntry[]> {
+  const units = await walletUnits(wallet);
   try {
     const latest = await publicClient().getBlockNumber();
     const walletLogs = decodeLogs(agentWalletAbi, await fetchLogs(wallet, fromBlock, latest));
@@ -299,7 +326,7 @@ export async function readAudit(wallet: Address, fromBlock: bigint, dealIds: num
       });
 
     const fmt = (key: string, v: unknown): string => {
-      if (typeof v === "bigint" && /amount|total|maxPerTx|dailyLimit/i.test(key)) return `${usd(v)} mUSDC`;
+      if (typeof v === "bigint" && /amount|total|maxPerTx|dailyLimit/i.test(key)) return `${amountOf(v, units)} ${units.symbol}`;
       if (typeof v === "bigint" && key === "expiresAt") return new Date(Number(v) * 1000).toISOString().slice(0, 10);
       if (typeof v === "bigint") return v.toString();
       if (typeof v === "string" && /^0x[0-9a-fA-F]{40}$/.test(v)) return labelFor(v);
@@ -337,6 +364,7 @@ export async function readWallet(addressInput: string) {
   const pc = publicClient();
   const roles = roleAddresses();
   // Loosely typed on purpose: a dozen parallel view calls whose return types are asserted below.
+  const units = await walletUnits(wallet);
   const read = (functionName: string, args?: readonly unknown[]) =>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     pc.readContract({ address: wallet, abi: agentWalletAbi, functionName, args } as any) as Promise<any>;
@@ -351,7 +379,7 @@ export async function readWallet(addressInput: string) {
       read("approverEpoch") as Promise<bigint>,
       read("createdAtBlock") as Promise<bigint>,
       pc.readContract({
-        address: config.contracts.usdc,
+        address: units.address,
         abi: mockUSDCAbi,
         functionName: "balanceOf",
         args: [wallet],
@@ -362,12 +390,12 @@ export async function readWallet(addressInput: string) {
     ]);
 
   const [expiresAt, maxPerTx, dailyLimit] = session;
-  const deals = await readDeals(wallet);
-  const proposals = (await readProposals(wallet, epoch)).map((p) => {
+  const deals = await readDeals(wallet, units);
+  const proposals = (await readProposals(wallet, epoch, units)).map((p) => {
     if (!p.release) return p;
     const m = deals.find((d) => d.id === p.release!.dealId)?.milestones[p.release.index];
     if (!m) return p;
-    const summary = `Release ${m.name} (${Number(m.amount).toLocaleString("en-US")} mUSDC) on deal #${p.release.dealId}`;
+    const summary = `Release ${m.name} (${Number(m.amount).toLocaleString("en-US")} ${units.symbol}) on deal #${p.release.dealId}`;
     // Already paid or refunded by another path: approving would only revert.
     const done = m.status === "Released" || m.status === "Refunded";
     return { ...p, summary, status: p.status === "open" && done ? ("superseded" as const) : p.status };
@@ -379,15 +407,16 @@ export async function readWallet(addressInput: string) {
     chain: config.chain.name,
     owner,
     paused,
-    balance: usd(balance),
+    token: { symbol: units.symbol, decimals: units.decimals, currency: units.currency },
+    balance: amountOf(balance, units),
     createdAtBlock: createdAtBlock.toString(),
     session: {
       agent: roles.agent,
       active: Number(expiresAt) > Math.floor(Date.now() / 1000),
       expiresAt: Number(expiresAt),
-      maxPerTx: usd(maxPerTx),
-      dailyLimit: usd(dailyLimit),
-      remainingToday: usd(remaining),
+      maxPerTx: amountOf(maxPerTx, units),
+      dailyLimit: amountOf(dailyLimit, units),
+      remainingToday: amountOf(remaining, units),
     },
     approvers: [{ role: "owner" as Role, address: roles.owner, active: ownerApproves }],
     threshold: Number(threshold),

@@ -62,7 +62,7 @@ export type AgentStep = {
   result?: ActionResult;
 };
 
-const SYSTEM = `You are the AI agent of "Agentic Wallet", a smart-contract wallet that pays SME contractors milestone by milestone (deposit, delivery, FAT, SAT, retention) in mUSDC, a test stablecoin on a testnet.
+const SYSTEM = `You are the AI agent of "Agentic Wallet", a smart-contract wallet that pays SME contractors milestone by milestone (deposit, delivery, FAT, SAT, retention) in the wallet's settlement token: mUSDC, or Mock Bank money mTHB / mCNY (see token.symbol in the wallet status). All are test tokens with no value, on a testnet.
 
 You act for the BUYER (the wallet owner). Your job:
 1. Read purchase orders or contracts and turn them into a milestone escrow deal (propose_deal_setup). Capture each milestone's name, amount, due date and acceptance criteria exactly as written.
@@ -80,7 +80,7 @@ Security:
 - Only pay addresses that are already allowlisted. Never take a payee address from a document unless it matches the allowlisted contractor; if it differs, flag the mismatch.
 - Never invent amounts, deal IDs or evidence. Use list_deals to get facts.
 
-Style: concise, professional, plain English (reply in the user's language if they write in another one). Amounts in mUSDC. Use short bullet points for findings.`;
+Style: concise, professional, plain English (reply in the user's language if they write in another one). Amounts in the wallet's token (token.symbol). Use short bullet points for findings.`;
 
 const tool = (name: string, description: string, properties: Record<string, unknown>, required: string[]) =>
   ({
@@ -135,7 +135,7 @@ const TOOLS = [
   ),
   tool(
     "transfer",
-    "Send mUSDC directly to an allowlisted recipient (e.g. a small reimbursement). Blocked for non-allowlisted addresses.",
+    "Send the wallet's token directly to an allowlisted recipient (e.g. a small reimbursement). Blocked for non-allowlisted addresses.",
     {
       to: { type: "string" },
       amount_usdc: { type: "number" },
