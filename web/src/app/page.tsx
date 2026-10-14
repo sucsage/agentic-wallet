@@ -1,5 +1,5 @@
-import { Landing } from "@/components/landing";
+import { MockupApp } from "@/components/mockup-app";
 
-export default function Home() {
-  return <Landing />;
+export default function HomePage() {
+  return <MockupApp />;
 }

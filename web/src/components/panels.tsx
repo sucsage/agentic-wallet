@@ -8,6 +8,7 @@ import type { Sample } from "@/lib/samples";
 import type { MilestoneStatus } from "@/lib/state";
 
 import { Outcome, TxLink, type Workspace, fmt, postAction, short } from "./ui";
+import { TxStatus } from "./tx-status";
 
 type Run = (label: string, body: Record<string, unknown>) => Promise<void>;
 
@@ -357,8 +358,9 @@ export function LastAction({
   const { t } = useT();
   if (busy) {
     return (
-      <div className="card flex items-center gap-2 border-accent/40 px-4 py-3 text-sm">
-        <span className="h-2 w-2 animate-pulse rounded-full bg-accent" /> {busy}: {t("last.signing")}
+      <div className="card flex items-center gap-3 border-accent/40 px-4 py-3 text-sm">
+        <span className="font-medium">{busy}</span>
+        <TxStatus loading className="flex-1 border-0 bg-transparent px-0 py-0" />
       </div>
     );
   }
@@ -367,7 +369,7 @@ export function LastAction({
     <div className="card flex items-start justify-between gap-3 px-4 py-3">
       <div className="flex flex-col gap-1 text-sm">
         <span className="font-medium">{last.label}</span>
-        {last.error ? <span className="text-bad">{last.error}</span> : last.result && <Outcome result={last.result} />}
+        {last.error ? <TxStatus error={last.error} /> : last.result && <Outcome result={last.result} />}
       </div>
       <button className="text-xs text-muted hover:text-fg" onClick={clear}>
         {t("common.dismiss")}

@@ -4,6 +4,7 @@ import { LangToggle, type Key, useT } from "@/lib/i18n";
 
 import { AccountLink } from "./account-link";
 import { LaunchButton } from "./launch-button";
+import Link from "next/link";
 
 const STEPS: [Key, Key][] = [
   ["landing.step1", "landing.step1.d"],
@@ -48,7 +49,10 @@ export function Landing() {
             {t("landing.title.a")} <span className="text-accent">{t("landing.title.b")}</span>
           </h1>
           <p className="max-w-xl text-lg text-muted">{t("landing.lead")}</p>
-          <LaunchButton />
+          <div className="flex flex-wrap items-center gap-3">
+            <LaunchButton />
+            <Link href="/" className="btn-ghost px-5 py-2.5 text-base">Open app</Link>
+          </div>
         </div>
         <div className="card p-5 text-sm">
           <p className="mb-3 font-medium">{t("landing.guards")}</p>
