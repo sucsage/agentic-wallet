@@ -74,39 +74,33 @@ App data for this chain lives in the `besu` Postgres schema (`DB_SCHEMA=besu`), 
 Base Sepolia data in `public`.
 
 ```
-Vercel (web + signing keys) ──HTTPS + X-Chain-Key──▶ Caddy gateway ──▶ Besu      (chain server)
+Vercel (web + signing keys) ──HTTPS + Bearer JWT──▶ Tailscale Funnel ──▶ Besu   (chain server, e.g. a home PC)
 ```
 
-**Chain server** (any VPS with Docker; it never holds account keys, only the validator key):
+Besu checks a bearer JWT on every RPC call itself (no proxy): no token or a bad one gets 401. The
+token is issued on the dev machine (`node scripts/chain-token.mjs [days]`, private key in `.secrets/`,
+public key in `chain/jwt-public.pem`). The chain server holds only the validator key and that public key.
 
-1. On a dev machine with `.secrets/base-sepolia.env`: `bash scripts/setup-besu.sh --config-only`
-   (writes genesis, validator key and allowlist into `chain/`).
-2. Copy the `chain/` folder to the server. Point a DNS name at the server, open ports 80/443,
-   copy `chain/.env.example` to `chain/.env`, set `CHAIN_DOMAIN` and `CHAIN_API_KEY` (`openssl rand -hex 32`).
-3. On the server: `cd chain && docker compose -f docker-compose.yml -f docker-compose.server.yml up -d`.
-   Besu publishes no port; Caddy serves HTTPS and rejects every request without the key (403).
-4. From the dev machine, deploy through the gateway:
-   `BESU_RPC_URL=https://<CHAIN_DOMAIN> CHAIN_API_KEY=<key> bash scripts/deploy-besu.sh`, then
-   `cd web && DB_SCHEMA=besu npx prisma db push`.
+**Chain server on a home PC (Windows, no domain, no public IP)**:
 
-**Chain server on a home PC (Windows, no domain, no public IP)** — use a tunnel instead of a domain:
-
-1. Install Docker Desktop (WSL 2) and Tailscale; in Windows power settings set sleep to *Never*,
-   and let Docker Desktop and Tailscale start at sign-in.
-2. Copy the `chain/` folder prepared by `setup-besu.sh --config-only`. In `chain/.env` set
-   `CHAIN_DOMAIN=:8080` and `CHAIN_API_KEY=<openssl rand -hex 32>`.
-3. In PowerShell, in `chain/`:
-   `docker compose -f docker-compose.yml -f docker-compose.server.yml -f docker-compose.tunnel.yml up -d`
-   (Caddy listens on 127.0.0.1:8080 only and still demands the key).
-4. `tailscale funnel --bg 8080` gives a fixed public URL `https://<pc>.<tailnet>.ts.net` with HTTPS.
-   Use it as `RPC_URL` in Vercel and as `BESU_RPC_URL` when deploying. (ngrok's free static domain
-   works the same way: `ngrok http --url=<name>.ngrok-free.app 8080`.)
+1. Install Docker Desktop (WSL 2) and Tailscale; set Windows sleep to *Never* and let both start at
+   sign-in.
+2. On the dev machine: `bash scripts/setup-besu.sh --config-only` (genesis, validator key, allowlist,
+   JWT key pair and `.secrets/chain-token.txt`). Copy the `chain/` folder to the PC.
+3. On the PC, in PowerShell, in `chain/`:
+   `docker compose -f docker-compose.yml -f docker-compose.server.yml up -d`, then
+   `tailscale funnel --bg 8555` for a fixed public HTTPS URL `https://<pc>.<tailnet>.ts.net`.
+4. From the dev machine:
+   `BESU_RPC_URL=https://<pc>.<tailnet>.ts.net CHAIN_TOKEN=$(cat .secrets/chain-token.txt) bash scripts/deploy-besu.sh`
+   and `cd web && DB_SCHEMA=besu npx prisma db push`.
 
 The chain is only up while the PC is: keep it powered and online during the review and the final,
-and keep the Base Sepolia deployment as a fallback.
+and keep the Base Sepolia deployment as a fallback. Tokens expire (default 90 days); issue a new one
+with `node scripts/chain-token.mjs` and update Vercel.
 
-**Vercel env**: the values from `.secrets/besu.env`, plus `RPC_URL=https://<CHAIN_DOMAIN>`,
-`CHAIN_API_KEY=<key>`, `DB_SCHEMA=besu` and the usual keys, database and LLM settings.
+**Vercel env**: the values from `.secrets/besu.env`, plus `RPC_URL=https://<pc>.<tailnet>.ts.net`,
+`CHAIN_TOKEN=<contents of .secrets/chain-token.txt>`, `DB_SCHEMA=besu` and the usual keys, database
+and LLM settings.
 
 **Admins**: after a reviewer signs up in the app,
 `cd web && npx tsx --conditions=react-server --env-file=.env.local scripts/make-admin.mts thai <username>`.

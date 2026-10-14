@@ -7,8 +7,8 @@
 #   4. pushes the database schema into the "besu" Postgres schema.
 # Then copy .secrets/besu.env into web/.env.local and add DB_SCHEMA=besu (see README).
 #
-# --config-only: only step 1, for a separate chain server. Copy the chain/ folder to the server and
-# start it there in server mode (see README); then deploy from here through its gateway.
+# --config-only: only step 1 (plus the RPC token key pair), for a separate chain server. Copy the
+# chain/ folder to the server and start it there in server mode (see README); deploy from here.
 # Needs: Docker (e.g. colima start), Node, .secrets/base-sepolia.env, web/.env.local with DATABASE_URL/DIRECT_URL.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -48,6 +48,8 @@ PY
   V=$(ls chain/network/keys)
   sed "s#__VALIDATOR__#$V#" chain/docker-compose.template.yml > chain/docker-compose.yml
 fi
+
+[ -f chain/jwt-public.pem ] || node scripts/chain-token.mjs
 
 if [ "${1:-}" = "--config-only" ]; then
   echo "chain/ is ready. Copy it to the chain server (it holds the validator key, no account keys)."

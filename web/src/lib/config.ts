@@ -42,12 +42,12 @@ export const config = {
     return c;
   },
   /**
-   * Headers for every RPC request. CHAIN_API_KEY is the shared secret the private chain's gateway
-   * (chain/Caddyfile) requires, since Vercel has no fixed IP to allowlist.
+   * Headers for every RPC request. CHAIN_TOKEN is the bearer JWT the private chain's Besu node
+   * requires (chain/docker-compose.server.yml); Vercel has no fixed IP to allowlist instead.
    */
   get rpcHeaders(): Record<string, string> | undefined {
-    const key = process.env.CHAIN_API_KEY;
-    return key ? { "x-chain-key": key } : undefined;
+    const token = process.env.CHAIN_TOKEN?.trim();
+    return token ? { authorization: `Bearer ${token}` } : undefined;
   },
   get rpcUrl() {
     return process.env.RPC_URL ?? "http://127.0.0.1:8545";
