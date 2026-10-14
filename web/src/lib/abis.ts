@@ -217,6 +217,11 @@ export const agentWalletAbi = [
     "type": "error"
   },
   {
+    "inputs": [],
+    "name": "NotSellerOfDeal",
+    "type": "error"
+  },
+  {
     "inputs": [
       {
         "internalType": "address",

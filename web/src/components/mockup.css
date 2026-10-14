@@ -1452,3 +1452,6 @@
 .aw-create-field{display:flex;flex-direction:column;gap:6px;margin:8px 0}
 .aw-create-field input{height:34px;padding:0 10px;border:1px solid #333;border-radius:8px;background:#151515;color:#eee}
 .aw-invite-friend-list{display:grid;gap:6px;margin:6px 0 10px}
+.aw-deliver-form{display:flex;flex-direction:column;gap:8px;margin-top:10px;padding:10px;border:1px dashed #3a3a3a;border-radius:10px}
+.aw-deliver-form label{display:flex;flex-direction:column;gap:4px;font-size:11px;color:#aaa}
+.aw-deliver-form textarea,.aw-deliver-form input[type=file]{padding:8px;border:1px solid #333;border-radius:8px;background:#151515;color:#eee;font-size:12px}

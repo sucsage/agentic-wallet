@@ -159,6 +159,7 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
     error AlreadyApproved();
     error InvalidThreshold();
     error InvalidSession();
+    error NotSellerOfDeal();
     error InvalidMandate();
     error MandateExpired();
     error MandateAlreadyUsed();
@@ -573,6 +574,7 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
     ///      to the arbiter, so it must be neutral. The rest can only return money or stop a deal.
     function _checkFileCall(address escrow, bytes memory data) private view {
         bytes4 selector = bytes4(data);
+        if (_isSellerCall(escrow, selector, data)) return _checkSellerCall(escrow, selector, data);
         bool locksOrPays = selector == FileEscrow.accept.selector || selector == FileEscrow.approve.selector;
         bool dealOnly = selector == FileEscrow.accept.selector || selector == FileEscrow.cancel.selector;
         bool dealAndIndex = selector == FileEscrow.approve.selector || selector == FileEscrow.dispute.selector
@@ -581,6 +583,34 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
 
         FileEscrow.Deal memory d = _buyerDeal(escrow, abi.decode(_args(data), (uint256)), locksOrPays);
         if (selector == FileEscrow.accept.selector) _checkArbiter(d.arbiter);
+    }
+
+    /// @dev The seller's moves when this wallet sells: deliver, releaseKey, claim, refund, and
+    ///      accepting a buyer's offer (accept is the buyer's move when the seller made the offer).
+    function _isSellerCall(address escrow, bytes4 selector, bytes memory data) private view returns (bool) {
+        if (
+            selector == FileEscrow.deliver.selector || selector == FileEscrow.releaseKey.selector
+                || selector == FileEscrow.claim.selector || selector == FileEscrow.refund.selector
+        ) return true;
+        if (selector != FileEscrow.accept.selector || data.length != 36) return false;
+        FileEscrow.Deal memory d = FileEscrow(escrow).getDeal(abi.decode(_args(data), (uint256)));
+        return d.seller == address(this) && d.creator == d.buyer;
+    }
+
+    /// @dev None of the seller's moves can take money out of this wallet: accepting a buyer's offer
+    ///      locks the buyer's money, claim pays this wallet, refund returns escrowed money to the
+    ///      buyer. They still need the wallet to be the seller, its own token (so payouts are always
+    ///      money it can account for) and, for accept, a neutral arbiter.
+    function _checkSellerCall(address escrow, bytes4 selector, bytes memory data) private view {
+        FileEscrow.Deal memory d = FileEscrow(escrow).getDeal(abi.decode(_args(data), (uint256)));
+        if (d.seller != address(this)) revert NotSellerOfDeal();
+        if (address(d.token) != address(token)) revert WrongToken();
+        if (selector == FileEscrow.accept.selector) {
+            _checkArbiter(d.arbiter);
+        } else if (selector == FileEscrow.claim.selector || selector == FileEscrow.refund.selector) {
+            if (data.length != 68) revert InvalidProposal();
+        }
+        // deliver and releaseKey carry a hash / key and a URI; FileEscrow validates those itself.
     }
 
     /// @dev Validates an approval the agent makes on its own: an allowlisted FileEscrow, a deal this

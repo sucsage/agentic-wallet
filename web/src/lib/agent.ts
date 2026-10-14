@@ -417,8 +417,8 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
             acceptance: m.acceptance,
           })),
         });
-        const s = await readWallet(wallet);
-        const label = s.allowlist.recipients.find((r) => r.address.toLowerCase() === d.seller.toLowerCase())?.label ?? "";
+        const friends = await friendLabels(userId);
+        const label = friends.get(d.seller.toLowerCase()) ?? "";
         const draft = await draftView(d, label);
         return {
           tool: name,

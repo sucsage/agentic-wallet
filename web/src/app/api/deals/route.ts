@@ -1,8 +1,9 @@
 import { after } from "next/server";
 
-import { syncDeal } from "@/lib/bank/deals";
+import { dealTerms, syncDeal } from "@/lib/bank/deals";
 import { draftView, listDrafts } from "@/lib/bank/drafts";
 import { errorResponse, requireBankWallet } from "@/lib/guard";
+import { friendLabels } from "@/lib/social";
 import { readFileDeals } from "@/lib/state";
 
 /**
@@ -16,9 +17,15 @@ export async function GET() {
     after(async () => {
       for (const d of deals) await syncDeal(wallet, d.id).catch((e) => console.error("syncDeal", d.id, e));
     });
-    const byDeal = new Map(drafts.filter((d) => d.dealId !== null).map((d) => [d.dealId!, d]));
+    // Titles come from the buyer's draft, so a seller sees the same name for the deal.
+    const friends = await friendLabels(user.id);
+    const titles = await Promise.all(deals.map((d) => dealTerms(d.id, d.role === "buyer" ? wallet : d.counterparty)));
     return Response.json({
-      deals: deals.map((d) => ({ ...d, title: byDeal.get(d.id)?.title ?? null })),
+      deals: deals.map((d, i) => ({
+        ...d,
+        title: titles[i]?.title ?? null,
+        counterpartyLabel: friends.get(d.counterparty.toLowerCase()) ?? d.counterpartyLabel,
+      })),
       drafts: await Promise.all(drafts.filter((d) => d.status !== "FUNDED").map((d) => draftView(d))),
     });
   } catch (err) {

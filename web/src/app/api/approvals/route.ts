@@ -1,3 +1,4 @@
+import { dealTerms } from "@/lib/bank/deals";
 import { draftView, listDrafts } from "@/lib/bank/drafts";
 import { errorResponse, requireBankWallet } from "@/lib/guard";
 import { pendingVotes } from "@/lib/social";
@@ -27,13 +28,25 @@ export async function GET() {
             tier: Number(m.amount) <= Number(state.session.maxPerTx) ? 2 : 1,
           })),
       );
+    // As a seller: offers waiting for acceptance and milestones waiting for delivery.
+    const selling = state.fileDeals.filter((d) => d.role === "seller" && d.status !== "Cancelled");
+    const sellerTitles = await Promise.all(selling.map((d) => dealTerms(d.id, d.counterparty)));
+    type SellerTodo = { dealId: number; title: string; index: number | null; amount: string; step: "accept" | "deliver" };
+    const toDeliver = selling.flatMap((d, k): SellerTodo[] => {
+      const title = sellerTitles[k]?.title ?? `File deal #${d.id}`;
+      if (d.status === "Proposed") return [{ dealId: d.id, title, index: null, amount: d.total, step: "accept" }];
+      const next = d.milestones.find((m) => m.status === "Pending");
+      return next ? [{ dealId: d.id, title, index: next.index, amount: next.amount, step: "deliver" }] : [];
+    });
     const items = {
+      sellerTodo: toDeliver,
       drafts: await Promise.all(drafts.filter((d) => d.status === "DRAFT").map((d) => draftView(d))),
       reviews,
       groupVotes: votes,
       proposals: state.proposals.filter((p) => p.status === "open"),
     };
-    const count = items.drafts.length + items.reviews.length + items.groupVotes.length + items.proposals.length;
+    const count =
+      items.drafts.length + items.reviews.length + items.groupVotes.length + items.proposals.length + items.sellerTodo.length;
     return Response.json({ count, ...items });
   } catch (err) {
     return errorResponse(err);

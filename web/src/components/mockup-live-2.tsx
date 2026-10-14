@@ -94,6 +94,7 @@ const when = (unix: number) =>
 
 type Approvals = {
   count: number;
+  sellerTodo: { dealId: number; title: string; index: number | null; amount: string; step: "accept" | "deliver" }[];
   drafts: { id: string; title: string; total: string; sellerLabel: string; seller: string; milestones: unknown[] }[];
   reviews: { dealId: number; title: string; index: number; amount: string; reviewUntil: number; tier: 1 | 2 }[];
   groupVotes: { proposalId: string; group: { id: string; name: string; threshold: number }; title: string; yes: number }[];
@@ -173,6 +174,24 @@ export function LiveApprovals() {
                 >
                   {busy === `a${r.dealId}-${r.index}` ? "…" : "Approve work"}
                 </Button>
+              </div>
+            </article>
+          ))}
+        </div>
+        <small className="aw-approvals-section-label">SELLING</small>
+        <div className="aw-approval-list">
+          {data?.sellerTodo.length === 0 && <p className="aw-approval-empty">Nothing to deliver.</p>}
+          {data?.sellerTodo.map((t) => (
+            <article className="aw-approval-item" key={`s${t.dealId}-${t.index}`}>
+              <span className="aw-approval-tier">{t.step === "accept" ? "Offer" : `M${(t.index ?? 0) + 1}`}</span>
+              <div className="aw-approval-copy">
+                <b>
+                  {t.step === "accept" ? "Accept offer" : "Deliver"} · {t.title} · {tokenMoney(t.amount, currency)}
+                </b>
+                <p>{t.step === "accept" ? "The buyer already locked the money in escrow." : "Upload the work and your evidence on the deal page."}</p>
+              </div>
+              <div className="aw-approval-buttons">
+                <Button onClick={() => (window.location.href = `/deal/D-${t.dealId}`)}>Open deal</Button>
               </div>
             </article>
           ))}
@@ -903,6 +922,7 @@ type DealDetail = {
   reviewHours: number;
   demoSeller: boolean;
   canCancel: boolean;
+  canAccept: boolean;
   escrow: string | null;
   milestones: {
     index: number;
@@ -912,8 +932,68 @@ type DealDetail = {
     status: string;
     deadline: number;
     moves: string[];
+    delivery: { note: string; fileName: string | null; size: number | null; sha256: string; deliveredAt: string } | null;
+    canDownload: boolean;
     deliverable: { text: string; sha256: string } | null;
   }[];
+};
+
+/** The seller's delivery form for one milestone: evidence note plus an optional file (max 4 MB). */
+function DeliverForm({ dealId, index, onDone }: { dealId: number; index: number; onDone: () => Promise<void> }) {
+  const [note, setNote] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (file && file.size > 4 * 1024 * 1024) return setMsg({ ok: false, text: "The file is larger than 4 MB" });
+    setBusy(true);
+    setMsg(null);
+    try {
+      const form = new FormData();
+      form.set("index", String(index));
+      form.set("note", note);
+      if (file) form.set("file", file);
+      const r = await api<{ outcome: Outcome; sha256: string }>(`/api/deals/${dealId}/deliver`, { method: "POST", body: form });
+      if (r.outcome.status !== "success") setMsg({ ok: false, text: r.outcome.error ?? r.outcome.status });
+      else {
+        setMsg({ ok: true, text: `Delivered · sha256 ${r.sha256.slice(0, 12)}… anchored on-chain` });
+        setNote("");
+        setFile(null);
+      }
+      await onDone();
+    } catch (err) {
+      setMsg({ ok: false, text: (err as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <form className="aw-deliver-form" onSubmit={submit}>
+      <label>
+        <span>Evidence: what you delivered and how it meets the acceptance criteria</span>
+        <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} maxLength={4000} required />
+      </label>
+      <label>
+        <span>File (optional, max 4 MB · encrypted, the buyer unlocks it after approving)</span>
+        <input type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+      </label>
+      <Button type="submit" disabled={busy || !note.trim()}>
+        {busy ? "Encrypting & anchoring…" : "Submit delivery"}
+      </Button>
+      {msg && <p className={msg.ok ? "aw-live-ok" : "aw-bank-error"}>{msg.text}</p>}
+    </form>
+  );
+}
+
+const SELLER_STEP: Record<string, string> = {
+  Pending: "Your turn: deliver the work",
+  Delivered: "Delivered · waiting for the buyer's review",
+  Approved: "Approved · the agent releases your key",
+  KeyReleased: "Key released · you are paid after the buyer's challenge window",
+  Released: "Paid to your bank",
+  Disputed: "Disputed · waiting for the arbiter",
+  Refunded: "Refunded to the buyer",
 };
 
 const STEP: Record<string, string> = {
@@ -970,11 +1050,33 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
                 {m.index + 1}. {m.name}
               </h2>
               <div className="aw-d012-payout">
-                <span>{STEP[m.status] ?? m.status}</span>
+                <span>{(data.role === "seller" ? SELLER_STEP : STEP)[m.status] ?? m.status}</span>
                 <b>{tokenMoney(m.amount, c)}</b>
               </div>
               {m.acceptance && <p>Acceptance: {m.acceptance}</p>}
               {m.deadline > 0 && ["Delivered", "Approved", "KeyReleased"].includes(m.status) && <small>Window ends {when(m.deadline)}</small>}
+              {m.delivery && (
+                <div className="aw-d012-success">
+                  📎 &nbsp;Evidence: {m.delivery.note}
+                  {m.delivery.fileName && (
+                    <>
+                      <br />
+                      File: {m.delivery.fileName} ({Math.ceil((m.delivery.size ?? 0) / 1024)} KB) · sha256 {m.delivery.sha256.slice(0, 12)}… (the work hash on-chain)
+                    </>
+                  )}
+                  {m.canDownload ? (
+                    <>
+                      <br />
+                      <Button variant="outline" onClick={() => download(`/api/deals/${id}/files/${m.index}`)}>
+                        ⇩ Download file
+                      </Button>
+                    </>
+                  ) : (
+                    m.delivery.fileName && data.role === "buyer" && <small> · unlocks after you approve and the key is released</small>
+                  )}
+                </div>
+              )}
+              {m.moves.includes("deliver") && <DeliverForm dealId={id} index={m.index} onDone={after} />}
               {m.deliverable && (
                 <div className="aw-d012-success">
                   ✓ &nbsp;File: “{m.deliverable.text}” · sha256 {m.deliverable.sha256.slice(0, 12)}… matches the hash anchored on-chain
@@ -997,11 +1099,23 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
                       Take money back
                     </Button>
                   )}
+                  {m.moves.includes("refund") && (
+                    <Button variant="outline" disabled={!!busy} onClick={() => act("refund", m.index)}>
+                      Refund the buyer
+                    </Button>
+                  )}
                 </div>
               )}
             </section>
           ))}
         </div>
+        {data?.canAccept && (
+          <div className="aw-d012-actions">
+            <Button disabled={!!busy} onClick={() => act("accept", 0)}>
+              {busy === "accept0" ? "…" : `Accept offer · ${tokenMoney(data.total, c)} is already locked by the buyer`}
+            </Button>
+          </div>
+        )}
         {data?.canCancel && (
           <div className="aw-d012-actions">
             <Button variant="danger" disabled={!!busy} onClick={() => act("cancel", 0)}>

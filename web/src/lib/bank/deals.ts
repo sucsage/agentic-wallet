@@ -1,6 +1,6 @@
 import "server-only";
 
-import { createHash, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 
 import { type Address, type Hex, encodeFunctionData, getAddress, keccak256, toHex } from "viem";
 
@@ -13,19 +13,28 @@ import { type Mandate, ownerSignMandate } from "./funding";
 import { accountOf, openAccount, reserveIdFor, transfer } from "./ledger";
 
 /**
- * File deals after the lock: the buyer's moves (approve, dispute, reclaim, cancel), the demo
- * contractor that plays the seller, and settlement back to the Mock Bank.
+ * File deals after the lock, for both sides:
+ *   buyer:  approve, dispute, reclaim, cancel
+ *   seller: accept a buyer's offer, deliver (file + evidence), refund; the key release and the
+ *           claim run on their own once the buyer approves and the windows pass (the agent's job)
+ * plus the demo contractor (a server-run seller) and settlement back to the Mock Bank.
  *
- * Only an externally owned key can sell on FileEscrow today (AgentWallet allows buyer moves only),
- * so the seller every tester can trade with is the demo contractor, run by the server. Its moves are
- * automatic and idempotent: each sync looks at the chain and does the next step, if any.
+ * Every wallet move is the user's click signed as an owner mandate (one transaction), except the
+ * agent's own Tier 2 approval within its caps.
+ *
+ * Files: the seller's file is encrypted (AES-256-GCM) and kept in the database; only its sha256
+ * goes on-chain as the work hash, so the buyer can check the file they finally get. The key stays
+ * with the server (demo custody) and the chain gets a commitment to it at releaseKey; the buyer can
+ * download the file only once the escrow shows the key as released.
  *
  * Settlement keeps the bank and the chain equal: tokens that leave escrow are redeemed (burned) and
  * the same amount moves out of the reserve, to the seller (PAYOUT) or back to the buyer (REFUND).
- * Each redeem id is derived from the deal and milestone, so a retry can never pay twice.
+ * Redeem ids come from the deal and milestone, so a retry can never pay twice.
  */
 
 const KIND_CALL = 2;
+/** Vercel caps request bodies at 4.5 MB; keep uploads under it. */
+export const MAX_FILE_BYTES = 4 * 1024 * 1024;
 
 export class DealError extends Error {}
 
@@ -49,15 +58,37 @@ async function getMilestone(dealId: number, index: number) {
   );
 }
 
-/** A FileEscrow deal the wallet is party to, or a 404-style error. */
+/** A FileEscrow deal the wallet is party to (as buyer or seller), or a 404-style error. */
 export async function dealForWallet(wallet: Address, dealId: number): Promise<FileDealView> {
   const deal = (await readFileDeals(wallet)).find((d) => d.id === dealId);
   if (!deal) throw new DealError("Deal not found for this wallet");
   return deal;
 }
 
+/** Sends one FileEscrow call from the wallet, approved by the owner's signature (the user's click). */
+async function viaMandate(wallet: Address, data: Hex, reason: string): Promise<TxOutcome> {
+  const random = crypto.getRandomValues(new Uint32Array(2));
+  const mandate: Mandate = {
+    kind: KIND_CALL,
+    target: escrow(),
+    amount: 0n,
+    index: 0n,
+    data,
+    reasonHash: keccak256(toHex(reason)),
+    nonce: (BigInt(random[0]) << 32n) | BigInt(random[1]),
+    deadline: BigInt(Math.floor(Date.now() / 1000) + 600),
+  };
+  const signature = await ownerSignMandate(wallet, mandate);
+  return send("agent", { address: wallet, abi: agentWalletAbi, functionName: "executeMandate", args: [mandate, signature] });
+}
+
+const dealCall = (fn: "accept" | "cancel", dealId: number) =>
+  encodeFunctionData({ abi: fileEscrowAbi, functionName: fn, args: [BigInt(dealId)] });
+const milestoneCall = (fn: "approve" | "dispute" | "reclaim" | "claim" | "refund", dealId: number, index: number) =>
+  encodeFunctionData({ abi: fileEscrowAbi, functionName: fn, args: [BigInt(dealId), BigInt(index)] });
+
 // ------------------------------------------------------------------------------------------
-// Buyer moves, approved by the user's click (an owner mandate, one transaction)
+// Buyer moves
 // ------------------------------------------------------------------------------------------
 
 export type BuyerAction = "approve" | "dispute" | "reclaim" | "cancel";
@@ -87,39 +118,125 @@ export async function buyerAction(
     // Only a definite refusal (e.g. over the caps) falls back; a network error is reported as is.
     if (!(agent.status === "rejected" && agent.definite)) return { tier: 2, outcome: agent };
   }
-
-  const data =
-    action === "cancel"
-      ? encodeFunctionData({ abi: fileEscrowAbi, functionName: "cancel", args: [BigInt(dealId)] })
-      : encodeFunctionData({ abi: fileEscrowAbi, functionName: action, args: [BigInt(dealId), BigInt(index)] });
-  const random = crypto.getRandomValues(new Uint32Array(2));
-  const mandate: Mandate = {
-    kind: KIND_CALL,
-    target: escrow(),
-    amount: 0n,
-    index: 0n,
-    data,
-    reasonHash: keccak256(toHex(`${action} deal ${dealId} milestone ${index}`)),
-    nonce: (BigInt(random[0]) << 32n) | BigInt(random[1]),
-    deadline: BigInt(Math.floor(Date.now() / 1000) + 600),
-  };
-  const signature = await ownerSignMandate(wallet, mandate);
-  const outcome = await send("agent", {
-    address: wallet,
-    abi: agentWalletAbi,
-    functionName: "executeMandate",
-    args: [mandate, signature],
-  });
-  return { tier: 1, outcome };
+  const data = action === "cancel" ? dealCall("cancel", dealId) : milestoneCall(action, dealId, index);
+  return { tier: 1, outcome: await viaMandate(wallet, data, `${action} deal ${dealId} milestone ${index}`) };
 }
 
 // ------------------------------------------------------------------------------------------
-// Demo contractor (the seller) and settlement
+// Seller moves
+// ------------------------------------------------------------------------------------------
+
+export type SellerAction = "accept" | "claim" | "refund";
+
+export async function sellerAction(wallet: Address, dealId: number, action: SellerAction, index = 0): Promise<{ tier: 1; outcome: TxOutcome }> {
+  const deal = await dealForWallet(wallet, dealId);
+  if (deal.role !== "seller") throw new DealError("Only the seller can do this");
+  const data = action === "accept" ? dealCall("accept", dealId) : milestoneCall(action, dealId, index);
+  return { tier: 1, outcome: await viaMandate(wallet, data, `${action} deal ${dealId} milestone ${index}`) };
+}
+
+/**
+ * The seller delivers a milestone: the file (if any) is encrypted and stored, the evidence note is
+ * kept with it, and the work hash (sha256 of the file, or of the note when there is no file) is
+ * anchored on-chain. Delivering again before the buyer approves replaces the previous delivery.
+ */
+export async function deliver(
+  userId: string,
+  wallet: Address,
+  dealId: number,
+  index: number,
+  input: { note: string; file: { name: string; mime: string; bytes: Buffer } | null },
+): Promise<{ outcome: TxOutcome; sha256: string }> {
+  const deal = await dealForWallet(wallet, dealId);
+  if (deal.role !== "seller") throw new DealError("Only the seller delivers");
+  const m = deal.milestones[index];
+  if (!m) throw new DealError("No such milestone");
+  if (m.status !== "Pending" && m.status !== "Delivered") throw new DealError(`This milestone is already ${m.status}`);
+  if (m.hasFile && !input.file) throw new DealError("This milestone needs a file");
+  if (!input.file && !input.note.trim()) throw new DealError("Describe what you delivered");
+  if (input.file && input.file.bytes.length > MAX_FILE_BYTES) throw new DealError("The file is larger than 4 MB");
+
+  const plain = input.file?.bytes ?? Buffer.from(input.note, "utf8");
+  const sha256 = createHash("sha256").update(plain).digest("hex");
+  let enc: { ciphertext: Buffer; iv: Buffer; tag: Buffer; key: Buffer } | null = null;
+  if (input.file) {
+    const key = randomBytes(32);
+    const iv = randomBytes(12);
+    const c = createCipheriv("aes-256-gcm", key, iv);
+    const ciphertext = Buffer.concat([c.update(input.file.bytes), c.final()]);
+    enc = { ciphertext, iv, tag: c.getAuthTag(), key };
+  }
+  const row = await db.dealDelivery.upsert({
+    where: { escrow_dealId_index: { escrow: escrow(), dealId, index } },
+    update: {
+      sellerUserId: userId,
+      note: input.note,
+      fileName: input.file?.name ?? null,
+      mime: input.file?.mime ?? null,
+      size: input.file?.bytes.length ?? null,
+      ciphertext: enc ? new Uint8Array(enc.ciphertext) : null,
+      iv: enc?.iv.toString("hex") ?? null,
+      tag: enc?.tag.toString("hex") ?? null,
+      fileKey: enc?.key.toString("hex") ?? null,
+      sha256,
+    },
+    create: {
+      escrow: escrow(),
+      dealId,
+      index,
+      sellerUserId: userId,
+      note: input.note,
+      fileName: input.file?.name ?? null,
+      mime: input.file?.mime ?? null,
+      size: input.file?.bytes.length ?? null,
+      ciphertext: enc ? new Uint8Array(enc.ciphertext) : null,
+      iv: enc?.iv.toString("hex") ?? null,
+      tag: enc?.tag.toString("hex") ?? null,
+      fileKey: enc?.key.toString("hex") ?? null,
+      sha256,
+    },
+  });
+  const data = encodeFunctionData({
+    abi: fileEscrowAbi,
+    functionName: "deliver",
+    args: [BigInt(dealId), BigInt(index), `0x${sha256}`, `app-delivery:${row.id}`],
+  });
+  return { outcome: await viaMandate(wallet, data, `deliver deal ${dealId} milestone ${index}`), sha256 };
+}
+
+/** What either party may see about a delivery before the file itself. */
+export async function deliveryInfo(dealId: number, index: number) {
+  const d = await db.dealDelivery.findUnique({ where: { escrow_dealId_index: { escrow: escrow(), dealId, index } } });
+  return d ? { note: d.note, fileName: d.fileName, mime: d.mime, size: d.size, sha256: d.sha256, deliveredAt: d.updatedAt } : null;
+}
+
+/** The decrypted file: always for the seller, for the buyer only once the escrow released the key. */
+export async function deliveryFile(wallet: Address, dealId: number, index: number) {
+  const deal = await dealForWallet(wallet, dealId);
+  const status = deal.milestones[index]?.status;
+  if (deal.role === "buyer" && status !== "KeyReleased" && status !== "Released") {
+    throw new DealError("The file unlocks after you approve the work and the seller releases the key");
+  }
+  const d = await db.dealDelivery.findUnique({ where: { escrow_dealId_index: { escrow: escrow(), dealId, index } } });
+  if (!d?.ciphertext || !d.fileKey || !d.iv || !d.tag) throw new DealError("No file for this milestone");
+  const dec = createDecipheriv("aes-256-gcm", Buffer.from(d.fileKey, "hex"), Buffer.from(d.iv, "hex"));
+  dec.setAuthTag(Buffer.from(d.tag, "hex"));
+  const bytes = Buffer.concat([dec.update(Buffer.from(d.ciphertext)), dec.final()]);
+  return { bytes, name: d.fileName ?? "delivery", mime: d.mime ?? "application/octet-stream", sha256: d.sha256 };
+}
+
+// ------------------------------------------------------------------------------------------
+// Settlement and the automatic steps (demo contractor, key release, claim)
 // ------------------------------------------------------------------------------------------
 
 /** The demo file's plaintext for a milestone; its sha256 is the work hash anchored on-chain. */
 function demoFile(dealId: number, index: number): string {
   return `Agentic Wallet demo deliverable · deal ${dealId} · milestone ${index + 1}`;
+}
+
+export function demoDeliverable(dealId: number, index: number) {
+  const text = demoFile(dealId, index);
+  return { text, sha256: createHash("sha256").update(text).digest("hex") };
 }
 
 const redeemId = (kind: "payout" | "refund" | "cancel", dealId: number, index = 0): Hex =>
@@ -129,6 +246,29 @@ async function redeemed(token: Address, holder: Address, id: Hex): Promise<boole
   return atFreshBlock((blockNumber) =>
     publicClient().readContract({ address: token, abi: mockTHBAbi, functionName: "redeemed", args: [holder, id], blockNumber }),
   );
+}
+
+/** Burns tokens a user wallet received from escrow and credits the same amount to its bank account. */
+async function settleToWalletBank(
+  wallet: Address,
+  token: Address,
+  currency: "THB" | "CNY",
+  id: Hex,
+  amount: bigint,
+  kind: "REFUND" | "PAYOUT",
+) {
+  const account = await accountOf(wallet);
+  if (!account) return;
+  if (!(await redeemed(token, wallet, id))) {
+    const out = await send("owner", {
+      address: wallet,
+      abi: agentWalletAbi,
+      functionName: "execute",
+      args: [token, 0n, encodeFunctionData({ abi: mockTHBAbi, functionName: "redeem", args: [amount, id] })],
+    });
+    if (out.status !== "success" && !(await redeemed(token, wallet, id))) return;
+  }
+  await transfer({ key: `${kind.toLowerCase()}:${id}`, kind, fromId: reserveIdFor(currency), toId: account.id, amount });
 }
 
 /** Burns `amount` held by the demo contractor and pays the contractor's bank account. */
@@ -143,61 +283,50 @@ async function payoutContractor(token: Address, currency: "THB" | "CNY", dealId:
   await transfer({ key: `payout:${id}`, kind: "PAYOUT", fromId: reserveIdFor(currency), toId: account.id, amount });
 }
 
-/** Burns money that came back to the buyer's wallet and returns it to their bank account. */
-async function refundBuyer(wallet: Address, token: Address, currency: "THB" | "CNY", id: Hex, amount: bigint) {
-  const account = await accountOf(wallet);
-  if (!account) return;
-  if (!(await redeemed(token, wallet, id))) {
-    const out = await send("owner", {
-      address: wallet,
-      abi: agentWalletAbi,
-      functionName: "execute",
-      args: [token, 0n, encodeFunctionData({ abi: mockTHBAbi, functionName: "redeem", args: [amount, id] })],
-    });
-    if (out.status !== "success" && !(await redeemed(token, wallet, id))) return;
-  }
-  await transfer({ key: `refund:${id}`, kind: "REFUND", fromId: reserveIdFor(currency), toId: account.id, amount });
-}
-
-const syncing = new Map<string, Promise<void>>();
+const syncing = new Map<number, Promise<void>>();
 
 /**
- * Moves a deal forward by one step where the demo contractor or settlement owes one. Safe to call
- * from any request: concurrent calls for the same deal share one run, and every step re-reads the
- * chain first.
+ * Moves a deal forward where the server owes a step: the demo contractor's moves, a user seller's
+ * key release and claim, and bank settlement on both sides. Safe from any request: concurrent calls
+ * for the same deal share one run, and every step re-reads the chain first.
  */
-export function syncDeal(wallet: Address, dealId: number): Promise<void> {
-  const key = `${wallet}:${dealId}`;
-  const running = syncing.get(key);
+export function syncDeal(_wallet: Address, dealId: number): Promise<void> {
+  const running = syncing.get(dealId);
   if (running) return running;
-  const run = doSync(wallet, dealId).finally(() => syncing.delete(key));
-  syncing.set(key, run);
+  const run = doSync(dealId).finally(() => syncing.delete(dealId));
+  syncing.set(dealId, run);
   return run;
 }
 
-async function doSync(wallet: Address, dealId: number): Promise<void> {
-  const units = await walletUnits(wallet);
-  if (!units.currency) return;
+async function doSync(dealId: number): Promise<void> {
   const d = await getDeal(dealId);
-  if (getAddress(d.buyer) !== wallet) return;
-  const isDemoSeller = getAddress(d.seller) === roleAddresses().contractor;
+  const buyer = getAddress(d.buyer);
+  const seller = getAddress(d.seller);
+  const contractor = roleAddresses().contractor;
+  const demoSeller = seller === contractor;
+  const sellerIsUser = !demoSeller && (await accountOf(seller)) !== null;
+  const buyerIsUser = (await accountOf(buyer)) !== null;
+  const units = await walletUnits(buyerIsUser ? buyer : seller);
+  if (!units.currency) return;
+  const { address: token, currency } = units;
   const now = BigInt(Math.floor(Date.now() / 1000));
 
-  // The offer was withdrawn before acceptance: the whole total came back to the wallet.
+  // The offer was withdrawn before acceptance: the whole total went back to the buyer.
   if (d.status === 2) {
-    await refundBuyer(wallet, units.address, units.currency, redeemId("cancel", dealId), d.total);
+    if (buyerIsUser) await settleToWalletBank(buyer, token, currency, redeemId("cancel", dealId), d.total, "REFUND");
     return;
   }
   if (d.status === 0) {
-    if (isDemoSeller) await send("contractor", { address: escrow(), abi: fileEscrowAbi, functionName: "accept", args: [BigInt(dealId)] });
+    if (demoSeller) await send("contractor", { address: escrow(), abi: fileEscrowAbi, functionName: "accept", args: [BigInt(dealId)] });
     return;
   }
 
   for (let i = 0; i < Number(d.milestoneCount); i++) {
     const m = await getMilestone(dealId, i);
+    const open = now <= m.deadline;
     switch (m.status) {
-      case 0: // Pending: the demo contractor delivers one milestone at a time
-        if (isDemoSeller) {
+      case 0: // Pending: the demo contractor delivers one milestone at a time; users deliver themselves
+        if (demoSeller) {
           const workHash = `0x${createHash("sha256").update(demoFile(dealId, i)).digest("hex")}` as Hex;
           await send("contractor", {
             address: escrow(),
@@ -205,56 +334,64 @@ async function doSync(wallet: Address, dealId: number): Promise<void> {
             functionName: "deliver",
             args: [BigInt(dealId), BigInt(i), workHash, `demo-delivery:${dealId}:${i}`],
           });
-          return;
         }
         return;
-      case 1: // Delivered: the buyer reviews. If the window passes in silence the seller moves on:
-        // a no-file milestone is claimed, a file milestone gets its key released.
-        if (isDemoSeller && now > m.deadline) {
-          await (m.hasFile
-            ? send("contractor", {
-                address: escrow(),
-                abi: fileEscrowAbi,
-                functionName: "releaseKey",
-                args: [BigInt(dealId), BigInt(i), toHex(randomBytes(32))],
-              })
-            : send("contractor", { address: escrow(), abi: fileEscrowAbi, functionName: "claim", args: [BigInt(dealId), BigInt(i)] }));
+      case 1: // Delivered: the buyer reviews; after a silent window the seller moves on
+        if (!open) {
+          if (demoSeller) {
+            await (m.hasFile
+              ? send("contractor", { address: escrow(), abi: fileEscrowAbi, functionName: "releaseKey", args: [BigInt(dealId), BigInt(i), toHex(randomBytes(32))] })
+              : send("contractor", { address: escrow(), abi: fileEscrowAbi, functionName: "claim", args: [BigInt(dealId), BigInt(i)] }));
+          } else if (sellerIsUser) {
+            await (m.hasFile ? releaseKeyFor(seller, dealId, i) : viaMandate(seller, milestoneCall("claim", dealId, i), `claim ${dealId}/${i}`));
+          }
         }
         return;
       case 2: // Approved: hand over the key
-        if (isDemoSeller) {
-          await send("contractor", {
-            address: escrow(),
-            abi: fileEscrowAbi,
-            functionName: "releaseKey",
-            args: [BigInt(dealId), BigInt(i), toHex(randomBytes(32))],
-          });
+        if (demoSeller) {
+          await send("contractor", { address: escrow(), abi: fileEscrowAbi, functionName: "releaseKey", args: [BigInt(dealId), BigInt(i), toHex(randomBytes(32))] });
+        } else if (sellerIsUser) {
+          await releaseKeyFor(seller, dealId, i);
         }
         return;
       case 3: // KeyReleased: claim once the buyer's challenge window has passed
-        if (isDemoSeller && now > m.deadline) {
-          await send("contractor", { address: escrow(), abi: fileEscrowAbi, functionName: "claim", args: [BigInt(dealId), BigInt(i)] });
+        if (!open) {
+          if (demoSeller) {
+            await send("contractor", { address: escrow(), abi: fileEscrowAbi, functionName: "claim", args: [BigInt(dealId), BigInt(i)] });
+          } else if (sellerIsUser) {
+            await viaMandate(seller, milestoneCall("claim", dealId, i), `claim ${dealId}/${i}`);
+          }
         }
         return;
       case 4: // Released: the seller was paid on-chain; settle it in the bank
-        if (isDemoSeller) await payoutContractor(units.address, units.currency, dealId, i, m.amount);
+        if (demoSeller) await payoutContractor(token, currency, dealId, i, m.amount);
+        else if (sellerIsUser) await settleToWalletBank(seller, token, currency, redeemId("payout", dealId, i), m.amount, "PAYOUT");
         continue;
       case 5: // Disputed: waits for the arbiter
         return;
       case 6: // Refunded: back to the buyer's bank
-        await refundBuyer(wallet, units.address, units.currency, redeemId("refund", dealId, i), m.amount);
+        if (buyerIsUser) await settleToWalletBank(buyer, token, currency, redeemId("refund", dealId, i), m.amount, "REFUND");
         continue;
     }
   }
 }
 
-/** The demo file a buyer receives once the key is released (stand-in for decrypting the real file). */
-export function demoDeliverable(dealId: number, index: number) {
-  const text = demoFile(dealId, index);
-  return { text, sha256: createHash("sha256").update(text).digest("hex") };
+/**
+ * Releases the key for a user seller's file. The chain gets a commitment to the key (its keccak);
+ * the server, which holds the key, serves the decrypted file to the buyer once this is on-chain.
+ */
+async function releaseKeyFor(seller: Address, dealId: number, index: number): Promise<TxOutcome> {
+  const d = await db.dealDelivery.findUnique({ where: { escrow_dealId_index: { escrow: escrow(), dealId, index } } });
+  const commitment = d?.fileKey ? keccak256(`0x${d.fileKey}`) : keccak256(toHex(`no-file:${dealId}:${index}`));
+  const data = encodeFunctionData({
+    abi: fileEscrowAbi,
+    functionName: "releaseKey",
+    args: [BigInt(dealId), BigInt(index), commitment],
+  });
+  return viaMandate(seller, data, `releaseKey ${dealId}/${index}`);
 }
 
-/** Bank-side terms of a deal the user drafted (title, milestone names), if any. */
-export async function dealTerms(userId: string, dealId: number) {
-  return db.dealDraft.findFirst({ where: { userId, dealId } });
+/** Off-chain terms of a deal (title, milestone names), drafted by its buyer. Both parties see them. */
+export async function dealTerms(dealId: number, buyer: Address) {
+  return db.dealDraft.findFirst({ where: { dealId, walletAddress: buyer } });
 }

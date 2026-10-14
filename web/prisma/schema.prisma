@@ -437,3 +437,30 @@ model GroupVote {
 
   @@id([proposalId, userId])
 }
+
+/// A seller's delivery for one FileEscrow milestone (PDPA: the file and note live here and can be
+/// deleted; the chain holds only the sha256 work hash and a commitment to the key).
+model DealDelivery {
+  id           String   @id @default(cuid())
+  /// FileEscrow address: deal ids restart with every escrow deployment.
+  escrow       String
+  dealId       Int
+  index        Int
+  sellerUserId String
+  /// The seller's evidence: what was delivered and how it meets the acceptance criteria.
+  note         String
+  fileName     String?
+  mime         String?
+  size         Int?
+  /// AES-256-GCM ciphertext of the file; the key below stays on the server (demo custody).
+  ciphertext   Bytes?
+  iv           String?
+  tag          String?
+  fileKey      String?
+  /// sha256 of the file (or of the note when there is no file): the work hash anchored on-chain.
+  sha256       String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([escrow, dealId, index])
+}

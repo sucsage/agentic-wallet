@@ -1,21 +1,30 @@
 import { after } from "next/server";
 
-import { DealError, dealForWallet, dealTerms, demoDeliverable, syncDeal } from "@/lib/bank/deals";
+import { DealError, dealForWallet, dealTerms, deliveryInfo, demoDeliverable, syncDeal } from "@/lib/bank/deals";
 import { draftView } from "@/lib/bank/drafts";
 import { roleAddresses } from "@/lib/chain";
 import { config, explorerAddress } from "@/lib/config";
 import { HttpError, errorResponse, requireBankWallet } from "@/lib/guard";
+import { friendLabels } from "@/lib/social";
 
-/** What the buyer can do with a milestone in its current state (the contract has the last word). */
-function buyerMoves(status: string, deadline: number): string[] {
+/** What the user can do with a milestone now (the contract has the last word). */
+function moves(role: "buyer" | "seller", dealStatus: string, status: string, deadline: number): string[] {
+  if (dealStatus !== "Active") return [];
   const open = Date.now() / 1000 <= deadline;
-  if (status === "Delivered") return open ? ["approve", "dispute"] : ["approve"];
-  if (status === "KeyReleased") return open ? ["dispute"] : [];
-  if (status === "Approved") return open ? [] : ["reclaim"];
+  if (role === "buyer") {
+    if (status === "Delivered") return open ? ["approve", "dispute"] : ["approve"];
+    if (status === "KeyReleased") return open ? ["dispute"] : [];
+    if (status === "Approved") return open ? [] : ["reclaim"];
+    return [];
+  }
+  // Seller: key release and claim happen on their own; delivering and refunding are the user's.
+  if (status === "Pending") return ["deliver", "refund"];
+  if (status === "Delivered") return ["deliver", "refund"];
+  if (status === "Approved" || status === "KeyReleased") return ["refund"];
   return [];
 }
 
-/** One deal: milestones with deadlines and the moves available now, plus its off-chain terms. */
+/** One deal, from either side: milestones, deadlines, moves, deliveries and its off-chain terms. */
 export async function GET(_req: Request, ctx: RouteContext<"/api/deals/[id]">) {
   try {
     const { user, wallet } = await requireBankWallet();
@@ -25,22 +34,33 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/deals/[id]">) {
       throw e instanceof DealError ? new HttpError(404, e.message) : e;
     });
     after(() => syncDeal(wallet, id).catch((e) => console.error("syncDeal", id, e)));
-    const draft = await dealTerms(user.id, id);
+    const buyer = deal.role === "buyer" ? wallet : deal.counterparty;
+    const draft = await dealTerms(id, buyer);
     const terms = draft ? await draftView(draft) : null;
-    const demoSeller = deal.counterparty === roleAddresses().contractor;
+    const demoSeller = deal.role === "buyer" && deal.counterparty === roleAddresses().contractor;
+    const [deliveries, friends] = await Promise.all([
+      Promise.all(deal.milestones.map((m) => deliveryInfo(id, m.index))),
+      friendLabels(user.id),
+    ]);
     return Response.json({
       ...deal,
+      counterpartyLabel: friends.get(deal.counterparty.toLowerCase()) ?? deal.counterpartyLabel,
       title: terms?.title ?? `File deal #${id}`,
       summary: terms?.summary ?? null,
       escrow: explorerAddress(config.bankContracts.fileEscrow),
       demoSeller,
       canCancel: deal.role === "buyer" && deal.status === "Proposed",
+      canAccept: deal.role === "seller" && deal.status === "Proposed",
       milestones: deal.milestones.map((m, i) => ({
         ...m,
         name: terms?.milestones[i]?.name ?? `Milestone ${i + 1}`,
         acceptance: terms?.milestones[i]?.acceptance ?? null,
-        moves: deal.role === "buyer" && deal.status === "Active" ? buyerMoves(m.status, m.deadline) : [],
-        // The demo file stands in for decrypting the real one once the key is out.
+        moves: moves(deal.role, deal.status, m.status, m.deadline),
+        delivery: deliveries[i],
+        // A file can be downloaded by the seller any time, by the buyer once the key is released.
+        canDownload:
+          Boolean(deliveries[i]?.fileName) && (deal.role === "seller" || m.status === "KeyReleased" || m.status === "Released"),
+        // Demo contractor deals have no real file: a sample text stands in once the key is out.
         deliverable: ["KeyReleased", "Released"].includes(m.status) && demoSeller ? demoDeliverable(id, i) : null,
       })),
     });

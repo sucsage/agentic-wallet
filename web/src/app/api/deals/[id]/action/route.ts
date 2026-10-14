@@ -1,19 +1,20 @@
 import { after } from "next/server";
 import { z } from "zod";
 
-import { DealError, buyerAction, syncDeal } from "@/lib/bank/deals";
+import { DealError, buyerAction, sellerAction, syncDeal } from "@/lib/bank/deals";
 import { HttpError, errorResponse, rateLimit, requireBankWallet } from "@/lib/guard";
 
 export const maxDuration = 120;
 
 const Body = z.object({
-  action: z.enum(["approve", "dispute", "reclaim", "cancel"]),
+  action: z.enum(["approve", "dispute", "reclaim", "cancel", "accept", "claim", "refund"]),
   index: z.number().int().min(0).max(20).default(0),
 });
 
 /**
- * The buyer's move on a deal, pressed by the user. Approving a delivery runs on the agent's own
- * authority when within its caps (Tier 2), otherwise on the owner's signed mandate (Tier 1).
+ * A move on a deal, pressed by the user. Buyer: approve (the agent's Tier 2 path within its caps,
+ * else the owner's mandate), dispute, reclaim, cancel. Seller: accept a buyer's offer, claim, refund.
+ * Delivering has its own route (it carries a file).
  */
 export async function POST(req: Request, ctx: RouteContext<"/api/deals/[id]/action">) {
   try {
@@ -22,7 +23,12 @@ export async function POST(req: Request, ctx: RouteContext<"/api/deals/[id]/acti
     const id = Number((await ctx.params).id);
     const parsed = Body.safeParse(await req.json().catch(() => null));
     if (!Number.isInteger(id) || !parsed.success) throw new HttpError(400, "Invalid request");
-    const result = await buyerAction(wallet, id, parsed.data.action, parsed.data.index).catch((e) => {
+    const { action, index } = parsed.data;
+    const run =
+      action === "accept" || action === "claim" || action === "refund"
+        ? sellerAction(wallet, id, action, index)
+        : buyerAction(wallet, id, action, index);
+    const result = await run.catch((e) => {
       throw e instanceof DealError ? new HttpError(400, e.message) : e;
     });
     after(() => syncDeal(wallet, id).catch((e) => console.error("syncDeal", id, e)));
