@@ -88,6 +88,39 @@ function isContractRevert(err: unknown): boolean {
   return (err as BaseError).walk((e) => (e as Error).name === "ContractFunctionRevertedError") !== null;
 }
 
+/**
+ * Public RPCs such as sepolia.base.org are load-balanced: right after a transaction confirms, the
+ * next request can land on a node a block or two behind and see the old state (a balance of 0
+ * right after a mint). So every read or simulation that follows our own writes is pinned to a
+ * block at least as new as the last receipt we saw; a node that lacks it errors and is retried.
+ */
+let confirmedBlock = 0n;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** A block number no older than any transaction this process has confirmed. */
+export async function freshBlock(): Promise<bigint> {
+  for (let i = 0; i < 20; i++) {
+    const n = await publicClient().getBlockNumber({ cacheTime: 0 });
+    if (n >= confirmedBlock) return n;
+    await sleep(500);
+  }
+  return confirmedBlock;
+}
+
+/** Runs `fn` at a fresh block, retrying while the node answering has not caught up to it. */
+export async function atFreshBlock<T>(fn: (blockNumber: bigint) => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    const block = await freshBlock();
+    try {
+      return await fn(block);
+    } catch (err) {
+      // A contract revert is a real answer; anything else may be a node without that block.
+      if (isContractRevert(err) || attempt >= 5) throw err;
+      await sleep(800);
+    }
+  }
+}
+
 /** Turns a viem error into a short readable reason, e.g. `RecipientNotAllowed(0xBad…)`. */
 export function revertReason(err: unknown): string {
   const fmt = (name: string, args?: readonly unknown[]) =>
@@ -155,7 +188,7 @@ export async function send<
   let simulationError: string | undefined;
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    simulated = await pc.simulateContract({ ...(call as any), account: account(role) });
+    simulated = await atFreshBlock((blockNumber) => pc.simulateContract({ ...(call as any), account: account(role), blockNumber }));
   } catch (err) {
     simulationError = revertReason(err);
     if (!opts.force) {
@@ -166,9 +199,17 @@ export async function send<
   return serialize(role, async () => {
     for (let attempt = 0; ; attempt++) {
       try {
+        // Gas is estimated at a fresh block too: a stale node would estimate a revert and refuse.
+        const gas = opts.force
+          ? 400_000n
+          : await atFreshBlock((blockNumber) =>
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              pc.estimateContractGas({ ...(call as any), account: account(role), blockNumber }),
+            ).then((g) => (g * 12n) / 10n);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const hash = await wc.writeContract({ ...(call as any), gas: opts.force ? 400_000n : undefined });
+        const hash = await wc.writeContract({ ...(call as any), gas });
         const receipt = await pc.waitForTransactionReceipt({ hash });
+        if (receipt.blockNumber > confirmedBlock) confirmedBlock = receipt.blockNumber;
         if (receipt.status === "success") {
           return { status: "success", hash, url: explorerTx(hash), result: jsonSafe(simulated?.result) };
         }
