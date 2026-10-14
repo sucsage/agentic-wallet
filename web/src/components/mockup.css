@@ -1429,3 +1429,16 @@
 .aw-gw-recent p{font-size:9px}
 .aw-gw-feedback,.aw-gw-back{font-size:11px}
 @media(max-width:760px){.aw-group-wallet-card{padding:16px}.aw-group-wallet-heading h1{font-size:26px}.aw-gw-amount{font-size:29px}}
+/* Live wiring: bank sign-in form, errors, agent markdown */
+.aw-bank-signin h1{margin:0 0 14px}
+.aw-bank-field{display:flex;flex-direction:column;gap:6px;margin:0 0 12px;color:#9ba8bc;font-size:9px}
+.aw-bank-field input{height:36px;padding:0 11px;border:1px solid #202b3d;border-radius:8px;background:#111a2b;color:#eef2fa;font-size:12px;outline:none}
+.aw-bank-field input:focus{border-color:#347de9}
+.aw-bank-authorize-chinese .aw-bank-field{font-size:10px}
+.aw-bank-error{margin:8px 0 0;color:#ff6b78;font-size:10px;line-height:1.45}
+.aw-ai-markdown{font-size:inherit;line-height:1.55}
+.aw-ai-markdown p{margin:0 0 6px}
+.aw-ai-markdown ul,.aw-ai-markdown ol{margin:0 0 6px;padding-left:18px}
+.aw-ai-markdown code{padding:1px 4px;border-radius:4px;background:#ffffff14;font-size:.92em}
+.aw-ai-markdown table{border-collapse:collapse;margin:4px 0}
+.aw-ai-markdown th,.aw-ai-markdown td{padding:3px 8px;border:1px solid #333}

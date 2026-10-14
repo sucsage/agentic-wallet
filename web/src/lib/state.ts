@@ -2,7 +2,7 @@ import "server-only";
 
 import { type Abi, type Address, type Hex, decodeEventLog, decodeFunctionData, formatUnits, getAddress, pad, toHex } from "viem";
 
-import { agentWalletAbi, milestoneEscrowAbi, mockUSDCAbi } from "./abis";
+import { agentWalletAbi, fileEscrowAbi, milestoneEscrowAbi, mockUSDCAbi } from "./abis";
 import { type Role, ROLE_LABEL, publicClient, roleAddresses } from "./chain";
 import { config, explorerAddress, explorerTx } from "./config";
 
@@ -104,6 +104,61 @@ export type AuditEntry = {
 };
 
 export type WalletState = Awaited<ReturnType<typeof readWallet>>;
+
+export const FILE_DEAL_STATUS = ["Proposed", "Active", "Cancelled"] as const;
+export const FILE_MILESTONE_STATUS = ["Pending", "Delivered", "Approved", "KeyReleased", "Released", "Disputed", "Refunded"] as const;
+
+/** A FileEscrow deal this wallet is party to (bank-paid deals: buyer offers locked just in time). */
+export type FileDealView = {
+  id: number;
+  role: "buyer" | "seller";
+  counterparty: Address;
+  counterpartyLabel: string;
+  total: string;
+  status: (typeof FILE_DEAL_STATUS)[number];
+  reviewHours: number;
+  termsURI: string;
+  milestones: { index: number; amount: string; hasFile: boolean; status: (typeof FILE_MILESTONE_STATUS)[number]; deadline: number }[];
+};
+
+/** FileEscrow deals for wallets that have one configured; empty otherwise (older mUSDC setups). */
+export async function readFileDeals(wallet: Address, u?: Units): Promise<FileDealView[]> {
+  if (!process.env.FILE_ESCROW_ADDRESS) return [];
+  const escrow = config.bankContracts.fileEscrow;
+  const units = u ?? (await walletUnits(wallet));
+  const pc = publicClient();
+  const ids = await pc.readContract({ address: escrow, abi: fileEscrowAbi, functionName: "dealsOf", args: [wallet] });
+  return Promise.all(
+    ids.map(async (id) => {
+      const d = await pc.readContract({ address: escrow, abi: fileEscrowAbi, functionName: "getDeal", args: [id] });
+      const buyer = getAddress(d.buyer) === wallet;
+      const counterparty = getAddress(buyer ? d.seller : d.buyer);
+      const milestones = await Promise.all(
+        Array.from({ length: Number(d.milestoneCount) }, async (_, i) => {
+          const m = await pc.readContract({ address: escrow, abi: fileEscrowAbi, functionName: "getMilestone", args: [id, BigInt(i)] });
+          return {
+            index: i,
+            amount: amountOf(m.amount, units),
+            hasFile: m.hasFile,
+            status: FILE_MILESTONE_STATUS[m.status],
+            deadline: Number(m.deadline),
+          };
+        }),
+      );
+      return {
+        id: Number(id),
+        role: buyer ? ("buyer" as const) : ("seller" as const),
+        counterparty,
+        counterpartyLabel: labelFor(counterparty),
+        total: amountOf(d.total, units),
+        status: FILE_DEAL_STATUS[d.status],
+        reviewHours: Number(d.reviewPeriod) / 3600,
+        termsURI: d.termsURI,
+        milestones,
+      };
+    }),
+  );
+}
 
 const ZERO_HASH = `0x${"0".repeat(64)}`;
 
@@ -390,7 +445,7 @@ export async function readWallet(addressInput: string) {
     ]);
 
   const [expiresAt, maxPerTx, dailyLimit] = session;
-  const deals = await readDeals(wallet, units);
+  const [deals, fileDeals] = await Promise.all([readDeals(wallet, units), readFileDeals(wallet, units)]);
   const proposals = (await readProposals(wallet, epoch, units)).map((p) => {
     if (!p.release) return p;
     const m = deals.find((d) => d.id === p.release!.dealId)?.milestones[p.release.index];
@@ -426,6 +481,7 @@ export async function readWallet(addressInput: string) {
     },
     roles,
     deals,
+    fileDeals,
     proposals,
   };
 }

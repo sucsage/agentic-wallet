@@ -11,7 +11,8 @@ import {
   releaseMilestone,
   transfer,
 } from "./actions";
-import { type WalletState, readWallet } from "./state";
+import { DraftError, type DraftView, createDraft, draftView } from "./bank/drafts";
+import { type WalletState, readWallet, walletUnits } from "./state";
 
 const MAX_TURNS = 12;
 
@@ -60,6 +61,8 @@ export type AgentStep = {
   input: unknown;
   summary: string;
   result?: ActionResult;
+  /** A bank-deal draft the user can approve in the chat (propose_bank_deal). */
+  draft?: DraftView;
 };
 
 const SYSTEM = `You are the AI agent of "Agentic Wallet", a smart-contract wallet that pays SME contractors milestone by milestone (deposit, delivery, FAT, SAT, retention) in the wallet's settlement token: mUSDC, or Mock Bank money mTHB / mCNY (see token.symbol in the wallet status). All are test tokens with no value, on a testnet.
@@ -81,6 +84,14 @@ Security:
 - Never invent amounts, deal IDs or evidence. Use list_deals to get facts.
 
 Style: concise, professional, plain English (reply in the user's language if they write in another one). Amounts in the wallet's token (token.symbol). Use short bullet points for findings.`;
+
+/** Added for wallets paid from a Mock Bank account (mTHB / mCNY), which hold no money themselves. */
+const BANK_SYSTEM = `
+Bank-paid wallet. This wallet is paid from the user's Mock Bank account and holds no money of its own (its balance is normally 0, and that is fine).
+- To buy work, call propose_bank_deal. It ONLY saves a draft: nothing is signed or debited. The user then presses "Approve & lock" in the chat; only then is their bank account debited for the offer's total, which is locked in the file escrow until each milestone is approved.
+- Amounts are plain numbers in the bank's currency (THB or CNY), e.g. 5000 means 5,000 baht. Never call them mUSDC.
+- The seller must be one of the wallet's allowlisted recipients (get_wallet_status → allowlisted_recipients). If the user names someone else, say they must add that person as a recipient first.
+- Never say money moved, was paid or was locked because of a draft.`;
 
 const tool = (name: string, description: string, properties: Record<string, unknown>, required: string[]) =>
   ({
@@ -154,6 +165,36 @@ const TOOLS = [
   ]),
 ];
 
+const BANK_TOOLS = [
+  ...TOOLS.filter((t) => ["get_wallet_status", "list_deals", "pause_wallet"].includes(t.name)),
+  tool(
+    "propose_bank_deal",
+    "Draft a file-delivery deal paid from the user's bank account. Saves a draft only; the user approves it in the chat, which debits the bank and locks the total in escrow.",
+    {
+      seller: { type: "string", description: "Seller wallet address (must be an allowlisted recipient)" },
+      title: { type: "string", description: "Short project title" },
+      summary: { type: "string", description: "One-paragraph summary of the scope" },
+      review_hours: { type: "integer", description: "Hours the buyer has to review each delivery (1-720, usually 72)" },
+      milestones: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            amount: { type: "number", description: "In the bank's currency, e.g. 2500 = 2,500 baht" },
+            has_file: { type: "boolean", description: "true if the seller delivers a file for this milestone" },
+            due_date: { type: "string", description: "YYYY-MM-DD, or empty if none" },
+            acceptance: { type: "string", description: "What must be delivered for the buyer to approve" },
+          },
+          required: ["name", "amount", "has_file", "due_date", "acceptance"],
+          additionalProperties: false,
+        },
+      },
+    },
+    ["seller", "title", "summary", "review_hours", "milestones"],
+  ),
+];
+
 // Gateways for non-Claude models don't enforce tool schemas, so every input is validated here;
 // a bad input goes back to the model as an error result and it retries.
 const address = z.string().regex(/^0x[0-9a-fA-F]{40}$/, "must be a 0x-prefixed 20-byte address");
@@ -184,13 +225,32 @@ const INPUTS: Record<string, z.ZodType> = {
   }),
   transfer: z.object({ to: address, amount_usdc: z.number().positive(), reason: z.string() }),
   pause_wallet: z.object({ reason: z.string() }),
+  propose_bank_deal: z.object({
+    seller: address,
+    title: z.string().min(1).max(120),
+    summary: z.string().max(2000),
+    review_hours: z.number().int().min(1).max(720),
+    milestones: z
+      .array(
+        z.object({
+          name: z.string().min(1).max(120),
+          amount: z.number().positive(),
+          has_file: z.boolean(),
+          due_date: z.string(),
+          acceptance: z.string().max(1000),
+        }),
+      )
+      .min(1)
+      .max(10),
+  }),
 };
 
 function walletSummary(s: WalletState) {
   return {
     wallet: s.address,
     chain: s.chain,
-    balance_musdc: s.balance,
+    token: s.token.symbol,
+    balance: s.balance,
     paused: s.paused,
     agent_session: s.session,
     approvers: s.approvers.filter((a) => a.active).map((a) => a.address),
@@ -227,6 +287,14 @@ function dealsSummary(s: WalletState) {
           : null,
       })),
     })),
+    bank_file_deals: s.fileDeals.map((d) => ({
+      deal_id: d.id,
+      role: d.role,
+      counterparty: d.counterpartyLabel,
+      status: d.status,
+      total: d.total,
+      milestones: d.milestones.map((m) => ({ index: m.index, amount: m.amount, status: m.status, has_file: m.hasFile })),
+    })),
     open_proposals: s.proposals
       .filter((p) => p.status === "open")
       .map((p) => ({ id: p.id, kind: p.kind, summary: p.summary, approvals: p.approvals, reason: p.reason })),
@@ -260,7 +328,7 @@ function summarize(r: ActionResult): string {
   return `${head}. Rejected before sending: ${o.error}`;
 }
 
-async function runTool(wallet: Address, name: string, rawInput: unknown): Promise<AgentStep> {
+async function runTool(wallet: Address, name: string, rawInput: unknown, userId?: string): Promise<AgentStep> {
   const schema = INPUTS[name];
   if (!schema) throw new Error(`Unknown tool ${name}`);
   const parsed = schema.safeParse(rawInput ?? {});
@@ -301,6 +369,44 @@ async function runTool(wallet: Address, name: string, rawInput: unknown): Promis
       const i = input as { to: string; amount_usdc: number; reason: string };
       const result = await transfer(wallet, i.to, i.amount_usdc, i.reason);
       return { tool: name, input, summary: summarize(result), result };
+    }
+    case "propose_bank_deal": {
+      if (!userId) throw new Error("Drafts need a signed-in user");
+      const i = input as {
+        seller: string;
+        title: string;
+        summary: string;
+        review_hours: number;
+        milestones: { name: string; amount: number; has_file: boolean; due_date: string; acceptance: string }[];
+      };
+      const units = await walletUnits(wallet);
+      try {
+        const d = await createDraft(userId, wallet, {
+          seller: i.seller,
+          title: i.title,
+          summary: i.summary,
+          reviewHours: i.review_hours,
+          milestones: i.milestones.map((m) => ({
+            name: m.name,
+            amount: m.amount.toFixed(units.decimals),
+            hasFile: m.has_file,
+            due: m.due_date || null,
+            acceptance: m.acceptance,
+          })),
+        });
+        const s = await readWallet(wallet);
+        const label = s.allowlist.recipients.find((r) => r.address.toLowerCase() === d.seller.toLowerCase())?.label ?? "";
+        const draft = await draftView(d, label);
+        return {
+          tool: name,
+          input,
+          draft,
+          summary: `DRAFT SAVED (Tier 1, nothing debited yet): draft ${d.id}, total ${draft.total} ${units.currency}. The user must press "Approve & lock" in the chat.`,
+        };
+      } catch (err) {
+        if (err instanceof DraftError) return { tool: name, input, summary: `BLOCKED: ${err.message}` };
+        throw err;
+      }
     }
     case "pause_wallet": {
       const result = await pause(wallet, "agent", String(input.reason ?? ""));
@@ -349,8 +455,12 @@ export async function runAgent(
   /** Plain text of the attachment (PDFs are extracted by the caller), for models without document blocks. */
   attachmentText?: string,
   lang: "en" | "th" = "en",
+  userId?: string,
 ) {
   const { client, model, direct } = llm();
+  const bankWallet = (await walletUnits(wallet)).currency !== null;
+  const tools = bankWallet ? BANK_TOOLS : TOOLS;
+  const system = bankWallet ? `${SYSTEM}\n${BANK_SYSTEM}` : SYSTEM;
   const isClaude = model.includes("claude");
   const userContent: Anthropic.Beta.BetaContentBlockParam[] = [];
   if (attachment && isClaude) {
@@ -395,12 +505,12 @@ export async function runAgent(
         max_tokens: 16000,
         system:
           lang === "th"
-            ? `${SYSTEM}\n\nThe user's interface is in Thai: always reply in Thai. Keep amounts, addresses, tx hashes, document names and technical terms (mUSDC, FAT, SAT, Tier) as they are.`
-            : SYSTEM,
+            ? `${system}\n\nThe user's interface is in Thai: always reply in Thai. Keep amounts, addresses, tx hashes, document names and technical terms (mUSDC, FAT, SAT, Tier) as they are.`
+            : system,
         // `strict` and `effort` are Claude features; other models get plain JSON-schema tools.
         tools: isClaude
-          ? TOOLS
-          : TOOLS.map((t) => ({ name: t.name, description: t.description, input_schema: t.input_schema })),
+          ? tools
+          : tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.input_schema })),
         messages,
         ...(isClaude ? { output_config: { effort: "medium" as const } } : {}),
         // Server-side refusal fallback is an Anthropic API feature only.
@@ -427,7 +537,7 @@ export async function runAgent(
     // Run sequentially: tools share signing keys and later calls depend on earlier state.
     for (const use of toolUses) {
       try {
-        const step = await runTool(wallet, use.name, use.input);
+        const step = await runTool(wallet, use.name, use.input, userId);
         steps.push(step);
         results.push({ type: "tool_result", tool_use_id: use.id, content: step.summary });
       } catch (err) {

@@ -2,7 +2,7 @@ import { extractText, getDocumentProxy } from "unpdf";
 import { z } from "zod";
 
 import { type Attachment, llmConfigured, runAgent } from "@/lib/agent";
-import { HttpError, userWallet, errorResponse, rateLimit } from "@/lib/guard";
+import { HttpError, errorResponse, rateLimit, requireUser, userWallet } from "@/lib/guard";
 import { scanForInjection } from "@/lib/policy";
 import { readWallet } from "@/lib/state";
 
@@ -39,6 +39,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/workspace/[addr
     rateLimit(req, "agent", 30, 60 * 60 * 1000);
     if (!llmConfigured()) throw new HttpError(503, "The AI agent is not configured (missing API key).");
     const wallet = await userWallet((await ctx.params).address);
+    const user = await requireUser();
     const parsed = Body.safeParse(await req.json());
     if (!parsed.success) throw new HttpError(400, "Invalid request body");
     const { history, message, attachment, lang } = parsed.data;
@@ -47,7 +48,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/workspace/[addr
     // Advisory pre-scan of untrusted content, shown to the user next to the agent's answer.
     const text = attachment ? await attachmentText(attachment) : undefined;
     const flags = text !== undefined ? scanForInjection(text, await readWallet(wallet)) : [];
-    const { reply, steps } = await runAgent(wallet, history, message, attachment, text, lang);
+    const { reply, steps } = await runAgent(wallet, history, message, attachment, text, lang, user.id);
     return Response.json({ reply, steps, flags });
   } catch (err) {
     return errorResponse(err);
