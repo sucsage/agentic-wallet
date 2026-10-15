@@ -410,7 +410,7 @@ export function LivePolicy() {
               <h2>Test the defenses</h2>
               <Button
                 disabled={!address || busy === "attack"}
-                onClick={() => run("attack", () => send(`/api/workspace/${address}/action`, "POST", { action: "raw_attack" }), reloadState)}
+                onClick={() => run("attack", () => send(`/api/workspace/${address}/action`, "POST", { type: "raw_attack" }), reloadState)}
               >
                 {busy === "attack" ? "Attacking…" : "Run attack"}
               </Button>

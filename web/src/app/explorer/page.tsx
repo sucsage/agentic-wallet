@@ -6,10 +6,10 @@ import { addressLabels, latestBlocks } from "@/lib/explorer";
 const short = (a: string | null) => (a ? `${a.slice(0, 8)}…${a.slice(-6)}` : "—");
 
 /** Latest blocks and their transactions; ?q= jumps to a tx hash or an address. */
-export default async function AdminChainPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+export default async function ExplorerPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const q = (await searchParams).q?.trim();
-  if (q && /^0x[0-9a-fA-F]{64}$/.test(q)) redirect(`/admin/chain/tx/${q}`);
-  if (q && /^0x[0-9a-fA-F]{40}$/.test(q)) redirect(`/admin/chain/address/${q}`);
+  if (q && /^0x[0-9a-fA-F]{64}$/.test(q)) redirect(`/explorer/tx/${q}`);
+  if (q && /^0x[0-9a-fA-F]{40}$/.test(q)) redirect(`/explorer/address/${q}`);
   const [{ chain, blocks }, labels] = await Promise.all([latestBlocks(15), addressLabels()]);
   const label = (a: string | null) => (a ? (labels.get(a.toLowerCase()) ?? short(a)) : "contract creation");
 
@@ -43,12 +43,12 @@ export default async function AdminChainPage({ searchParams }: { searchParams: P
                     <td className="py-1">#{b.number}</td>
                     <td>{new Date(b.time * 1000).toLocaleTimeString()}</td>
                     <td className="font-mono">
-                      <Link className="underline" href={`/admin/chain/tx/${t.hash}`}>
+                      <Link className="underline" href={`/explorer/tx/${t.hash}`}>
                         {short(t.hash)}
                       </Link>
                     </td>
                     <td>{label(t.from)}</td>
-                    <td>{t.to ? <Link href={`/admin/chain/address/${t.to}`}>{label(t.to)}</Link> : "—"}</td>
+                    <td>{t.to ? <Link href={`/explorer/address/${t.to}`}>{label(t.to)}</Link> : "—"}</td>
                     <td className="font-mono">{t.call ? `${t.call.contract}.${t.call.fn}` : "transfer"}</td>
                   </tr>
                 )),

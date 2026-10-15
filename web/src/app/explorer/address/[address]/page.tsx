@@ -3,7 +3,7 @@ import Link from "next/link";
 import { addressDetail, addressLabels } from "@/lib/explorer";
 
 /** An address: what it is, its mTHB balance and its recent events. */
-export default async function AdminAddressPage({ params }: { params: Promise<{ address: string }> }) {
+export default async function ExplorerAddressPage({ params }: { params: Promise<{ address: string }> }) {
   const { address } = await params;
   const [a, labels] = await Promise.all([addressDetail(address), addressLabels()]);
   if (!a) return <p className="card p-4 text-sm">Not an address: {address}</p>;
@@ -21,7 +21,7 @@ export default async function AdminAddressPage({ params }: { params: Promise<{ a
         {a.events.map((e, i) => (
           <li key={i} className="break-all font-mono">
             #{e.block} ·{" "}
-            <Link className="underline" href={`/admin/chain/tx/${e.tx}`}>
+            <Link className="underline" href={`/explorer/tx/${e.tx}`}>
               {e.tx.slice(0, 10)}…
             </Link>{" "}
             · <b>{e.event}</b> {e.args}
