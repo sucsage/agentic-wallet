@@ -1527,3 +1527,17 @@
 .aw-group-card.active{border-color:#559bff;background:#141c29}
 .aw-group-card:focus-visible{outline:2px solid #559bff;outline-offset:2px}
 .aw-group-wallet-heading .aw-gw-actions{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+
+.aw-group-live{display:flex;flex-direction:column;gap:12px;margin:16px 0;padding:16px;border:1px solid #2a2a2a;border-radius:14px;background:#151515;font-size:13px}
+.aw-group-live-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:10px}
+.aw-group-live-head h2{margin:0;font-size:18px}
+.aw-group-live-head small{display:block;margin-top:4px;color:#999;font-size:12px;line-height:1.5}
+.aw-group-live-head .aw-gw-actions{display:flex;gap:8px;flex-wrap:wrap}
+.aw-group-live .aw-group-wallet-votes{display:flex;flex-direction:column;gap:8px}
+.aw-group-live .aw-group-wallet-votes h3{margin:0;font-size:14px}
+.aw-group-live .aw-group-wallet-votes p{margin:0;color:#aaa;line-height:1.5}
+.aw-group-live .aw-group-wallet-votes select{min-height:36px;padding:6px 10px;border:1px solid #333;border-radius:10px;background:#111;color:#eee}
+.aw-group-live .aw-gw-proposal{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px;padding:12px;border:1px solid #2a2a2a;border-radius:12px;background:#111}
+.aw-group-live .aw-gw-proposal>div:first-child{display:flex;flex-direction:column;gap:3px;min-width:0}
+.aw-group-live .aw-gw-proposal-meta{color:#999;font-size:12px;line-height:1.5}
+.aw-group-live .aw-gw-proposal .aw-gw-actions{display:flex;gap:8px}

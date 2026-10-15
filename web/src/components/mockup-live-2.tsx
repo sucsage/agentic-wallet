@@ -922,13 +922,15 @@ export function LiveGroups({ initialCreateOpen = false }: { initialCreateOpen?: 
         </div>
         {selected && !detail && <Loading text="Opening the group…" />}
         {selected && detail && (
-          <section className="aw-group-wallet-detail">
-            <header className="aw-group-wallet-heading">
-              <h2>{detail.name}</h2>
-              <small>
+          <section className="aw-group-live">
+            <header className="aw-group-live-head">
+              <div>
+                <h2>{detail.name}</h2>
+                <small>
                 {detail.threshold} of {detail.members.length} members must approve a group deal ·{" "}
-                {detail.members.map((m) => `${m.name}${m.role === "ADMIN" ? " (admin)" : ""}`).join(", ")}
-              </small>
+                  {detail.members.map((m) => `${m.name}${m.role === "ADMIN" ? " (admin)" : ""}`).join(", ")}
+                </small>
+              </div>
               <div className="aw-gw-actions">
                 <Button
                   variant="outline"
