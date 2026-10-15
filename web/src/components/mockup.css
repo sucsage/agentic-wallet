@@ -1600,3 +1600,43 @@
 .aw-parcel .aw-v08-tracking li{padding:6px 0}
 @media(max-width:600px){.aw-parcel-stats{grid-template-columns:1fr}}
 .aw-draft-checks p.warn{color:#ffb000}
+
+/* Groups v0.8 (live): roles, invites, QR, group wallet page */
+.aw-gr-form{display:flex;flex-direction:column;gap:10px}
+.aw-gr-form select,.aw-gr-rule select{padding:8px 10px;border-radius:9px;border:1px solid #333;background:#1a1a1a;color:#eee;font:inherit;font-size:13px}
+.aw-gr-picker{display:flex;flex-direction:column;gap:6px}
+.aw-gr-picker>div{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.aw-gr-picker>div>span{min-width:130px;font-size:13px}
+.aw-gr-picker button{padding:5px 10px;border-radius:16px;border:1px solid #333;background:transparent;color:#999;font-size:12px;cursor:pointer}
+.aw-gr-picker button[aria-pressed=true]{border-color:#8b78ff;color:#d2caff;background:#242033}
+.aw-groups-bottom{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin:16px 0}
+.aw-groups-bottom .aw-group-panel{display:flex;flex-direction:column;gap:10px;padding:18px;border:1px solid #333;border-radius:16px;background:#111}
+.aw-groups-bottom h2{margin:0;font-size:16px}
+.aw-groups-bottom p{margin:0;color:#999;font-size:13px}
+.aw-group-invites>header{display:flex;justify-content:space-between;align-items:center}
+.aw-gr-upload{position:relative;overflow:hidden;align-self:flex-start;cursor:pointer}
+.aw-gr-upload input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.aw-gr-invite{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px;border-radius:12px;background:#0a0a0a;border:1px solid #2a2a2a}
+.aw-gr-invite>span:nth-child(2){display:flex;flex-direction:column}
+.aw-gr-invite small{color:#888;font-size:12px}
+.aw-gr-qr{display:block;margin:0 auto;border-radius:12px;background:#fff;padding:8px}
+.aw-co-dialog input[readonly]{font-size:12px}
+.aw-gr-eyebrow{color:#9380ff;font-size:11px;letter-spacing:.06em}
+.aw-gr-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:12px 0}
+.aw-gr-stats>div{display:flex;flex-direction:column;gap:4px;padding:14px 16px;border:1px solid #333;border-radius:14px;background:#111}
+.aw-gr-stats small{color:#888;font-size:12px}
+.aw-gr-stats b{font-size:20px}.aw-gr-stats b.amber{color:#ffb000}
+.aw-gr-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:12px}
+.aw-gr-columns .aw-group-panel{display:flex;flex-direction:column;gap:8px}
+.aw-gr-columns h3,.aw-gr-h{margin:6px 0;font-size:15px}
+.aw-gr-member{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:6px 0}
+.aw-gr-member>span:nth-child(2){display:flex;flex-direction:column}
+.aw-gr-member small{color:#888;font-size:12px}
+.aw-gr-member.pending{opacity:.6}
+.aw-gr-muted{color:#888;font-size:13px;margin:0}
+.aw-gr-rule{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.aw-gr-activity{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.aw-gr-activity li{display:flex;gap:12px;font-size:13px}
+.aw-gr-activity time{flex:none;width:52px;color:#777}
+.aw-gr-join p{margin:4px 0}
+@media(max-width:800px){.aw-groups-bottom,.aw-gr-columns,.aw-gr-stats{grid-template-columns:1fr}}

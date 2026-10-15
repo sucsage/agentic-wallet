@@ -335,7 +335,7 @@ export async function groupDetail(userId: string, groupId: string) {
       return { at: p.createdAt, text: `${verb} · ${d?.title ?? "a deal"}${p.status === "OPEN" ? ` by ${nameOf(p.proposerId)}` : ""}` };
     }),
     ...g.rules.map((r) => ({ at: r.decidedAt ?? r.createdAt, text: `${r.status === "EXECUTED" ? "Rule changed" : r.status === "REJECTED" ? "Rule change rejected" : "Rule change proposed"} · ${ruleText(r, nameOf)}` })),
-    ...g.members.map((m) => ({ at: m.joinedAt, text: `${m.user.name} joined${m.canSign ? " as a signer" : ""}` })),
+    ...g.members.map((m) => ({ at: m.joinedAt, text: `${m.user.name} joined` })),
   ]
     .sort((a, b) => b.at.getTime() - a.at.getTime())
     .slice(0, 12);

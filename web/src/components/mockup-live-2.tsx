@@ -787,9 +787,30 @@ function InviteByLink() {
 // Groups
 // ------------------------------------------------------------------------------------------
 
-type GroupSummary = { id: string; name: string; currency: string; threshold: number; members: { userId: string; name: string; role: string }[]; openProposals: number };
-type GroupDetail = GroupSummary & {
+type GroupMemberView = { userId: string; name: string; role: string; canSign?: boolean };
+type GroupSummary = {
+  id: string;
+  name: string;
+  currency: string;
+  threshold: number;
+  members: GroupMemberView[];
+  openProposals: number;
+  invited?: number;
+  company?: { id: string; name: string } | null;
+};
+type GroupInviteView = { id: string; groupId: string; name: string; company: string | null; members: number; threshold: number; canSign: boolean; invitedBy: string };
+type GroupDetail = {
+  id: string;
+  name: string;
+  currency: string;
+  threshold: number;
   myRole: "ADMIN" | "MEMBER";
+  iSign: boolean;
+  signers: number;
+  company: { id: string; name: string; maskedTaxId: string; wallet: string; accountNo: string | null; balance: string } | null;
+  stats: { committed: number; deals: number; openVotes: number };
+  members: (GroupMemberView & { joinedAt: string })[];
+  invites: { id: string; userId: string; name: string; canSign: boolean }[];
   proposals: {
     id: string;
     proposerId: string;
@@ -804,34 +825,141 @@ type GroupDetail = GroupSummary & {
     voters: { name: string; approve: boolean }[];
     milestones: { amount: string }[];
   }[];
+  rules: { id: string; kind: string; text: string; status: string; proposer: string; yes: number; no: number; myVote: boolean | null }[];
+  activity: { at: string; text: string }[];
 };
 
 const PROPOSAL_STATUS: Record<string, string> = {
   OPEN: "Voting",
-  EXECUTED: "Approved · locked from the proposer's bank",
+  EXECUTED: "Approved · locked",
   REJECTED: "Rejected or withdrawn",
-  FAILED: "Approved, but locking failed · the proposer's bank was refunded or never debited",
+  FAILED: "Approved, but locking failed · nothing was debited (or it was refunded)",
 };
 
-export function LiveGroups({ initialCreateOpen = false }: { initialCreateOpen?: boolean }) {
+const roleOf = (m: { role: string; canSign?: boolean }) => (m.role === "ADMIN" ? "Owner" : m.canSign === false ? "Member" : "Signer");
+
+/** Who to invite, and as what: a signer (votes on payments) or a member (proposes only). */
+function RolePicker({ friends, picked, setPicked }: { friends: Friend[]; picked: Record<string, "signer" | "member">; setPicked: (p: Record<string, "signer" | "member">) => void }) {
+  if (friends.length === 0) return <small>Add contacts first.</small>;
+  return (
+    <div className="aw-gr-picker">
+      {friends.map((f) => (
+        <div key={f.userId}>
+          <span>{f.name}</span>
+          {(["", "signer", "member"] as const).map((r) => (
+            <button
+              type="button"
+              key={r || "none"}
+              aria-pressed={(picked[f.userId] ?? "") === r}
+              onClick={() => {
+                const next = { ...picked };
+                if (r) next[f.userId] = r;
+                else delete next[f.userId];
+                setPicked(next);
+              }}
+            >
+              {r === "" ? "—" : r === "signer" ? "Signer" : "Member"}
+            </button>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Reads a QR code from a photo (the group's join QR). */
+async function readQrImage(file: File): Promise<string | null> {
+  const { default: jsQR } = await import("jsqr");
+  const bitmap = await createImageBitmap(file);
+  const canvas = document.createElement("canvas");
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.drawImage(bitmap, 0, 0);
+  const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  return jsQR(img.data, img.width, img.height)?.data ?? null;
+}
+
+/** Opens a join link (/groups/join/<token>): shows the group and joins as a member. */
+function JoinGroup({ token, onJoined, onClose }: { token: string; onJoined: (groupId: string) => void; onClose: () => void }) {
+  const { data, error } = useApi<{ name: string; company: string | null; members: number; currency: string; sharedBy: string; expiresAt: string }>(`/api/groups/join/${token}`);
+  const { busy, run, note } = useAction();
+  return (
+    <Card className="aw-group-panel aw-gr-join">
+      <h2>Group invite</h2>
+      {error && <p className="aw-bank-error">{error}</p>}
+      {!data && !error && <Loading text="Checking the invitation…" />}
+      {data && (
+        <>
+          <p>
+            <b>{data.name}</b>
+            {data.company ? ` · company ${data.company}` : ""} · {data.members} members · pays in {data.currency}
+          </p>
+          <small>
+            Shared by {data.sharedBy} · valid until {new Date(data.expiresAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}. You join as a member: you can propose
+            payments; the signers decide.
+          </small>
+          <div className="aw-actions">
+            <Button disabled={!!busy} onClick={() => run("join", () => send<{ groupId: string }>(`/api/groups/join/${token}`, "POST"), async () => onJoined(""))}>
+              {busy === "join" ? "Joining…" : "Join"}
+            </Button>
+            <Button variant="outline" onClick={onClose}>
+              Not now
+            </Button>
+          </div>
+        </>
+      )}
+      {note}
+    </Card>
+  );
+}
+
+export function LiveGroups({ initialCreateOpen = false, joinToken = null }: { initialCreateOpen?: boolean; joinToken?: string | null }) {
   const lang = useLang();
   const { me, drafts, refresh } = useAppData();
   const { data, error, reload } = useApi<{ groups: GroupSummary[] }>("/api/groups");
+  const { data: invitesData, reload: reloadInvites } = useApi<{ invites: GroupInviteView[] }>("/api/groups/invites");
   const { data: friendsData } = useApi<{ friends: Friend[] }>("/api/friends");
   const [selected, setSelected] = useState<string | null>(null);
   const { data: detail, reload: reloadDetail } = useApi<GroupDetail>(selected ? `/api/groups/${selected}` : null, selected ? 8000 : undefined);
   const { busy, run, note } = useAction();
   const [creating, setCreating] = useState(initialCreateOpen);
+  const [joining, setJoining] = useState<string | null>(joinToken);
   const [name, setName] = useState("");
-  const [members, setMembers] = useState<string[]>([]);
+  const [picked, setPicked] = useState<Record<string, "signer" | "member">>({});
   const [threshold, setThreshold] = useState(2);
   const [draftId, setDraftId] = useState("");
+  const [qr, setQr] = useState<{ url: string; image: string; expiresAt: string } | null>(null);
+  const [inviting, setInviting] = useState(false);
+  const [invitePick, setInvitePick] = useState<Record<string, "signer" | "member">>({});
+  const [rule, setRule] = useState<{ kind: string; target: string; threshold: number }>({ kind: "SET_THRESHOLD", target: "", threshold: 2 });
+  const [qrError, setQrError] = useState<string | null>(null);
   const currency = me?.bank.currency ?? "THB";
   const friends = (friendsData?.friends ?? []).filter((f) => f.status === "ACCEPTED");
-  // Only purchases lock money, so only they go to a vote.
+  // Only purchases lock money, so only they go to a vote. A company group votes on the company's drafts.
   const openDrafts = drafts.filter((d) => d.status === "DRAFT" && d.side === "BUY");
-  const size = members.length + 1;
+  const signers = 1 + Object.values(picked).filter((r) => r === "signer").length;
   const total = (ms: { amount: string }[]) => ms.reduce((t, m) => t + Number(m.amount), 0);
+  const invites = invitesData?.invites ?? [];
+  const afterChange = async () => {
+    await reloadDetail();
+    await reload();
+    await refresh();
+  };
+
+  async function shareLink(groupId: string) {
+    const r = await send<{ url: string; expiresAt: string }>(`/api/groups/${groupId}/link`, "POST");
+    setQr({ url: r.url, expiresAt: r.expiresAt, image: await QRCode.toDataURL(r.url, { margin: 1, width: 220 }) });
+  }
+  async function scan(file: File | undefined) {
+    setQrError(null);
+    if (!file) return;
+    const text = await readQrImage(file).catch(() => null);
+    const token = text?.match(/\/groups\/join\/([\w-]+)/)?.[1];
+    if (!token) return setQrError("No group invitation QR found in that picture.");
+    setJoining(token);
+  }
 
   return localizeMockupNode(
     <div className="aw-groups-page">
@@ -840,57 +968,56 @@ export function LiveGroups({ initialCreateOpen = false }: { initialCreateOpen?: 
         <header className="aw-groups-heading">
           <div>
             <h1>Groups</h1>
-            <p>Decide together: a group deal is locked only after enough members approve. No shared pot, no idle money.</p>
+            <p>Pay together with shared approvals. A company group pays from the company account; any other group pays from the proposer&apos;s wallet.</p>
           </div>
           <Button onClick={() => setCreating((v) => !v)}>{creating ? "Close" : "＋ Create group"}</Button>
         </header>
         {error && <p className="aw-bank-error">{error}</p>}
         {!data && !error && <Loading block text="Loading groups…" />}
         {note}
+        {joining && (
+          <JoinGroup
+            token={joining}
+            onClose={() => setJoining(null)}
+            onJoined={async () => {
+              setJoining(null);
+              await afterChange();
+            }}
+          />
+        )}
         {creating && (
           <Card className="aw-group-panel">
-            <h2>New group</h2>
+            <h2>Create a group</h2>
             <form
+              className="aw-gr-form"
               onSubmit={(e) => {
                 e.preventDefault();
-                void run("create", () => send("/api/groups", "POST", { name, memberIds: members, threshold }), async () => {
+                const members = Object.entries(picked).map(([userId, r]) => ({ userId, canSign: r === "signer" }));
+                void run("create", () => send("/api/groups", "POST", { name, members, threshold }), async () => {
                   setCreating(false);
                   setName("");
-                  setMembers([]);
+                  setPicked({});
                   await reload();
                 });
               }}
             >
               <label className="aw-create-field">
-                <span>Name</span>
-                <input value={name} onChange={(e) => setName(e.target.value)} required maxLength={80} />
+                <span>Group name</span>
+                <input value={name} onChange={(e) => setName(e.target.value)} required maxLength={60} placeholder="e.g. PLC Team" />
               </label>
-              <small>Members (friends only)</small>
-              <div className="aw-invite-friend-list">
-                {friends.length === 0 && <small>Add friends first.</small>}
-                {friends.map((f) => (
-                  <label key={f.userId} className="aw-bank-consent">
-                    <input
-                      type="checkbox"
-                      checked={members.includes(f.userId)}
-                      onChange={(e) => {
-                        const next = e.target.checked ? [...members, f.userId] : members.filter((x) => x !== f.userId);
-                        setMembers(next);
-                        setThreshold((t) => Math.min(Math.max(t, 2), next.length + 1));
-                      }}
-                    />
-                    <span>{f.name}</span>
-                  </label>
-                ))}
-              </div>
+              <small>Invite contacts as signers (they vote on payments) or members (they propose). They join by accepting.</small>
+              <RolePicker friends={friends} picked={picked} setPicked={setPicked} />
               <label className="aw-create-field">
-                <span>
-                  Votes needed to lock a group deal (2 to {Math.max(2, size)} of {size} members, you included)
-                </span>
-                <input type="number" min={2} max={Math.max(2, size)} value={threshold} onChange={(e) => setThreshold(Number(e.target.value))} />
+                <span>Signers needed to approve a payment</span>
+                <select value={threshold} onChange={(e) => setThreshold(Number(e.target.value))}>
+                  {Array.from({ length: Math.max(1, signers - 1) }, (_, i) => i + 2).map((n) => (
+                    <option key={n} value={n} disabled={n > signers}>
+                      {n} of {signers} signers (you included)
+                    </option>
+                  ))}
+                </select>
               </label>
-              {members.length === 0 && <small>Choose at least one friend. Members must bank in {currency}.</small>}
-              <Button type="submit" disabled={busy === "create" || !name || members.length === 0 || threshold < 2 || threshold > size}>
+              <Button type="submit" disabled={busy === "create" || !name || Object.keys(picked).length === 0 || signers < 2 || threshold > signers}>
                 {busy === "create" ? "…" : "Create group"}
               </Button>
             </form>
@@ -898,109 +1025,256 @@ export function LiveGroups({ initialCreateOpen = false }: { initialCreateOpen?: 
         )}
         <div className="aw-group-cards">
           {data?.groups.length === 0 && <p>No groups yet.</p>}
-          {data?.groups.map((g) => (
-            <article
-              className={`aw-group-card${selected === g.id ? " active" : ""}`}
-              key={g.id}
-              onClick={() => setSelected(g.id)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") setSelected(g.id);
-              }}
-              role="button"
-              tabIndex={0}
-              aria-pressed={selected === g.id}
-            >
-              <div className="aw-group-card-top">
-                <span className="aw-group-icon">
-                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <circle cx="9" cy="8" r="3" />
-                    <path d="M3.5 19v-1.5a5.5 5.5 0 0 1 11 0V19M16 5.5a3 3 0 0 1 0 5.8M17 14a4.5 4.5 0 0 1 3.5 4.4V19" />
-                  </svg>
-                </span>
-                {(() => {
-                  const mine = g.members.find((m) => m.userId === me?.user.id);
-                  return mine && <span className={`aw-group-role ${mine.role === "ADMIN" ? "yellow" : "blue"}`}>{mine.role === "ADMIN" ? "Admin" : "Member"}</span>;
-                })()}
-              </div>
-              <h2>{g.name}</h2>
-              <p>
-                {g.members.length} members · {g.threshold} of {g.members.length} approve
-              </p>
-              <div className="aw-group-members">
-                <div>
-                  {g.members.map((m, i) => (
-                    <span key={m.userId} className={`aw-group-avatar c${i % 5}`} title={m.name}>
-                      {initials(m.name)}
-                    </span>
-                  ))}
+          {data?.groups.map((g) => {
+            const mine = g.members.find((m) => m.userId === me?.user.id);
+            const signerCount = g.members.filter((m) => m.canSign !== false).length;
+            return (
+              <article className={`aw-group-card${selected === g.id ? " active" : ""}`} key={g.id}>
+                <div className="aw-group-card-top">
+                  <span className="aw-group-icon">
+                    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <circle cx="9" cy="8" r="3" />
+                      <path d="M3.5 19v-1.5a5.5 5.5 0 0 1 11 0V19M16 5.5a3 3 0 0 1 0 5.8M17 14a4.5 4.5 0 0 1 3.5 4.4V19" />
+                    </svg>
+                  </span>
+                  {mine && <span className={`aw-group-role ${mine.role === "ADMIN" ? "yellow" : mine.canSign === false ? "" : "blue"}`}>{roleOf(mine)}</span>}
                 </div>
-                <small>
-                  Open votes
-                  <br />
-                  <b>
-                    {g.openProposals} · {g.currency}
-                  </b>
-                </small>
-              </div>
-              <footer>
-                <Button variant="outline" onClick={() => setSelected(g.id)}>
-                  Open group
-                </Button>
-              </footer>
-            </article>
-          ))}
+                <h2>{g.name}</h2>
+                <p>
+                  {g.members.length} members · {g.threshold} of {signerCount} approve{g.invited ? ` · ${g.invited} invited` : ""}
+                </p>
+                <div className="aw-group-members">
+                  <div>
+                    {g.members.map((m, i) => (
+                      <span key={m.userId} className={`aw-group-avatar c${i % 5}`} title={`${m.name} · ${roleOf(m)}`}>
+                        {initials(m.name)}
+                      </span>
+                    ))}
+                  </div>
+                  <small>
+                    Pays from
+                    <br />
+                    <b>{g.company ? `Company · ${g.company.name}` : "the proposer's wallet"}</b>
+                  </small>
+                </div>
+                <footer>
+                  <Button variant="outline" onClick={() => setSelected(g.id)}>
+                    Open group wallet
+                  </Button>
+                  <Button variant="outline" disabled={!!busy} onClick={() => run(`qr${g.id}`, () => shareLink(g.id))}>
+                    Invite
+                  </Button>
+                </footer>
+              </article>
+            );
+          })}
         </div>
+        <div className="aw-groups-bottom">
+          <section className="aw-group-panel aw-group-join">
+            <h2>Join with a QR</h2>
+            <p>Groups are private. Scan the invitation QR a member shows you (or upload a photo of it).</p>
+            <label className="aw-button aw-gr-upload">
+              <input type="file" accept="image/*" capture="environment" onChange={(e) => void scan(e.target.files?.[0])} />
+              Scan or upload QR
+            </label>
+            {qrError && <small className="aw-bank-error">{qrError}</small>}
+          </section>
+          <section className="aw-group-panel aw-group-invites">
+            <header>
+              <h2>Invites for you</h2>
+              <span className="aw-gw-count">{invites.length}</span>
+            </header>
+            {invites.length === 0 && <small>No invitations.</small>}
+            {invites.map((i) => (
+              <div className="aw-gr-invite" key={i.id}>
+                <span className="aw-group-avatar c1">{initials(i.invitedBy)}</span>
+                <span>
+                  <b>
+                    {i.invitedBy} invited you to “{i.name}”
+                  </b>
+                  <small>
+                    {i.company ? `Company account · ` : ""}
+                    {i.members} members · {i.threshold} signers approve · you join as a {i.canSign ? "signer" : "member"}
+                  </small>
+                </span>
+                <span className="aw-gw-actions">
+                  <Button variant="outline" disabled={!!busy} onClick={() => run(`d${i.id}`, () => send(`/api/groups/invites/${i.id}`, "POST", { accept: false }), reloadInvites)}>
+                    Decline
+                  </Button>
+                  <Button
+                    disabled={!!busy}
+                    onClick={() =>
+                      run(`a${i.id}`, () => send(`/api/groups/invites/${i.id}`, "POST", { accept: true }), async () => {
+                        await reloadInvites();
+                        await afterChange();
+                      })
+                    }
+                  >
+                    Join
+                  </Button>
+                </span>
+              </div>
+            ))}
+          </section>
+        </div>
+        {qr && (
+          <div className="aw-co-backdrop" onMouseDown={(e) => e.target === e.currentTarget && setQr(null)}>
+            <section className="aw-co-dialog" role="dialog" aria-modal="true" aria-label="Group invitation QR">
+              <header>
+                <h2>Invitation QR</h2>
+                <button type="button" aria-label="Close" onClick={() => setQr(null)}>
+                  ×
+                </button>
+              </header>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={qr.image} alt="QR code to join the group" width={220} height={220} className="aw-gr-qr" />
+              <p>Show this to someone in person, or send the link. Whoever opens it joins as a member (not a signer). Valid until {new Date(qr.expiresAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}.</p>
+              <input readOnly value={qr.url} onFocus={(e) => e.target.select()} />
+            </section>
+          </div>
+        )}
         {selected && !detail && <Loading text="Opening the group…" />}
         {selected && detail && (
           <section className="aw-group-live">
             <header className="aw-group-live-head">
               <div>
+                <small className="aw-gr-eyebrow">GROUP WALLET · {roleOf({ role: detail.myRole, canSign: detail.iSign }).toUpperCase()}</small>
                 <h2>{detail.name}</h2>
                 <small>
-                {detail.threshold} of {detail.members.length} members must approve a group deal ·{" "}
-                  {detail.members.map((m) => `${m.name}${m.role === "ADMIN" ? " (admin)" : ""}`).join(", ")}
+                  {detail.threshold} of {detail.signers} signers must approve a payment or a rule change
+                  {detail.company ? ` · company reg. ${detail.company.maskedTaxId}` : ""}
                 </small>
               </div>
               <div className="aw-gw-actions">
-                <Button
-                  variant="outline"
-                  disabled={!!busy}
-                  onClick={() => {
-                    if (!window.confirm(`Leave "${detail.name}"?`)) return;
-                    void run("leave", () => send(`/api/groups/${detail.id}/leave`, "POST"), async () => {
-                      setSelected(null);
-                      await reload();
-                    });
-                  }}
-                >
-                  Leave group
+                <Button variant="outline" disabled={!!busy} onClick={() => run(`qr${detail.id}`, () => shareLink(detail.id))}>
+                  ♧ Invite by QR
                 </Button>
-                {detail.myRole === "ADMIN" && (
-                  <Button
-                    variant="danger"
-                    disabled={!!busy}
-                    onClick={() => {
-                      if (!window.confirm(`Delete "${detail.name}" for everyone? Open votes end; drafts stay with their proposers.`)) return;
-                      void run("delete", () => send(`/api/groups/${detail.id}`, "DELETE"), async () => {
-                        setSelected(null);
-                        await reload();
-                      });
-                    }}
-                  >
-                    Delete group
-                  </Button>
-                )}
+                <Button variant="outline" onClick={() => setInviting((v) => !v)}>
+                  {inviting ? "Close" : "Invite contacts"}
+                </Button>
               </div>
             </header>
+            <div className="aw-gr-stats">
+              <div>
+                <small>Pays from</small>
+                <b>{detail.company ? tokenMoney(Number(detail.company.balance) / 100, currency) : "Proposer's wallet"}</b>
+                <small>{detail.company ? `Company account ${detail.company.accountNo ?? ""}` : "Each payment is taken from whoever proposed it"}</small>
+              </div>
+              <div>
+                <small>Paid through the group</small>
+                <b>{tokenMoney(detail.stats.committed, currency)}</b>
+                <small>{detail.stats.deals} deals locked by vote</small>
+              </div>
+              <div>
+                <small>Waiting for votes</small>
+                <b className="amber">{detail.stats.openVotes + detail.rules.filter((r) => r.status === "OPEN").length}</b>
+                <small>payments and rule changes</small>
+              </div>
+            </div>
+            {inviting && (
+              <Card className="aw-group-panel">
+                <h3>Invite contacts</h3>
+                <RolePicker friends={friends.filter((f) => !detail.members.some((m) => m.userId === f.userId) && !detail.invites.some((i) => i.userId === f.userId))} picked={invitePick} setPicked={setInvitePick} />
+                {detail.myRole !== "ADMIN" && <small>Only an owner invites signers; you can invite members.</small>}
+                <Button
+                  disabled={!!busy || Object.keys(invitePick).length === 0}
+                  onClick={() =>
+                    run("invite", () => send(`/api/groups/${detail.id}/invite`, "POST", { members: Object.entries(invitePick).map(([userId, r]) => ({ userId, canSign: r === "signer" })) }), async () => {
+                      setInvitePick({});
+                      setInviting(false);
+                      await reloadDetail();
+                    })
+                  }
+                >
+                  Send invitations
+                </Button>
+              </Card>
+            )}
+            <div className="aw-gr-columns">
+              <Card className="aw-group-panel">
+                <h3>Members</h3>
+                {detail.members.map((m, i) => (
+                  <div className="aw-gr-member" key={m.userId}>
+                    <span className={`aw-group-avatar c${i % 5}`}>{initials(m.name)}</span>
+                    <span>
+                      <b>
+                        {m.name}
+                        {m.userId === me?.user.id ? " (you)" : ""}
+                      </b>
+                      <small>{m.canSign === false ? "Can propose" : "Can approve payments"}</small>
+                    </span>
+                    <span className={`aw-group-role ${m.role === "ADMIN" ? "yellow" : m.canSign === false ? "" : "blue"}`}>{roleOf(m)}</span>
+                  </div>
+                ))}
+                {detail.invites.map((i) => (
+                  <div className="aw-gr-member pending" key={i.id}>
+                    <span className="aw-group-avatar">{initials(i.name)}</span>
+                    <span>
+                      <b>{i.name}</b>
+                      <small>Invited as a {i.canSign ? "signer" : "member"} · not joined yet</small>
+                    </span>
+                  </div>
+                ))}
+              </Card>
+              <Card className="aw-group-panel">
+                <h3>Group rules</h3>
+                <p className="aw-gr-muted">
+                  {detail.threshold} of {detail.signers} signers approve · {detail.company ? "pays from the company account" : "pays from the proposer's wallet"}. Changing a rule needs the same vote.
+                </p>
+                <div className="aw-gr-rule">
+                  <select value={rule.kind} onChange={(e) => setRule({ ...rule, kind: e.target.value })}>
+                    <option value="SET_THRESHOLD">Change votes needed</option>
+                    <option value="ADD_SIGNER">Make a member a signer</option>
+                    <option value="REMOVE_SIGNER">Stop someone signing</option>
+                    <option value="REMOVE_MEMBER">Remove someone</option>
+                  </select>
+                  {rule.kind === "SET_THRESHOLD" ? (
+                    <select value={rule.threshold} onChange={(e) => setRule({ ...rule, threshold: Number(e.target.value) })}>
+                      {Array.from({ length: Math.max(1, detail.signers - 1) }, (_, i) => i + 2).map((n) => (
+                        <option key={n} value={n}>
+                          {n} of {detail.signers}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <select value={rule.target} onChange={(e) => setRule({ ...rule, target: e.target.value })}>
+                      <option value="">Who…</option>
+                      {detail.members
+                        .filter((m) => m.userId !== me?.user.id && (rule.kind === "ADD_SIGNER" ? m.canSign === false : rule.kind === "REMOVE_SIGNER" ? m.canSign !== false : true))
+                        .map((m) => (
+                          <option key={m.userId} value={m.userId}>
+                            {m.name}
+                          </option>
+                        ))}
+                    </select>
+                  )}
+                  <Button
+                    variant="outline"
+                    disabled={!!busy || (rule.kind !== "SET_THRESHOLD" && !rule.target)}
+                    onClick={() =>
+                      run(
+                        "rule",
+                        () =>
+                          send(`/api/groups/${detail.id}/rules`, "POST", rule.kind === "SET_THRESHOLD" ? { kind: rule.kind, threshold: rule.threshold } : { kind: rule.kind, targetUserId: rule.target }),
+                        afterChange,
+                      )
+                    }
+                  >
+                    Propose change
+                  </Button>
+                </div>
+              </Card>
+            </div>
             <Card className="aw-group-wallet-card aw-group-wallet-votes">
-              <h3>Put a draft to the vote</h3>
+              <h3>＋ Propose a payment</h3>
               <p>
-                Ask the AI in the chat to draft a purchase first. It stays on hold while the group votes (you cannot approve it alone), and it is paid from
-                your wallet once {detail.threshold} members say yes.
+                {detail.company
+                  ? `Draft a purchase in the AI chat while acting as ${detail.company.name}; it is paid from the company account once ${detail.threshold} signers approve.`
+                  : `Draft a purchase in the AI chat first. It stays on hold while the group votes, and is paid from your wallet once ${detail.threshold} signers approve.`}
               </p>
-              {openDrafts.length === 0 && <small>No purchase drafts yet.</small>}
+              {openDrafts.length === 0 && <small>No purchase drafts {me?.acting ? `for ${me.acting.name}` : "of yours"} yet.</small>}
               <select value={draftId} onChange={(e) => setDraftId(e.target.value)}>
-                <option value="">Choose one of your drafts…</option>
+                <option value="">Choose a draft…</option>
                 {openDrafts.map((d) => (
                   <option key={d.id} value={d.id}>
                     {d.title} · {tokenMoney(d.total, currency)}
@@ -1009,49 +1283,117 @@ export function LiveGroups({ initialCreateOpen = false }: { initialCreateOpen?: 
               </select>
               <Button
                 disabled={!draftId || busy === "propose"}
-                onClick={() => run("propose", () => send(`/api/groups/${detail.id}/proposals`, "POST", { draftId }), async () => {
-                  setDraftId("");
-                  await reloadDetail();
-                  await refresh();
-                })}
+                onClick={() =>
+                  run("propose", () => send(`/api/groups/${detail.id}/proposals`, "POST", { draftId }), async () => {
+                    setDraftId("");
+                    await afterChange();
+                  })
+                }
               >
                 {busy === "propose" ? "…" : "Propose to group"}
               </Button>
             </Card>
+            <h3 className="aw-gr-h">Waiting for votes &amp; history</h3>
+            {detail.rules
+              .filter((r) => r.status === "OPEN")
+              .map((r) => (
+                <article className="aw-gw-proposal" key={r.id}>
+                  <div>
+                    <b>Rule change · {r.text}</b>
+                    <small className="aw-gw-proposal-meta">
+                      Proposed by {r.proposer} · {r.yes}/{detail.threshold} approved{r.no ? ` · ${r.no} no` : ""}
+                    </small>
+                  </div>
+                  {detail.iSign && r.myVote === null ? (
+                    <div className="aw-gw-actions">
+                      <Button variant="outline" disabled={!!busy} onClick={() => run(`rn${r.id}`, () => send(`/api/groups/rules/${r.id}/vote`, "POST", { approve: false }), afterChange)}>
+                        No
+                      </Button>
+                      <Button disabled={!!busy} onClick={() => run(`ry${r.id}`, () => send(`/api/groups/rules/${r.id}/vote`, "POST", { approve: true }), afterChange)}>
+                        Approve
+                      </Button>
+                    </div>
+                  ) : (
+                    <small>{r.myVote !== null ? `You voted ${r.myVote ? "yes" : "no"}` : "Signers vote"}</small>
+                  )}
+                </article>
+              ))}
             {detail.proposals.map((p) => (
               <article className="aw-gw-proposal" key={p.id}>
                 <div>
-                  <b>{p.title}</b>
+                  <b>
+                    Pay · {p.title} · {tokenMoney(total(p.milestones), currency)}
+                  </b>
                   <small className="aw-gw-proposal-meta">
-                    {tokenMoney(total(p.milestones), currency)} · proposed by {p.mine ? "you" : p.proposer} · {p.yes} yes / {p.no} no (needs {detail.threshold}) ·{" "}
-                    {PROPOSAL_STATUS[p.status] ?? p.status}
+                    Proposed by {p.mine ? "you" : p.proposer} · {p.yes}/{detail.threshold} approved{p.no ? ` · ${p.no} no` : ""} · {PROPOSAL_STATUS[p.status] ?? p.status}
                     {p.dealId !== null ? ` · deal D-${p.dealId}` : ""}
                   </small>
-                  {p.voters.length > 0 && (
-                    <small className="aw-gw-proposal-meta">{p.voters.map((v) => `${v.approve ? "✓" : "✗"} ${v.name}`).join(" · ")}</small>
-                  )}
+                  {p.voters.length > 0 && <small className="aw-gw-proposal-meta">{p.voters.map((v) => `${v.approve ? "✓" : "✗"} ${v.name}`).join(" · ")}</small>}
                 </div>
-                {p.status === "OPEN" && p.myVote === null && (
+                {p.status === "OPEN" && detail.iSign && p.myVote === null && (
                   <div className="aw-gw-actions">
-                    <Button variant="outline" disabled={!!busy} onClick={() => run(`n${p.id}`, () => send(`/api/groups/proposals/${p.id}/vote`, "POST", { approve: false }), reloadDetail)}>
+                    <Button variant="outline" disabled={!!busy} onClick={() => run(`n${p.id}`, () => send(`/api/groups/proposals/${p.id}/vote`, "POST", { approve: false }), afterChange)}>
                       {busy === `n${p.id}` ? "…" : "No"}
                     </Button>
-                    <Button disabled={!!busy} onClick={() => run(`y${p.id}`, () => send(`/api/groups/proposals/${p.id}/vote`, "POST", { approve: true }), async () => {
-                      await reloadDetail();
-                      await refresh();
-                    })}>
-                      {busy === `y${p.id}` ? "…" : "Yes"}
+                    <Button disabled={!!busy} onClick={() => run(`y${p.id}`, () => send(`/api/groups/proposals/${p.id}/vote`, "POST", { approve: true }), afterChange)}>
+                      {busy === `y${p.id}` ? "Locking…" : "Approve"}
                     </Button>
                   </div>
                 )}
                 {p.myVote !== null && p.status === "OPEN" && <small>You voted {p.myVote ? "yes" : "no"}</small>}
+                {p.status === "FAILED" && detail.iSign && (
+                  <Button disabled={!!busy} onClick={() => run(`x${p.id}`, () => send(`/api/groups/proposals/${p.id}/retry`, "POST"), afterChange)}>
+                    {busy === `x${p.id}` ? "Executing…" : "Execute again"}
+                  </Button>
+                )}
                 {p.mine && p.status === "OPEN" && (
-                  <Button variant="outline" disabled={!!busy} onClick={() => run(`w${p.id}`, () => send(`/api/groups/proposals/${p.id}/withdraw`, "POST"), reloadDetail)}>
+                  <Button variant="outline" disabled={!!busy} onClick={() => run(`w${p.id}`, () => send(`/api/groups/proposals/${p.id}/withdraw`, "POST"), afterChange)}>
                     {busy === `w${p.id}` ? "…" : "Withdraw"}
                   </Button>
                 )}
               </article>
             ))}
+            <Card className="aw-group-panel">
+              <h3>Recent</h3>
+              <ul className="aw-gr-activity">
+                {detail.activity.map((a, i) => (
+                  <li key={i}>
+                    <time>{new Date(a.at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</time>
+                    <span>{a.text}</span>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+            <div className="aw-gw-actions">
+              <Button
+                variant="outline"
+                disabled={!!busy}
+                onClick={() => {
+                  if (!window.confirm(`Leave "${detail.name}"?`)) return;
+                  void run("leave", () => send(`/api/groups/${detail.id}/leave`, "POST"), async () => {
+                    setSelected(null);
+                    await afterChange();
+                  });
+                }}
+              >
+                Leave group
+              </Button>
+              {detail.myRole === "ADMIN" && !detail.company && (
+                <Button
+                  variant="danger"
+                  disabled={!!busy}
+                  onClick={() => {
+                    if (!window.confirm(`Delete "${detail.name}" for everyone? Open votes end; drafts stay with their proposers.`)) return;
+                    void run("delete", () => send(`/api/groups/${detail.id}`, "DELETE"), async () => {
+                      setSelected(null);
+                      await reload();
+                    });
+                  }}
+                >
+                  Delete group
+                </Button>
+              )}
+            </div>
           </section>
         )}
       </main>

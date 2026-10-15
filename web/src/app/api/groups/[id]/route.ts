@@ -1,21 +1,18 @@
 import { HttpError, errorResponse, requireCustomer } from "@/lib/guard";
 import { SocialError, deleteGroup, groupDetail } from "@/lib/social";
 
-/** A group with its members and proposals (title, votes, my vote, the deal once locked). */
+/** A group wallet: members and roles, invites, stats, payment and rule votes, recent activity. */
 export async function GET(_req: Request, ctx: RouteContext<"/api/groups/[id]">) {
   try {
     const { user } = await requireCustomer();
     const g = await groupDetail(user.id, (await ctx.params).id).catch((e) => {
       throw e instanceof SocialError ? new HttpError(404, e.message) : e;
     });
+    const { members, proposals, ...rest } = g;
     return Response.json({
-      id: g.id,
-      name: g.name,
-      currency: g.currency,
-      threshold: g.threshold,
-      members: g.members.map((m) => ({ userId: m.user.id, name: m.user.name, role: m.role })),
-      myRole: g.members.find((m) => m.user.id === user.id)?.role ?? "MEMBER",
-      proposals: g.proposals.map((p) => ({
+      ...rest,
+      members: members.map((m) => ({ userId: m.userId, name: m.name, role: m.role, canSign: m.canSign, joinedAt: m.joinedAt })),
+      proposals: proposals.map((p) => ({
         id: p.id,
         proposerId: p.proposerId,
         title: p.title,

@@ -25,7 +25,7 @@ const SECTION_PATHS: Partial<Record<ScreenName, string>> = {
   "ความเป็นส่วนตัว": "/profile",
 };
 
-export function MockupApp({ initialRoute = "landing", initialBank = "thai", initialDealId = "D-014", initialScreen, initialGroupWallet, initialGroupCreate = false }: { initialRoute?: "landing" | "login" | "authorize" | "chat" | "deals" | "deal-detail"; initialBank?: BankChoice; initialDealId?: string; initialScreen?: ScreenName; initialGroupWallet?: string; initialGroupCreate?: boolean }) {
+export function MockupApp({ initialRoute = "landing", initialBank = "thai", initialDealId = "D-014", initialScreen, initialGroupWallet, initialGroupCreate = false, initialJoinToken }: { initialRoute?: "landing" | "login" | "authorize" | "chat" | "deals" | "deal-detail"; initialBank?: BankChoice; initialDealId?: string; initialScreen?: ScreenName; initialGroupWallet?: string; initialGroupCreate?: boolean; initialJoinToken?: string }) {
   const router = useRouter();
   const pending = useNavigationPending();
   const [route, setRoute] = useState<Route>(initialScreen ?? (initialRoute === "authorize" ? "bank-authorize" : initialRoute === "chat" ? "สร้างดีล" : initialRoute === "deals" ? "ดีลทั้งหมด" : initialRoute === "deal-detail" ? `รายละเอียดดีล ${initialDealId}` : initialRoute));
@@ -75,7 +75,7 @@ export function MockupApp({ initialRoute = "landing", initialBank = "thai", init
       case "รออนุมัติ": return <LiveApprovals />;
       case "กระเป๋": return <LiveSummary />;
       case "เพื่อน": return <LiveFriends />;
-      case "กลุ่ม": return <LiveGroups initialCreateOpen={initialGroupCreate} />;
+      case "กลุ่ม": return <LiveGroups initialCreateOpen={initialGroupCreate} joinToken={initialJoinToken ?? null} />;
       case "นโยบาย & Allowlist": return <LivePolicy />;
       // The wallet's tiers, caps, pause and allowlist are the live Policy page.
       case "กระเป๋า": return <LivePolicy />;
