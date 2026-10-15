@@ -25,11 +25,25 @@ import { type FundingResult, fileOfferMandate, fundJustInTime, ownerSignMandate 
  * user saw; the browser never sends amounts or the seller.
  */
 
-export type DraftMilestone = { name: string; amount: string; hasFile: boolean; due: string | null; acceptance: string };
+/** `delivery`: "file" (encrypted file), "parcel" (shipped, tracked by post) or "note" (evidence only).
+ *  Older drafts have only hasFile. */
+export type DraftMilestone = {
+  name: string;
+  amount: string;
+  hasFile: boolean;
+  delivery?: "file" | "parcel" | "note";
+  due: string | null;
+  acceptance: string;
+};
+
+export const deliveryOf = (m: Pick<DraftMilestone, "hasFile" | "delivery"> | undefined) => m?.delivery ?? (m?.hasFile ? "file" : "note");
 
 export type DraftView = {
   id: string;
   side: "BUY" | "SELL";
+  /** HIRE: a person's work (service). GOODS: a thing bought (a file or a parcel). */
+  kind: "HIRE" | "GOODS";
+  shipTo: string | null;
   wallet: string;
   /** The other party: the seller of a BUY draft, the buyer of a SELL draft. */
   counterparty: string;
@@ -61,6 +75,8 @@ export async function draftView(d: DealDraft, sellerLabel = ""): Promise<DraftVi
   return {
     id: d.id,
     side: d.side,
+    kind: d.kind,
+    shipTo: d.shipTo,
     wallet: d.walletAddress,
     counterparty: d.side === "SELL" ? (d.buyer ?? "") : d.seller,
     seller: d.seller,
@@ -78,11 +94,17 @@ export async function draftView(d: DealDraft, sellerLabel = ""): Promise<DraftVi
   };
 }
 
+/** What the termsHash commits to. Older drafts hashed only the first four fields. */
+function termsOf(input: { kind?: string; shipTo?: string | null; title: string; summary: string; reviewHours: number; milestones: DraftMilestone[] }) {
+  const base = { title: input.title, summary: input.summary, milestones: input.milestones, reviewHours: input.reviewHours };
+  return { ...base, kind: input.kind ?? "HIRE", ...(input.shipTo ? { shipTo: input.shipTo } : {}) };
+}
+
 /** Saves the agent's draft. Refuses sellers the wallet does not allowlist, so approval cannot fail on that. */
 export async function createDraft(
   userId: string,
   wallet: Address,
-  input: { seller: string; title: string; summary: string; reviewHours: number; milestones: DraftMilestone[] },
+  input: { seller: string; kind?: "HIRE" | "GOODS"; shipTo?: string | null; title: string; summary: string; reviewHours: number; milestones: DraftMilestone[] },
 ): Promise<DealDraft> {
   const units = await walletUnits(wallet);
   if (!units.currency) throw new DraftError("This wallet is not paid from a bank account");
@@ -91,13 +113,15 @@ export async function createDraft(
   for (const m of input.milestones) {
     if (parseUnits(m.amount, units.decimals) <= 0n) throw new DraftError(`Milestone "${m.name}" needs a positive amount`);
   }
-  const terms = { title: input.title, summary: input.summary, milestones: input.milestones, reviewHours: input.reviewHours };
+  const terms = termsOf(input);
   const termsHash = createHash("sha256").update(JSON.stringify(terms)).digest("hex");
   return db.dealDraft.create({
     data: {
       userId,
       walletAddress: wallet,
       seller,
+      kind: input.kind ?? "HIRE",
+      shipTo: input.shipTo || null,
       title: input.title,
       summary: input.summary,
       milestones: input.milestones as unknown as Prisma.InputJsonValue,
@@ -114,7 +138,7 @@ export async function createDraft(
 export async function createSellDraft(
   userId: string,
   wallet: Address,
-  input: { buyer: string; title: string; summary: string; reviewHours: number; milestones: DraftMilestone[] },
+  input: { buyer: string; kind?: "HIRE" | "GOODS"; shipTo?: string | null; title: string; summary: string; reviewHours: number; milestones: DraftMilestone[] },
 ): Promise<DealDraft> {
   const units = await walletUnits(wallet);
   if (!units.currency) throw new DraftError("This wallet is not paid from a bank account");
@@ -126,7 +150,7 @@ export async function createSellDraft(
   for (const m of input.milestones) {
     if (parseUnits(m.amount, units.decimals) <= 0n) throw new DraftError(`Milestone "${m.name}" needs a positive amount`);
   }
-  const terms = { title: input.title, summary: input.summary, milestones: input.milestones, reviewHours: input.reviewHours };
+  const terms = termsOf(input);
   const termsHash = createHash("sha256").update(JSON.stringify(terms)).digest("hex");
   return db.dealDraft.create({
     data: {
@@ -135,6 +159,8 @@ export async function createSellDraft(
       walletAddress: wallet,
       seller: wallet,
       buyer,
+      kind: input.kind ?? "HIRE",
+      shipTo: input.shipTo || null,
       title: input.title,
       summary: input.summary,
       milestones: input.milestones as unknown as Prisma.InputJsonValue,

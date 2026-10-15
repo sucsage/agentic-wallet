@@ -26,9 +26,11 @@ model User {
   wallets         UserWallet[]
   bankCustomer    BankCustomer?
   dealDrafts      DealDraft[]
-  friendsAsked    Friendship[]  @relation("friendRequester")
-  friendsReceived Friendship[]  @relation("friendAddressee")
+  friendsAsked    Friendship[]   @relation("friendRequester")
+  friendsReceived Friendship[]   @relation("friendAddressee")
   groups          GroupMember[]
+  aliases         ContactAlias[]
+  agentChats      AgentChat[]
 }
 
 model Session {
@@ -338,9 +340,19 @@ enum DraftSide {
   SELL
 }
 
+/// What is traded: HIRE is work done by a person (a service), GOODS is a thing bought (a file, or a
+/// parcel shipped by post).
+enum DealKind {
+  HIRE
+  GOODS
+}
+
 model DealDraft {
   id            String          @id @default(cuid())
   side          DraftSide       @default(BUY)
+  kind          DealKind        @default(HIRE)
+  /// Delivery address for parcel milestones (shown to both parties only).
+  shipTo        String?
   /// SELL drafts: the buyer's wallet the offer is made to. BUY drafts: null (the wallet is the buyer).
   buyer         String?
   userId        String
@@ -456,7 +468,7 @@ model GroupVote {
 /// A seller's delivery for one FileEscrow milestone (PDPA: the file and note live here and can be
 /// deleted; the chain holds only the sha256 work hash and a commitment to the key).
 model DealDelivery {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   /// FileEscrow address: deal ids restart with every escrow deployment.
   escrow       String
   dealId       Int
@@ -472,10 +484,15 @@ model DealDelivery {
   iv           String?
   tag          String?
   fileKey      String?
-  /// sha256 of the file (or of the note when there is no file): the work hash anchored on-chain.
+  /// Parcel milestones: the carrier and tracking number, and when it was handed to the post.
+  carrier      String?
+  tracking     String?
+  shippedAt    DateTime?
+  /// sha256 of the file (or of the note, or of the parcel record, when there is no file): the work
+  /// hash anchored on-chain.
   sha256       String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   @@unique([escrow, dealId, index])
 }
@@ -496,31 +513,30 @@ enum PayoutMethod {
 }
 
 model SellerInvite {
-  id           String        @id @default(cuid())
+  id              String        @id @default(cuid())
   /// sha256 of the link's secret; the secret itself is shown to the buyer once.
-  tokenHash    String        @unique
+  tokenHash       String        @unique
   /// The buyer who invited them.
-  userId       String
-  buyerWallet  String
+  userId          String
+  buyerWallet     String
   /// The agent wallet the server runs for the invited seller.
-  sellerWallet String        @unique
-  name         String
-  currency     Currency
-  payoutMethod PayoutMethod?
+  sellerWallet    String        @unique
+  name            String
+  currency        Currency
+  payoutMethod    PayoutMethod?
   /// Account number or PromptPay id, as entered.
-  payoutTarget String?
+  payoutTarget    String?
   /// Bank code for BANK payouts (e.g. KBANK).
-  payoutBank   String?
-  payoutName   String?
+  payoutBank      String?
+  payoutName      String?
   /// The Mock Bank account paid for MOCKBANK payouts.
   payoutAccountId String?
-  payoutSetAt  DateTime?
-  expiresAt    DateTime
-  createdAt    DateTime      @default(now())
+  payoutSetAt     DateTime?
+  expiresAt       DateTime
+  createdAt       DateTime      @default(now())
 
   @@index([userId])
 }
-
 
 // ---------------------------------------------------------------------------------------------
 // Disputes: the buyer's reason, and the neutral arbiter's decision. A dispute about the released
@@ -572,4 +588,35 @@ model DeclinedOffer {
 
   @@unique([userId, escrow, dealId])
   @@index([escrow, dealId])
+}
+
+// ---------------------------------------------------------------------------------------------
+// The agent's memory: what the user calls their contacts, and up to five saved chats per wallet.
+// ---------------------------------------------------------------------------------------------
+
+/// A nickname the user uses for a contact ("my designer", "พี่เอ"); the agent resolves it to the
+/// contact's wallet on the server, so the model still never sees an address.
+model ContactAlias {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  alias     String
+  address   String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, alias])
+}
+
+model AgentChat {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  walletAddress String
+  title         String
+  /// [{ kind: "user" | "agent" | "error", text, at, steps? }]: the chat as the UI shows it.
+  messages      Json
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId, walletAddress])
 }

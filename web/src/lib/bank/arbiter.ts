@@ -13,6 +13,7 @@ import { llm, llmConfigured } from "../agent";
 import { type TxOutcome, account, atFreshBlock, publicClient, send } from "../chain";
 import { config } from "../config";
 import { db } from "../db";
+import { CARRIER_LABEL, type Carrier, trackParcel } from "../post";
 
 /**
  * The neutral arbiter. It is not the buyer's agent: it has its own key (the deal's arbiter, which
@@ -144,6 +145,11 @@ async function aiRuling(dealId: number, index: number, buyer: Address, seller: A
     `<seller_evidence>`,
     file.row?.note ?? "(the seller wrote no evidence)",
     `</seller_evidence>`,
+    file.row?.tracking
+      ? `Parcel shipped with ${CARRIER_LABEL[file.row.carrier as Carrier] ?? file.row.carrier}, tracking ${file.row.tracking}. Carrier tracking: ${
+          file.row.shippedAt ? trackParcel(file.row.carrier as Carrier, file.row.shippedAt).status : "unknown"
+        }.`
+      : ``,
     file.row?.fileName
       ? `Delivered file: ${file.row.fileName} (${file.row.mime ?? "unknown type"}, ${file.row.size ?? 0} bytes), sha256 matches the hash anchored on-chain at delivery.`
       : `No file was delivered for this milestone.`,

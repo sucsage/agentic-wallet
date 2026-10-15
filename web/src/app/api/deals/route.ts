@@ -24,6 +24,7 @@ export async function GET() {
       deals: deals.map((d, i) => ({
         ...d,
         title: titles[i]?.title ?? null,
+        kind: titles[i]?.kind ?? "HIRE",
         counterpartyLabel: friends.get(d.counterparty.toLowerCase()) ?? d.counterpartyLabel,
       })),
       drafts: await Promise.all(drafts.filter((d) => d.status !== "FUNDED").map((d) => draftView(d))),

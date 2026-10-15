@@ -2,7 +2,7 @@ import { after } from "next/server";
 
 import { disputeOf, disputeView } from "@/lib/bank/arbiter";
 import { DealError, dealForWallet, dealTerms, deliveryInfo, demoDeliverable, syncDeal } from "@/lib/bank/deals";
-import { draftView } from "@/lib/bank/drafts";
+import { deliveryOf, draftView } from "@/lib/bank/drafts";
 import { roleAddresses } from "@/lib/chain";
 import { config, explorerAddress } from "@/lib/config";
 import { db } from "@/lib/db";
@@ -51,6 +51,8 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/deals/[id]">) {
       counterpartyLabel: friends.get(deal.counterparty.toLowerCase()) ?? deal.counterpartyLabel,
       title: terms?.title ?? `File deal #${id}`,
       summary: terms?.summary ?? null,
+      kind: terms?.kind ?? "HIRE",
+      shipTo: terms?.shipTo ?? null,
       escrow: explorerAddress(config.bankContracts.fileEscrow),
       demoSeller,
       // The side that made the offer may withdraw it; the other side accepts it (a buyer pays in then).
@@ -62,6 +64,9 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/deals/[id]">) {
         ...m,
         name: terms?.milestones[i]?.name ?? `Milestone ${i + 1}`,
         acceptance: terms?.milestones[i]?.acceptance ?? null,
+        delivers: m.hasFile ? "file" : deliveryOf(terms?.milestones[i]),
+        // Images get a watermarked preview the buyer can see before approving.
+        canPreview: Boolean(deliveries[i]?.mime?.startsWith("image/")),
         moves: moves(deal.role, deal.status, m.status, m.deadline),
         delivery: deliveries[i],
         dispute: disputeView(disputes[i]),

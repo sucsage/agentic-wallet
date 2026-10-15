@@ -1477,3 +1477,34 @@
 .aw-ai-live-steps .running{color:#9fc2ff;animation:aw-pulse 1.2s ease-in-out infinite}
 @keyframes aw-pulse{50%{opacity:.45}}
 .aw-id-chip{display:inline-block;font-family:ui-monospace,monospace;font-size:10px;padding:1px 6px;margin-right:4px;border:1px solid #3a3a3a;border-radius:6px;color:#9fc2ff;vertical-align:middle}
+
+.aw-loading{display:flex;align-items:center;gap:10px;padding:10px 2px;color:#9fc2ff;font-size:13px}
+.aw-loading i{width:16px;height:16px;flex:none;border:2px solid #2e3f5e;border-top-color:#559bff;border-radius:50%;animation:aw-spin .8s linear infinite}
+.aw-loading-block{justify-content:center;min-height:180px;padding:40px 16px;border:1px dashed #2b2b2b;border-radius:14px}
+@keyframes aw-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.aw-loading i{animation-duration:2.4s}}
+.aw-chat-tabs{display:flex;align-items:center;gap:6px;padding:8px 0 10px;overflow-x:auto;scrollbar-width:thin;border-bottom:1px solid #262626;margin-bottom:8px}
+.aw-chat-tabs button{background:transparent;border:0;color:inherit;font:inherit;cursor:pointer}
+.aw-chat-tabs button:disabled{cursor:not-allowed;opacity:.5}
+.aw-chat-new{flex:none;min-height:30px;padding:5px 12px!important;border:1px solid #2e3f5e!important;border-radius:16px;color:#9fc2ff!important;font-size:12px!important;white-space:nowrap}
+.aw-chat-tab{flex:none;display:inline-flex;align-items:center;max-width:200px;min-height:30px;border:1px solid #333;border-radius:16px;font-size:12px;color:#bbb}
+.aw-chat-tab.active{border-color:#559bff;color:#fff;background:#141c29}
+.aw-chat-tab button:first-child{padding:5px 4px 5px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.aw-chat-tab button:last-child{padding:5px 10px 5px 4px;color:#888}
+.aw-chat-tab button:last-child:hover{color:#ff8a8a}
+.aw-chat-count{flex:none;color:#777;font-size:11px;white-space:nowrap}
+.aw-kind-badge{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:8px;font-size:10px;letter-spacing:.04em;vertical-align:middle;border:1px solid #3a3a3a}
+.aw-kind-badge.hire{color:#c9bfff;border-color:#4a3f6b}
+.aw-kind-badge.goods{color:#ffd27a;border-color:#6b5a2e}
+.aw-parcel{display:flex;flex-direction:column;gap:6px;margin-top:10px;padding:12px;border:1px solid #6b5a2e;border-radius:12px;background:#1d1910;font-size:12px;line-height:1.5}
+.aw-parcel p{margin:0}
+.aw-parcel ol{margin:0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:4px}
+.aw-parcel li{display:flex;gap:8px;color:#9da9ba}
+.aw-parcel li:first-child{color:#ffd27a}
+.aw-parcel li time{flex:none;width:52px;color:#777;font-variant-numeric:tabular-nums}
+.aw-parcel code{color:#ffd27a}
+.aw-parcel-ok{color:#89ef82}
+.aw-preview{margin-top:8px;max-width:100%}
+.aw-preview img{display:block;max-width:100%;max-height:360px;border-radius:10px;border:1px solid #333}
+.aw-preview small{display:block;margin-top:4px;color:#888;font-size:11px}
+.aw-deliver-form select{min-height:36px;padding:6px 10px;border:1px solid #333;border-radius:10px;background:#111;color:#eee}

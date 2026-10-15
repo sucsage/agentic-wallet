@@ -92,11 +92,14 @@ Style: concise, professional, plain English (reply in the user's language if the
 /** Added for wallets paid from a Mock Bank account (mTHB / mCNY), which hold no money themselves. */
 const BANK_SYSTEM = `
 Bank-paid wallet. This wallet is paid from the user's Mock Bank account and holds no money of its own (its balance is normally 0, and that is fine).
+- Two kinds of deal, keep them apart: HIRE (kind "hire") pays a person for work or a service (design, code, writing, repairs); BUY (kind "buy") pays for a thing: a digital file (delivery "file") or a physical item shipped by post (delivery "parcel", tracked with a tracking number). Say which one you drafted.
+- Before drafting, make sure you have the minimum: (1) who the other party is, (2) hire or buy, and for goods whether it is a file or a physical item, (3) what exactly is delivered, (4) the price of each milestone, (5) acceptance criteria for each milestone, (6) for a parcel, the delivery address. If any of these is missing or unclear, do NOT call the tool: ask ONE short question that lists only what is missing, and offer a sensible default where there is one (e.g. "one milestone, paid on delivery?"). Never invent prices, criteria or addresses. Due dates are optional; review_hours defaults to 72 without asking. If a tool answers NEED_INFO, ask the user exactly that.
 - To buy work, call propose_bank_deal. It ONLY saves a draft: nothing is signed or debited. The user then presses "Approve & lock" in the chat; only then is their bank account debited for the offer's total, which is locked in the file escrow until each milestone is approved.
 - Amounts are plain numbers in the bank's currency (THB or CNY), e.g. 5000 means 5,000 baht. Never call them mUSDC.
 - People are referred to by name. The seller must be one of the payees in get_wallet_status (people the wallet may pay). If the user names a friend who is not a payee, say they must add that person to the allowlist first (Friends page).
+- Nicknames: get_wallet_status lists the nicknames the user gave each contact, and tools accept a nickname wherever they take a name. When the user calls someone by a name that is not a contact (e.g. "พี่เอ", "my designer") and then tells you who they mean, call remember_nickname so you know next time. forget_nickname removes one.
 - Drafts the user has not approved yet are listed by list_deals with a draft_ref (DR-…). discard_draft removes one when the user asks.
-- To SELL the user's own work or a file to someone, call propose_bank_sale with the buyer's wallet (get_wallet_status → friends). It also only saves a draft; the user presses "Send offer", which puts the offer on-chain and locks nothing. The buyer pays in from their bank when they accept it, and must have the user as a payee by then.
+- To SELL the user's own work, a file or an item to someone, call propose_bank_sale with the buyer's name (get_wallet_status → friends). It also only saves a draft; the user presses "Send offer", which puts the offer on-chain and locks nothing. The buyer pays in from their bank when they accept it, and must have the user as a payee by then.
 - If the user wants to hire someone who is not a friend on the app (no account), call invite_seller with their name, give the user the link it returns, then draft the deal with propose_bank_deal to the seller address it returns.
 - Never say money moved, was paid or was locked because of a draft.`;
 
@@ -179,14 +182,21 @@ const BANK_MILESTONES = {
     properties: {
       name: { type: "string" },
       amount: { type: "number", description: "In the bank's currency, e.g. 2500 = 2,500 baht" },
-      has_file: { type: "boolean", description: "true if the seller delivers a file for this milestone" },
+      delivery: {
+        type: "string",
+        enum: ["file", "parcel", "note"],
+        description: "file: the seller uploads a file; parcel: a physical item shipped by post with a tracking number; note: work shown by a written report only",
+      },
       due_date: { type: "string", description: "YYYY-MM-DD, or empty if none" },
       acceptance: { type: "string", description: "What must be delivered for the buyer to approve" },
     },
-    required: ["name", "amount", "has_file", "due_date", "acceptance"],
+    required: ["name", "amount", "delivery", "due_date", "acceptance"],
     additionalProperties: false,
   },
 };
+
+const KIND = { type: "string", enum: ["hire", "buy"], description: "hire: paying a person for work or a service; buy: paying for a thing (a file or a physical item)" };
+const SHIP_TO = { type: "string", description: "Delivery address for parcel milestones, as the user gave it; empty if nothing is shipped" };
 
 const BANK_TOOLS = [
   ...TOOLS.filter((t) => ["get_wallet_status", "list_deals", "pause_wallet"].includes(t.name)),
@@ -194,25 +204,29 @@ const BANK_TOOLS = [
     "propose_bank_deal",
     "Draft a file-delivery deal paid from the user's bank account. Saves a draft only; the user approves it in the chat, which debits the bank and locks the total in escrow.",
     {
-      seller: { type: "string", description: "The seller's name exactly as listed in get_wallet_status → payees" },
+      seller: { type: "string", description: "The seller's name (or a nickname) from get_wallet_status → payees" },
+      kind: KIND,
+      ship_to: SHIP_TO,
       title: { type: "string", description: "Short project title" },
       summary: { type: "string", description: "One-paragraph summary of the scope" },
       review_hours: { type: "integer", description: "Hours the buyer has to review each delivery (1-720, usually 72)" },
       milestones: BANK_MILESTONES,
     },
-    ["seller", "title", "summary", "review_hours", "milestones"],
+    ["seller", "kind", "ship_to", "title", "summary", "review_hours", "milestones"],
   ),
   tool(
     "propose_bank_sale",
     "Draft an offer to SELL work or a file to a buyer (a friend's wallet). Saves a draft only; the user sends it from the chat. Nothing is locked until the buyer accepts and pays from their bank.",
     {
-      buyer: { type: "string", description: "The buyer's name exactly as listed in get_wallet_status → friends" },
+      buyer: { type: "string", description: "The buyer's name (or a nickname) from get_wallet_status → friends" },
+      kind: KIND,
+      ship_to: SHIP_TO,
       title: { type: "string", description: "Short project title" },
       summary: { type: "string", description: "One-paragraph summary of the scope" },
       review_hours: { type: "integer", description: "Hours the buyer has to review each delivery (1-720, usually 72)" },
       milestones: BANK_MILESTONES,
     },
-    ["buyer", "title", "summary", "review_hours", "milestones"],
+    ["buyer", "kind", "ship_to", "title", "summary", "review_hours", "milestones"],
   ),
   tool(
     "invite_seller",
@@ -220,6 +234,16 @@ const BANK_TOOLS = [
     { name: { type: "string", description: "The seller's name as the user wrote it" } },
     ["name"],
   ),
+  tool(
+    "remember_nickname",
+    "Remember what the user calls one of their contacts, so that name works in every chat from now on.",
+    {
+      nickname: { type: "string", description: "What the user calls them, e.g. พี่เอ or my designer" },
+      contact: { type: "string", description: "The contact's name from get_wallet_status → friends" },
+    },
+    ["nickname", "contact"],
+  ),
+  tool("forget_nickname", "Forget a nickname the user no longer uses.", { nickname: { type: "string" } }, ["nickname"]),
   tool(
     "discard_draft",
     "Delete a draft the user has not approved yet (nothing was signed or debited for it).",
@@ -231,6 +255,67 @@ const BANK_TOOLS = [
 // Gateways for non-Claude models don't enforce tool schemas, so every input is validated here;
 // a bad input goes back to the model as an error result and it retries.
 const address = z.string().regex(/^0x[0-9a-fA-F]{40}$/, "must be a 0x-prefixed 20-byte address");
+const DEAL_FIELDS = {
+  kind: z.enum(["hire", "buy"]),
+  ship_to: z.string().max(400).default(""),
+  title: z.string().min(1).max(120),
+  summary: z.string().max(2000),
+  review_hours: z.number().int().min(1).max(720),
+  milestones: z
+    .array(
+      z.object({
+        name: z.string().min(1).max(120),
+        amount: z.number().positive(),
+        // Older clients of the tool sent has_file; delivery wins when both are present.
+        delivery: z.enum(["file", "parcel", "note"]).optional(),
+        has_file: z.boolean().optional(),
+        due_date: z.string().default(""),
+        acceptance: z.string().max(1000),
+      }),
+    )
+    .min(1)
+    .max(10),
+};
+
+type DealInput = {
+  kind: "hire" | "buy";
+  ship_to: string;
+  title: string;
+  summary: string;
+  review_hours: number;
+  milestones: { name: string; amount: number; delivery?: "file" | "parcel" | "note"; has_file?: boolean; due_date: string; acceptance: string }[];
+};
+
+/**
+ * The minimum a deal needs before it is drafted. The model is told to ask for missing details; this
+ * makes sure, so a vague request never becomes a draft with invented terms.
+ */
+function missingInfo(i: DealInput): string[] {
+  const missing: string[] = [];
+  const delivery = (m: DealInput["milestones"][number]) => m.delivery ?? (m.has_file ? "file" : "note");
+  if (i.kind === "hire" && i.milestones.some((m) => delivery(m) === "parcel")) {
+    missing.push("whether this is hiring someone or buying an item (a parcel was planned for a hire)");
+  }
+  for (const m of i.milestones) {
+    if (m.acceptance.trim().length < 8) missing.push(`acceptance criteria for "${m.name}" (what must be delivered for it to be approved)`);
+  }
+  if (i.milestones.some((m) => delivery(m) === "parcel") && i.ship_to.trim().length < 10) missing.push("the delivery address for the parcel");
+  return missing;
+}
+
+function draftMilestones(i: DealInput, decimals: number) {
+  return i.milestones.map((m) => {
+    const delivery = m.delivery ?? (m.has_file ? "file" : "note");
+    return {
+      name: m.name,
+      amount: m.amount.toFixed(decimals),
+      hasFile: delivery === "file",
+      delivery,
+      due: m.due_date || null,
+      acceptance: m.acceptance,
+    };
+  });
+}
 const INPUTS: Record<string, z.ZodType> = {
   get_wallet_status: z.object({}).passthrough(),
   list_deals: z.object({}).passthrough(),
@@ -260,42 +345,10 @@ const INPUTS: Record<string, z.ZodType> = {
   pause_wallet: z.object({ reason: z.string() }),
   invite_seller: z.object({ name: z.string().min(2).max(80) }),
   discard_draft: z.object({ draft_ref: z.string().min(3).max(40) }),
-  propose_bank_deal: z.object({
-    seller: z.string().min(1).max(120),
-    title: z.string().min(1).max(120),
-    summary: z.string().max(2000),
-    review_hours: z.number().int().min(1).max(720),
-    milestones: z
-      .array(
-        z.object({
-          name: z.string().min(1).max(120),
-          amount: z.number().positive(),
-          has_file: z.boolean(),
-          due_date: z.string(),
-          acceptance: z.string().max(1000),
-        }),
-      )
-      .min(1)
-      .max(10),
-  }),
-  propose_bank_sale: z.object({
-    buyer: z.string().min(1).max(120),
-    title: z.string().min(1).max(120),
-    summary: z.string().max(2000),
-    review_hours: z.number().int().min(1).max(720),
-    milestones: z
-      .array(
-        z.object({
-          name: z.string().min(1).max(120),
-          amount: z.number().positive(),
-          has_file: z.boolean(),
-          due_date: z.string(),
-          acceptance: z.string().max(1000),
-        }),
-      )
-      .min(1)
-      .max(10),
-  }),
+  propose_bank_deal: z.object({ seller: z.string().min(1).max(120), ...DEAL_FIELDS }),
+  propose_bank_sale: z.object({ buyer: z.string().min(1).max(120), ...DEAL_FIELDS }),
+  remember_nickname: z.object({ nickname: z.string().trim().min(1).max(40), contact: z.string().min(1).max(120) }),
+  forget_nickname: z.object({ nickname: z.string().trim().min(1).max(40) }),
 };
 
 function walletSummary(s: WalletState) {
@@ -389,20 +442,29 @@ export function redactAddresses(text: string): string {
 
 const draftRef = (id: string) => `DR-${id.slice(-6).toUpperCase()}`;
 
-type Contact = { name: string; address: Address; payee: boolean };
+type Contact = { name: string; address: Address; payee: boolean; nicknames: string[] };
 
 /**
  * The people this wallet deals with, by name: friends and invited sellers. The model only ever sees
  * these names; tools turn a name back into an address on the server.
  */
 async function contacts(wallet: Address, userId: string, state?: WalletState): Promise<Contact[]> {
-  const [labels, s] = await Promise.all([friendLabels(userId), state ? Promise.resolve(state) : readWallet(wallet)]);
+  const [labels, s, aliases] = await Promise.all([
+    friendLabels(userId),
+    state ? Promise.resolve(state) : readWallet(wallet),
+    db.contactAlias.findMany({ where: { userId }, orderBy: { createdAt: "asc" } }),
+  ]);
   const payees = new Set(s.allowlist.recipients.map((r) => r.address.toLowerCase()));
   const seen = new Map<string, number>();
   return [...labels].map(([addr, label]) => {
     const n = (seen.get(label.toLowerCase()) ?? 0) + 1;
     seen.set(label.toLowerCase(), n);
-    return { name: n > 1 ? `${label} #${n}` : label, address: getAddress(addr), payee: payees.has(addr.toLowerCase()) };
+    return {
+      name: n > 1 ? `${label} #${n}` : label,
+      address: getAddress(addr),
+      payee: payees.has(addr.toLowerCase()),
+      nicknames: aliases.filter((a) => a.address.toLowerCase() === addr.toLowerCase()).map((a) => a.alias),
+    };
   });
 }
 
@@ -416,12 +478,15 @@ function resolveContact(list: Contact[], ref: string): Contact | string {
   // An exact name wins; "Somchai" also finds "Somchai (invited)" when nobody else is called that.
   const exactName = list.filter((c) => c.name.toLowerCase() === r);
   if (exactName.length === 1) return exactName[0];
+  // Then a nickname the user taught the agent.
+  const nick = list.filter((c) => c.nicknames.some((n) => n.toLowerCase() === r));
+  if (nick.length === 1) return nick[0];
   const exact = list.filter((c) => plain(c.name) === r);
   if (exact.length === 1) return exact[0];
   const partial = list.filter((c) => c.name.toLowerCase().includes(r));
   if (partial.length === 1) return partial[0];
   if (exact.length + partial.length > 1) return `"${ref}" matches several contacts: ${[...exact, ...partial].map((c) => c.name).join(", ")}. Ask the user which one.`;
-  return `No contact named "${ref}". Contacts: ${list.map((c) => c.name).join(", ") || "none yet (add friends first)"}`;
+  return `No contact named "${ref}". Contacts: ${list.map((c) => c.name).join(", ") || "none yet (add friends first)"}. If "${ref}" is what the user calls one of them, ask which one, then call remember_nickname.`;
 }
 
 /** The draft as the chat card needs it, without addresses. */
@@ -457,7 +522,7 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
           // People the wallet may pay (allowlist): propose_bank_deal takes one of these names.
           payees: people.filter((c) => c.payee).map((c) => c.name),
           // Everyone the user deals with: propose_bank_sale takes one of these names.
-          friends: people.map((c) => ({ name: c.name, can_be_paid: c.payee })),
+          friends: people.map((c) => ({ name: c.name, nicknames: c.nicknames, can_be_paid: c.payee })),
           open_proposals: state.proposals.filter((p) => p.status === "open").length,
         }),
       };
@@ -488,6 +553,7 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
             .map((d) => ({
               draft_ref: draftRef(d.id),
               side: d.side === "SELL" ? "selling" : "buying",
+              kind: d.kind === "GOODS" ? "buy (goods)" : "hire (service)",
               title: d.title,
               counterparty: named(d.side === "SELL" ? (d.buyer ?? "") : d.seller),
               total: (d.milestones as { amount: string }[]).reduce((t, m) => t + Number(m.amount), 0),
@@ -496,6 +562,28 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
           open_proposals: s.proposals.filter((p) => p.status === "open").length,
         }),
       };
+    }
+    case "remember_nickname": {
+      if (!userId) throw new Error("Nicknames need a signed-in user");
+      const nickname = String(input.nickname).trim();
+      const list = await contacts(wallet, userId);
+      const who = resolveContact(list, String(input.contact));
+      if (typeof who === "string") return { tool: name, input, summary: `BLOCKED: ${who}` };
+      if (list.some((c) => c.name.toLowerCase() === nickname.toLowerCase() && c.address !== who.address)) {
+        return { tool: name, input, summary: `BLOCKED: "${nickname}" is already the name of another contact` };
+      }
+      await db.contactAlias.upsert({
+        where: { userId_alias: { userId, alias: nickname } },
+        update: { address: who.address },
+        create: { userId, alias: nickname, address: who.address },
+      });
+      return { tool: name, input, summary: `REMEMBERED: "${nickname}" means ${who.name}, in every chat from now on.` };
+    }
+    case "forget_nickname": {
+      if (!userId) throw new Error("Nicknames need a signed-in user");
+      const nickname = String(input.nickname).trim();
+      const gone = await db.contactAlias.deleteMany({ where: { userId, alias: { equals: nickname, mode: "insensitive" } } });
+      return { tool: name, input, summary: gone.count ? `FORGOTTEN: "${nickname}"` : `No nickname "${nickname}"` };
     }
     case "discard_draft": {
       if (!userId) throw new Error("Drafts need a signed-in user");
@@ -534,37 +622,29 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
     }
     case "propose_bank_deal": {
       if (!userId) throw new Error("Drafts need a signed-in user");
-      const i = input as {
-        seller: string;
-        title: string;
-        summary: string;
-        review_hours: number;
-        milestones: { name: string; amount: number; has_file: boolean; due_date: string; acceptance: string }[];
-      };
+      const i = input as DealInput & { seller: string };
       const units = await walletUnits(wallet);
       const who = resolveContact(await contacts(wallet, userId), i.seller);
       if (typeof who === "string") return { tool: name, input, summary: `BLOCKED: ${who}` };
       if (!who.payee) return { tool: name, input, summary: `BLOCKED: ${who.name} is not a payee yet. The user must add them to the allowlist on the Friends page first.` };
+      const missing = missingInfo(i);
+      if (missing.length) return { tool: name, input, summary: `NEED_INFO (nothing was saved): ask the user for ${missing.join("; ")}.` };
       try {
         const d = await createDraft(userId, wallet, {
           seller: who.address,
+          kind: i.kind === "buy" ? "GOODS" : "HIRE",
+          shipTo: i.ship_to.trim() || null,
           title: i.title,
           summary: i.summary,
           reviewHours: i.review_hours,
-          milestones: i.milestones.map((m) => ({
-            name: m.name,
-            amount: m.amount.toFixed(units.decimals),
-            hasFile: m.has_file,
-            due: m.due_date || null,
-            acceptance: m.acceptance,
-          })),
+          milestones: draftMilestones(i, units.decimals),
         });
         const draft = await draftView(d, who.name);
         return {
           tool: name,
           input,
           draft: cardDraft(draft),
-          summary: `DRAFT SAVED (Tier 1, nothing debited yet): ${draftRef(d.id)} to ${who.name}, total ${draft.total} ${units.currency}. The user must press "Approve & lock" in the chat.`,
+          summary: `DRAFT SAVED (Tier 1, nothing debited yet): ${i.kind === "buy" ? "BUY (goods)" : "HIRE (service)"} ${draftRef(d.id)} to ${who.name}, total ${draft.total} ${units.currency}. The user must press "Approve & lock" in the chat.`,
         };
       } catch (err) {
         if (err instanceof DraftError) return { tool: name, input, summary: `BLOCKED: ${err.message}` };
@@ -573,29 +653,21 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
     }
     case "propose_bank_sale": {
       if (!userId) throw new Error("Drafts need a signed-in user");
-      const i = input as {
-        buyer: string;
-        title: string;
-        summary: string;
-        review_hours: number;
-        milestones: { name: string; amount: number; has_file: boolean; due_date: string; acceptance: string }[];
-      };
+      const i = input as DealInput & { buyer: string };
       const units = await walletUnits(wallet);
       const who = resolveContact(await contacts(wallet, userId), i.buyer);
       if (typeof who === "string") return { tool: name, input, summary: `BLOCKED: ${who}` };
+      const missing = missingInfo(i);
+      if (missing.length) return { tool: name, input, summary: `NEED_INFO (nothing was saved): ask the user for ${missing.join("; ")}.` };
       try {
         const d = await createSellDraft(userId, wallet, {
           buyer: who.address,
+          kind: i.kind === "buy" ? "GOODS" : "HIRE",
+          shipTo: i.ship_to.trim() || null,
           title: i.title,
           summary: i.summary,
           reviewHours: i.review_hours,
-          milestones: i.milestones.map((m) => ({
-            name: m.name,
-            amount: m.amount.toFixed(units.decimals),
-            hasFile: m.has_file,
-            due: m.due_date || null,
-            acceptance: m.acceptance,
-          })),
+          milestones: draftMilestones(i, units.decimals),
         });
         const draft = await draftView(d, who.name);
         return {
@@ -784,13 +856,13 @@ export async function runAgent(
       onEvent?.({ type: "tool", id: use.id, name: use.name, input: use.input });
       try {
         const step = await runTool(wallet, use.name, use.input, userId);
+        step.summary = redactAddresses(step.summary);
         steps.push(step);
         onEvent?.({ type: "step", id: use.id, step });
-        step.summary = redactAddresses(step.summary);
         results.push({ type: "tool_result", tool_use_id: use.id, content: step.summary });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        steps.push({ tool: use.name, input: use.input, summary: `Error: ${msg}` });
+        steps.push({ tool: use.name, input: use.input, summary: redactAddresses(`Error: ${msg}`) });
         onEvent?.({ type: "step", id: use.id, step: steps[steps.length - 1] });
         results.push({ type: "tool_result", tool_use_id: use.id, content: msg, is_error: true });
       }

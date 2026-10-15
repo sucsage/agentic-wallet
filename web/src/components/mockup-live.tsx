@@ -10,7 +10,7 @@ import { authClient } from "@/lib/auth-client";
 import { localizeMockupNode, useLang } from "@/lib/i18n";
 
 import { type AccountView, api, download, lockedInDeals, money, tokenMoney, useAppData } from "./app-data";
-import { Button, Card, PageTitle } from "./mockup-ui";
+import { Button, Card, Loading, PageTitle } from "./mockup-ui";
 import type { BankChoice } from "./mockup-screens";
 
 /**
@@ -31,11 +31,13 @@ function defaultAccount(accounts: AccountView[] | undefined) {
 }
 
 export function BalanceBar() {
-  const { me, wallet } = useAppData();
+  const { me, wallet, status } = useAppData();
   const account = defaultAccount(me?.accounts);
   const currency = me?.bank.currency ?? "THB";
   const bank = currency === "THB" ? "Thai bank" : "Chinese bank";
   return (
+    <>
+    {status === "creating-wallet" && <Loading text="Creating your agent wallet and its keys on-chain (about 10 s)…" />}
     <div className="aw-ai-balancebar">
       <div className="aw-ai-bank">
         <span className="aw-ai-wallet-icon">
@@ -63,6 +65,7 @@ export function BalanceBar() {
         <span className="aw-demo-bank-pill">Demo bank</span>
       </div>
     </div>
+    </>
   );
 }
 
@@ -294,6 +297,9 @@ const TOOL_LABEL: Record<string, string> = {
   propose_bank_deal: "Drafting the deal",
   propose_bank_sale: "Drafting the sale offer",
   invite_seller: "Creating a wallet and invite link",
+  remember_nickname: "Remembering the nickname",
+  forget_nickname: "Forgetting the nickname",
+  discard_draft: "Discarding the draft",
   pause_wallet: "Pausing the wallet",
   forecast_cashflow: "Forecasting cash flow",
 };
@@ -318,7 +324,28 @@ async function readEvents(res: Response, on: (event: string, data: unknown) => v
   }
 }
 
-const now = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const clock = (d: Date) => d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const now = () => clock(new Date());
+
+type SavedChat = { id: string; title: string; updatedAt: string };
+type StoredItem =
+  | { kind: "user"; text: string; at: string }
+  | { kind: "agent"; text: string; at: string; steps: Step[] }
+  | { kind: "error"; text: string; at: string };
+
+/** A saved chat back into chat items (times were stored as ISO strings). */
+const fromStored = (m: StoredItem): ChatItem =>
+  m.kind === "error" ? { kind: "error", text: m.text } : m.kind === "user" ? { ...m, at: clock(new Date(m.at)) } : { ...m, at: clock(new Date(m.at)) };
+
+const LAST_CHAT = "aw-last-chat";
+const remember = (id: string | null) => {
+  try {
+    if (id) localStorage.setItem(LAST_CHAT, id);
+    else localStorage.removeItem(LAST_CHAT);
+  } catch {
+    // storage blocked: the chat still works, it just opens empty next time
+  }
+};
 
 type FundingResult = { status: string; steps: { step: string; outcome?: { url?: string | null; hash?: string } }[]; error?: string };
 
@@ -366,10 +393,13 @@ function DraftCard({
               : "Needs your approval · Tier 1"}
         </span>
       </div>
-      <h2>{draft.title}</h2>
+      <h2>
+        {draft.title}
+        <span className={`aw-kind-badge ${draft.kind === "GOODS" ? "goods" : "hire"}`}>{draft.kind === "GOODS" ? "BUY · goods" : "HIRE · service"}</span>
+      </h2>
       <div className="aw-draft-parties">
         <span>
-          {sell ? "Buyer" : "Seller"}&nbsp; <b>{who}</b>
+          {draft.kind === "HIRE" ? (sell ? "Client" : "Contractor") : sell ? "Buyer" : "Seller"}&nbsp; <b>{who}</b>
         </span>
         {!sell && <i className="green">In allowlist ✓</i>}
       </div>
@@ -377,12 +407,24 @@ function DraftCard({
         <div className="aw-draft-milestone" key={i}>
           <i>{i + 1}</i>
           <span>
-            <b>{m.name}</b>
+            <b>
+              {m.name}
+              {(m.delivery ?? (m.hasFile ? "file" : "note")) === "parcel" ? " · 📦 parcel" : m.hasFile ? " · 📎 file" : ""}
+            </b>
             <small>{m.due ? `Due ${m.due}` : m.acceptance}</small>
           </span>
           <strong>{tokenMoney(m.amount, currency)}</strong>
         </div>
       ))}
+      {draft.shipTo && (
+        <div className="aw-draft-milestone">
+          <i>📦</i>
+          <span>
+            <b>Ship to</b>
+            <small>{draft.shipTo}</small>
+          </span>
+        </div>
+      )}
       <div className="aw-draft-total">
         <span>Total</span>
         <b>{tokenMoney(draft.total, currency)}</b>
@@ -411,6 +453,11 @@ export function LiveChat() {
   const [items, setItems] = useState<ChatItem[]>([]);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  // Saved chats (max 5). chatId null: a new chat, saved when its first message is sent.
+  const [chats, setChats] = useState<SavedChat[] | null>(null);
+  const [maxChats, setMaxChats] = useState(5);
+  const [chatId, setChatId] = useState<string | null>(null);
+  const [loadingChat, setLoadingChat] = useState(false);
   const [confirm, setConfirmState] = useState<DraftView | null>(null);
   // Balance when the dialog opened: after the debit the account refreshes, and "balance after"
   // must not subtract the same deal twice.
@@ -431,12 +478,74 @@ export function LiveChat() {
   // Drafts can change status (approved here or elsewhere); the chat shows the latest copy.
   const latest = (d: DraftView) => drafts.find((x) => x.id === d.id) ?? d;
 
+  async function loadChats() {
+    if (!address) return [];
+    const r = await api<{ chats: SavedChat[]; max: number }>(`/api/workspace/${address}/chats`);
+    setChats(r.chats);
+    setMaxChats(r.max);
+    return r.chats;
+  }
+
+  async function openChat(id: string) {
+    if (!address || busy) return;
+    setLoadingChat(true);
+    try {
+      const r = await api<{ id: string; messages: StoredItem[] }>(`/api/workspace/${address}/chats/${id}`);
+      setItems(r.messages.map(fromStored));
+      setChatId(r.id);
+      remember(r.id);
+    } catch {
+      remember(null);
+      setChatId(null);
+      setItems([]);
+    } finally {
+      setLoadingChat(false);
+    }
+  }
+
+  function newChat() {
+    if (busy) return;
+    setChatId(null);
+    setItems([]);
+    remember(null);
+  }
+
+  async function removeChat(c: SavedChat) {
+    if (!address || busy || !window.confirm(`Delete the chat "${c.title}"? Drafts made in it stay in Approvals.`)) return;
+    try {
+      await api(`/api/workspace/${address}/chats/${c.id}`, { method: "DELETE" });
+      if (c.id === chatId) newChat();
+      await loadChats();
+    } catch (e) {
+      setItems((cur) => [...cur, { kind: "error", text: (e as Error).message }]);
+    }
+  }
+
+  // Load the chat list once the wallet is known, and reopen the chat the user was last in.
+  useEffect(() => {
+    if (!address) return;
+    let last: string | null = null;
+    try {
+      last = localStorage.getItem(LAST_CHAT);
+    } catch {
+      // no storage: start with a new chat
+    }
+    void loadChats()
+      .then((list) => {
+        if (last && list.some((c) => c.id === last)) void openChat(last);
+      })
+      .catch(() => setChats([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [address]);
+
+  const full = chats !== null && chats.length >= maxChats;
+
   async function send(text: string) {
     if (!text.trim() || !address || busy) return;
-    const history = items
-      .filter((i): i is Extract<ChatItem, { kind: "user" | "agent" }> => i.kind !== "error")
-      .map((i) => ({ role: i.kind === "user" ? ("user" as const) : ("assistant" as const), text: i.text }))
-      .slice(-20);
+    if (!chatId && full) {
+      setItems((cur) => [...cur, { kind: "error", text: `You have ${maxChats} chats. Delete one to start a new chat.` }]);
+      return;
+    }
     setItems((cur) => [...cur, { kind: "user", text: text.trim(), at: now() }, { kind: "agent", text: "", at: now(), steps: [], live: true, running: [] }]);
     setMessage("");
     setBusy(true);
@@ -456,7 +565,7 @@ export function LiveChat() {
       const res = await fetch(`/api/workspace/${address}/agent`, {
         method: "POST",
         headers: { "content-type": "application/json", accept: "text/event-stream" },
-        body: JSON.stringify({ history, message: text.trim(), lang }),
+        body: JSON.stringify({ message: text.trim(), lang, chatId: chatId ?? "new" }),
       });
       if (!res.ok || !res.headers.get("content-type")?.includes("text/event-stream")) {
         const body = await res.json().catch(() => null);
@@ -465,7 +574,11 @@ export function LiveChat() {
       let drafted = false;
       await readEvents(res, (event, data) => {
         const d = data as Record<string, unknown>;
-        if (event === "turn") patch((m) => ({ ...m, text: "" }));
+        if (event === "chat") {
+          const id = String(d.id);
+          setChatId(id);
+          remember(id);
+        } else if (event === "turn") patch((m) => ({ ...m, text: "" }));
         else if (event === "text") patch((m) => ({ ...m, text: m.text + String(d.delta) }));
         else if (event === "tool") patch((m) => ({ ...m, running: [...(m.running ?? []), { id: String(d.id), tool: String(d.name) }] }));
         else if (event === "step") {
@@ -480,6 +593,7 @@ export function LiveChat() {
       fail((e as Error).message);
     } finally {
       setBusy(false);
+      void loadChats().catch(() => {});
     }
   }
 
@@ -549,6 +663,28 @@ export function LiveChat() {
             </div>
             <span className="aw-policy-pill">Policy guard on</span>
           </header>
+          <nav className="aw-chat-tabs" aria-label="Saved chats">
+            <button type="button" className="aw-chat-new" onClick={newChat} disabled={busy || full || (!chatId && items.length === 0)} title={full ? `${maxChats} chats max: delete one first` : "Start a new chat"}>
+              ＋ New chat
+            </button>
+            {chats === null && address && <span className="aw-chat-count">Loading chats…</span>}
+            {chats?.map((c) => (
+              <span key={c.id} className={`aw-chat-tab${c.id === chatId ? " active" : ""}`}>
+                <button type="button" onClick={() => void openChat(c.id)} disabled={busy} title={c.title}>
+                  {c.title}
+                </button>
+                <button type="button" aria-label={`Delete chat ${c.title}`} onClick={() => void removeChat(c)} disabled={busy}>
+                  ×
+                </button>
+              </span>
+            ))}
+            {chats && (
+              <span className="aw-chat-count">
+                {chats.length}/{maxChats}
+                {full && " · delete one to start another"}
+              </span>
+            )}
+          </nav>
           <div className="aw-ai-messages">
             <div className="aw-ai-message-meta">Agent</div>
             <article className="aw-ai-agent-message">
@@ -564,6 +700,7 @@ export function LiveChat() {
               </div>
             </article>
             {status === "error" && setupError && <p className="aw-bank-error">{setupError}</p>}
+            {loadingChat && <Loading text="Opening the chat…" />}
             {items.map((item, idx) =>
               item.kind === "user" ? (
                 <div className="aw-ai-user-message" key={idx}>
@@ -802,6 +939,7 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
         key: `draft-${d.id}`,
         id: "Draft",
         title: d.title,
+        kind: d.kind,
         person: d.sellerLabel || d.counterparty,
         role: d.side === "SELL" ? ("Selling" as const) : ("Buying" as const),
         milestones: `0 / ${d.milestones.length}`,
@@ -817,6 +955,7 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
         key: `deal-${d.id}`,
         id: `D-${d.id}`,
         title: draft?.title ?? `File deal #${d.id}`,
+        kind: draft?.kind ?? null,
         person: d.counterpartyLabel || d.counterparty,
         role: d.role === "buyer" ? ("Buying" as const) : ("Selling" as const),
         milestones: `${done} / ${d.milestones.length}`,
@@ -859,7 +998,14 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
               </tr>
             </thead>
             <tbody>
-              {visible.length === 0 && (
+              {!wallet && (
+                <tr>
+                  <td colSpan={5}>
+                    <Loading text="Reading your deals from the chain…" />
+                  </td>
+                </tr>
+              )}
+              {wallet && visible.length === 0 && (
                 <tr>
                   <td colSpan={5}>No deals yet. Ask the AI agent in the chat to draft one.</td>
                 </tr>
@@ -876,7 +1022,10 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
                   <td>
                     <span className="aw-deal-id">{r.id}</span>
                     <span className="aw-deal-name">
-                      <b>{r.title}</b>
+                      <b>
+                        {r.title}
+                        {r.kind && <span className={`aw-kind-badge ${r.kind === "GOODS" ? "goods" : "hire"}`}>{r.kind === "GOODS" ? "BUY" : "HIRE"}</span>}
+                      </b>
                       <small>{r.person}</small>
                     </span>
                   </td>

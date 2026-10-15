@@ -2,6 +2,7 @@ import { extractText, getDocumentProxy } from "unpdf";
 import { z } from "zod";
 
 import { type Attachment, llmConfigured, runAgent } from "@/lib/agent";
+import { ChatLimitError, appendToChat, createChat, getChat, historyOf, publicStep } from "@/lib/chats";
 import { HttpError, errorResponse, rateLimit, requireUser, userWallet } from "@/lib/guard";
 import { scanForInjection } from "@/lib/policy";
 import { readWallet } from "@/lib/state";
@@ -15,6 +16,8 @@ const Body = z.object({
     .default([]),
   message: z.string().max(4000).default(""),
   lang: z.enum(["en", "th"]).default("en"),
+  /** A saved chat to continue, or "new" to start one (max 5). Without it nothing is saved. */
+  chatId: z.string().max(40).optional(),
   attachment: z
     .discriminatedUnion("kind", [
       z.object({ kind: z.literal("pdf"), name: z.string().max(200), base64: z.string().max(4_000_000) }),
@@ -42,8 +45,23 @@ export async function POST(req: Request, ctx: RouteContext<"/api/workspace/[addr
     const user = await requireUser();
     const parsed = Body.safeParse(await req.json());
     if (!parsed.success) throw new HttpError(400, "Invalid request body");
-    const { history, message, attachment, lang } = parsed.data;
+    const { message, attachment, lang, chatId } = parsed.data;
     if (!message && !attachment) throw new HttpError(400, "Send a message or a document");
+    // A saved chat's history comes from the server, never from the browser.
+    let chat: { id: string; title: string } | null = null;
+    let history = parsed.data.history;
+    if (chatId === "new") {
+      chat = await createChat(user.id, wallet, message || attachment?.name || "").catch((e) => {
+        throw e instanceof ChatLimitError ? new HttpError(409, e.message) : e;
+      });
+      history = [];
+    } else if (chatId) {
+      const found = await getChat(user.id, wallet, chatId);
+      if (!found) throw new HttpError(404, "Chat not found");
+      chat = found;
+      history = historyOf(found.messages);
+    }
+    const asked = { kind: "user" as const, text: [message, attachment ? `📎 ${attachment.name}` : ""].filter(Boolean).join("\n"), at: new Date().toISOString() };
 
     // Advisory pre-scan of untrusted content, shown to the user next to the agent's answer.
     const text = attachment ? await attachmentText(attachment) : undefined;
@@ -56,12 +74,20 @@ export async function POST(req: Request, ctx: RouteContext<"/api/workspace/[addr
         async start(controller) {
           const emit = (event: string, data: unknown) =>
             controller.enqueue(enc.encode(`event: ${event}\ndata: ${JSON.stringify(data, (_k, v) => (typeof v === "bigint" ? v.toString() : v))}\n\n`));
+          if (chat) emit("chat", { id: chat.id, title: chat.title });
           if (flags.length) emit("flags", flags);
           try {
-            const { reply, steps } = await runAgent(wallet, history, message, attachment, text, lang, user.id, (e) => emit(e.type, e));
-            emit("done", { reply, steps, flags });
+            // The browser gets each step as the chat shows it (no raw tool results).
+            const { reply, steps } = await runAgent(wallet, history, message, attachment, text, lang, user.id, (e) =>
+              emit(e.type, e.type === "step" ? { ...e, step: publicStep(e.step) } : e),
+            );
+            const shown = steps.map(publicStep);
+            if (chat) await appendToChat(chat.id, [asked, { kind: "agent", text: reply, at: new Date().toISOString(), steps: shown }]);
+            emit("done", { reply, steps: shown, flags });
           } catch (err) {
-            emit("error", { error: err instanceof Error ? err.message : String(err) });
+            const error = err instanceof Error ? err.message : String(err);
+            if (chat) await appendToChat(chat.id, [asked, { kind: "error", text: error, at: new Date().toISOString() }]).catch(() => {});
+            emit("error", { error });
           } finally {
             controller.close();
           }
@@ -70,7 +96,8 @@ export async function POST(req: Request, ctx: RouteContext<"/api/workspace/[addr
       return new Response(body, { headers: { "content-type": "text/event-stream", "cache-control": "no-cache, no-transform", "x-accel-buffering": "no" } });
     }
     const { reply, steps } = await runAgent(wallet, history, message, attachment, text, lang, user.id);
-    return Response.json({ reply, steps, flags });
+    if (chat) await appendToChat(chat.id, [asked, { kind: "agent", text: reply, at: new Date().toISOString(), steps: steps.map(publicStep) }]);
+    return Response.json({ reply, steps, flags, chatId: chat?.id });
   } catch (err) {
     return errorResponse(err);
   }
