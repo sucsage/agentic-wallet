@@ -61,9 +61,9 @@ describe("AgentWallet and FileEscrow: agent approvals and the arbiter rule", asy
   const status = async (ctx: Awaited<ReturnType<typeof deploy>>) => (await ctx.fileEscrow.read.getMilestone([0n, 0n])).status;
 
   describe("the agent approves a delivered file (DC-H-01, DC-L-02)", () => {
-    it("KNOWN GAP (DC-H-01): after the seller posts any key, the agent's second approval pays at once", async () => {
+    it("DC-H-01 fixed: once the key is out, the agent cannot approve again; the buyer confirms it", async () => {
       const ctx = await acceptedOffer();
-      const { usdc, asAgent, asSeller, fileEscrow } = ctx;
+      const { usdc, wallet, asAgent, asSeller, fileEscrow } = ctx;
       await asAgent.write.agentApproveFile([fileEscrow.address, 0n, 0n]);
       assert.equal(await status(ctx), STATUS.Approved);
 
@@ -71,38 +71,41 @@ describe("AgentWallet and FileEscrow: agent approvals and the arbiter rule", asy
       await asSeller.write.releaseKey([0n, 0n, KEY]);
       assert.equal(await status(ctx), STATUS.KeyReleased);
 
-      // No challenge window, no check of the key: the agent's approve pays the seller in the same block.
-      await asAgent.write.agentApproveFile([fileEscrow.address, 0n, 0n]);
+      // The agent's second approval would pay at once without a challenge window: refused.
+      await assert.rejects(asAgent.write.agentApproveFile([fileEscrow.address, 0n, 0n]), /MilestoneNotDelivered/);
+      assert.equal(await status(ctx), STATUS.KeyReleased);
+      assert.equal(await usdc.read.balanceOf([seller.account.address]), 0n);
+
+      // The buyer's own confirmation (owner path) still settles it.
+      await wallet.write.execute([fileEscrow.address, 0n, encodeFunctionData({ abi: fileEscrow.abi, functionName: "approve", args: [0n, 0n] })]);
       assert.equal(await status(ctx), STATUS.Released);
       assert.equal(await usdc.read.balanceOf([seller.account.address]), usd(300));
     });
 
-    it("KNOWN GAP (DC-L-02): the same milestone is charged to the agent's cap twice", async () => {
+    it("DC-L-02 fixed: a milestone is charged to the agent's cap once", async () => {
       const ctx = await acceptedOffer();
       const { wallet, asAgent, asSeller, fileEscrow } = ctx;
       await asAgent.write.agentApproveFile([fileEscrow.address, 0n, 0n]);
       assert.equal(await wallet.read.remainingToday([agent.account.address]), usd(700));
       await asSeller.write.releaseKey([0n, 0n, KEY]);
-      await asAgent.write.agentApproveFile([fileEscrow.address, 0n, 0n]);
-      assert.equal(await wallet.read.remainingToday([agent.account.address]), usd(400)); // 300 paid, 600 charged
+      await assert.rejects(asAgent.write.agentApproveFile([fileEscrow.address, 0n, 0n]));
+      assert.equal(await wallet.read.remainingToday([agent.account.address]), usd(700));
     });
 
-    it("a paused wallet stops the agent's approval, including the second one", async () => {
+    it("a paused wallet stops the agent's approval", async () => {
       const ctx = await acceptedOffer();
-      const { wallet, asAgent, asSeller, fileEscrow } = ctx;
-      await asAgent.write.agentApproveFile([fileEscrow.address, 0n, 0n]);
-      await asSeller.write.releaseKey([0n, 0n, KEY]);
+      const { wallet, asAgent, fileEscrow } = ctx;
       await wallet.write.pause();
       await assert.rejects(asAgent.write.agentApproveFile([fileEscrow.address, 0n, 0n]));
-      assert.equal(await status(ctx), STATUS.KeyReleased);
+      assert.equal(await status(ctx), STATUS.Delivered);
     });
 
     it("once settled, the agent cannot approve the same milestone again", async () => {
       const ctx = await acceptedOffer();
-      const { asAgent, asSeller, fileEscrow } = ctx;
+      const { wallet, asAgent, asSeller, fileEscrow } = ctx;
       await asAgent.write.agentApproveFile([fileEscrow.address, 0n, 0n]);
       await asSeller.write.releaseKey([0n, 0n, KEY]);
-      await asAgent.write.agentApproveFile([fileEscrow.address, 0n, 0n]);
+      await wallet.write.execute([fileEscrow.address, 0n, encodeFunctionData({ abi: fileEscrow.abi, functionName: "approve", args: [0n, 0n] })]);
       await assert.rejects(asAgent.write.agentApproveFile([fileEscrow.address, 0n, 0n]));
     });
 

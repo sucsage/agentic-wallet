@@ -349,7 +349,7 @@ or addresses. Deleting an account removes the user's drafts, chats and nicknames
 
 | Suite | Command | Covers |
 |---|---|---|
-| Contracts (66 tests) | `cd contracts && npm test` | tiers, caps, allowlists, mandates (replay, expiry, revoke), prompt-injection "send everything to 0xEvil" cases, file escrow windows and disputes, seller offers, mint and redeem idempotency |
+| Contracts (97 tests) | `cd contracts && npm test` | tiers, caps, allowlists, mandates (replay, expiry, revoke), prompt-injection "send everything to 0xEvil" cases, file escrow windows and disputes, seller offers, mint and redeem idempotency |
 | Backend end to end | `cd web && npm run e2e` | wallet creation, deal setup, release, proposals against a running chain |
 | Bank and funding | `npm run bank-check`, `npm run funding-check` | ledger invariant, saga retries, certain-failure refunds |
 | Agent evaluation | `npm run agent-eval` | the agent's decisions on the demo scenarios |

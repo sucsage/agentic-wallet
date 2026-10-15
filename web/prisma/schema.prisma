@@ -351,32 +351,34 @@ enum DealKind {
 }
 
 model DealDraft {
-  id            String          @id @default(cuid())
-  side          DraftSide       @default(BUY)
-  kind          DealKind        @default(HIRE)
+  id             String          @id @default(cuid())
+  side           DraftSide       @default(BUY)
+  kind           DealKind        @default(HIRE)
   /// Delivery address for parcel milestones (shown to both parties only).
-  shipTo        String?
+  shipTo         String?
   /// SELL drafts: the buyer's wallet the offer is made to. BUY drafts: null (the wallet is the buyer).
-  buyer         String?
-  userId        String
-  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  walletAddress String
-  seller        String
-  title         String
-  summary       String
+  buyer          String?
+  userId         String
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  walletAddress  String
+  seller         String
+  title          String
+  summary        String
   /// [{ name, amount (minor units, string), hasFile, due, acceptance }]
-  milestones    Json
-  reviewHours   Int
+  milestones     Json
+  reviewHours    Int
   /// sha256 of the terms, written on-chain as the offer's termsURI ("sha256:<hex>").
-  termsHash     String
-  status        DealDraftStatus @default(DRAFT)
+  termsHash      String
+  status         DealDraftStatus @default(DRAFT)
   /// The mandate's EIP-712 digest once approved: the funding record's id.
-  fundingId     String?
-  dealId        Int?
+  fundingId      String?
+  /// Set while one request approves the draft: a second click waits instead of funding it twice (DB-01).
+  approvingUntil DateTime?
+  dealId         Int?
   /// Last funding result (steps, tx hashes, error), for the UI.
-  result        Json?
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  result         Json?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 
   @@index([userId, walletAddress])
 }

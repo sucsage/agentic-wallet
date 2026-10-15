@@ -113,7 +113,9 @@ export async function buyerAction(
   const deal = await dealForWallet(wallet, dealId);
   if (deal.role !== "buyer") throw new DealError("Only the buyer can do this");
 
-  if (action === "approve") {
+  // The agent approves only a fresh delivery. Wallets made before the DC-H-01 fix do not check
+  // this on-chain, so the server checks it for them: confirming a released key is the buyer's click.
+  if (action === "approve" && deal.milestones[index]?.status === "Delivered") {
     const agent = await send("agent", {
       address: wallet,
       abi: agentWalletAbi,

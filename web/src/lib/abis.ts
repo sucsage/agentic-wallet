@@ -198,6 +198,11 @@ export const agentWalletAbi = [
   },
   {
     "inputs": [],
+    "name": "MilestoneNotDelivered",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "NotAgent",
     "type": "error"
   },

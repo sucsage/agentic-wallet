@@ -163,6 +163,7 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
     error InvalidMandate();
     error MandateExpired();
     error MandateAlreadyUsed();
+    error MilestoneNotDelivered();
 
     constructor(Config memory c) Ownable(c.owner) {
         token = c.token;
@@ -623,10 +624,15 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
 
     /// @dev Validates an approval the agent makes on its own: an allowlisted FileEscrow, a deal this
     ///      wallet buys in its own token from an allowlisted seller. Returns the milestone amount.
+    /// @dev The agent approves only a fresh delivery. Confirming a released key pays the seller at
+    ///      once and skips the challenge window, so that stays the buyer's own decision (an owner
+    ///      mandate), and a milestone is charged to the agent's caps once (DC-H-01, DC-L-02).
     function _checkFileRelease(address escrow, uint256 dealId, uint256 index) private view returns (uint256) {
         if (!allowedFileEscrow[escrow]) revert FileEscrowNotAllowed(escrow);
         _buyerDeal(escrow, dealId, true);
-        return FileEscrow(escrow).getMilestone(dealId, index).amount;
+        FileEscrow.Milestone memory m = FileEscrow(escrow).getMilestone(dealId, index);
+        if (m.status != FileEscrow.Status.Delivered) revert MilestoneNotDelivered();
+        return m.amount;
     }
 
     /// @dev Loads a FileEscrow deal this wallet is the buyer of. `paying` = the action locks or

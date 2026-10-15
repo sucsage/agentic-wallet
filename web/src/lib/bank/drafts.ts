@@ -185,6 +185,25 @@ export async function approveDraft(
   if (!opts.viaGroup && (await db.groupProposal.findFirst({ where: { draftId, status: "OPEN" } }))) {
     throw new DraftError("This draft is waiting for its group's vote. It is locked when enough members approve.");
   }
+  // One approval at a time (DB-01): overlapping clicks used to sign several mandates and lock the
+  // same draft several times. The lease expires on its own if a request dies half way.
+  const claimed = await db.dealDraft.updateMany({
+    where: { id: draft.id, OR: [{ approvingUntil: null }, { approvingUntil: { lt: new Date() } }] },
+    data: { approvingUntil: new Date(Date.now() + 120_000) },
+  });
+  if (claimed.count !== 1) throw new DraftError("This draft is already being approved. Wait a few seconds: it is never charged twice.");
+  try {
+    // Re-read: an approval that just finished may have funded it or stored its mandate.
+    const fresh = await db.dealDraft.findUniqueOrThrow({ where: { id: draft.id } });
+    const done = (fresh.result as { funding?: FundingResult } | null)?.funding;
+    if (fresh.status === "FUNDED" && done) return { draft: fresh, funding: done };
+    return await approveClaimed(userId, wallet, fresh);
+  } finally {
+    await db.dealDraft.update({ where: { id: draft.id }, data: { approvingUntil: null } });
+  }
+}
+
+async function approveClaimed(userId: string, wallet: Address, draft: DealDraft): Promise<{ draft: DealDraft; funding: FundingResult }> {
   const units = await walletUnits(wallet);
   const milestones = draft.milestones as DraftMilestone[];
   if (draft.side === "SELL") return approveSellDraft(draft, wallet, units, milestones);
