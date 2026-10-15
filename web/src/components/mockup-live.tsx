@@ -322,15 +322,38 @@ const now = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "
 
 type FundingResult = { status: string; steps: { step: string; outcome?: { url?: string | null; hash?: string } }[]; error?: string };
 
-function DraftCard({ draft, currency, onApprove }: { draft: DraftView; currency: "THB" | "CNY"; onApprove: (d: DraftView) => void }) {
+function DraftCard({
+  draft,
+  currency,
+  onApprove,
+  onDiscard,
+}: {
+  draft: DraftView;
+  currency: "THB" | "CNY";
+  onApprove: (d: DraftView) => void;
+  onDiscard: (d: DraftView) => void;
+}) {
   const funded = draft.status === "FUNDED";
+  if (draft.status === "CANCELLED") {
+    return (
+      <section className="aw-deal-draft">
+        <div className="aw-draft-topline">
+          <small>DR-{draft.id.slice(-6).toUpperCase()}</small>
+          <span>Discarded</span>
+        </div>
+        <h2>{draft.title}</h2>
+      </section>
+    );
+  }
   const failed = draft.status === "FAILED";
   const sell = draft.side === "SELL";
   const who = draft.sellerLabel || `${draft.counterparty.slice(0, 6)}…${draft.counterparty.slice(-4)}`;
   return (
     <section className="aw-deal-draft">
       <div className="aw-draft-topline">
-        <small>{sell ? "DRAFT OFFER TO SELL" : "DRAFT DEAL"} · {draft.id.slice(-6).toUpperCase()}</small>
+        <small>
+          {sell ? "DRAFT OFFER TO SELL" : "DRAFT DEAL"} · DR-{draft.id.slice(-6).toUpperCase()}
+        </small>
         <span>
           {funded
             ? sell
@@ -372,6 +395,9 @@ function DraftCard({ draft, currency, onApprove }: { draft: DraftView; currency:
       </div>
       {!funded && (
         <div className="aw-draft-actions">
+          <Button variant="outline" onClick={() => onDiscard(draft)}>
+            Discard
+          </Button>
           <Button onClick={() => onApprove(draft)}>{failed ? "Try again" : sell ? `Send offer · ${tokenMoney(draft.total, currency)}` : `Approve & lock ${tokenMoney(draft.total, currency)}`}</Button>
         </div>
       )}
@@ -454,6 +480,16 @@ export function LiveChat() {
       fail((e as Error).message);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function discard(d: DraftView) {
+    if (!address) return;
+    try {
+      await api(`/api/workspace/${address}/drafts/${d.id}`, { method: "DELETE" });
+      await refresh();
+    } catch (e) {
+      setItems((cur) => [...cur, { kind: "error", text: (e as Error).message }]);
     }
   }
 
@@ -572,7 +608,7 @@ export function LiveChat() {
                     {item.steps
                       .filter((s) => s.draft)
                       .map((s) => (
-                        <DraftCard key={s.draft!.id} draft={latest(s.draft!)} currency={currency} onApprove={(d) => (d.side === "SELL" ? approve(d) : setConfirm(d))} />
+                        <DraftCard key={s.draft!.id} draft={latest(s.draft!)} currency={currency} onApprove={(d) => (d.side === "SELL" ? approve(d) : setConfirm(d))} onDiscard={discard} />
                       ))}
                   </article>
                 </div>

@@ -138,7 +138,8 @@ export function LiveApprovals() {
               <span className="aw-approval-tier">T1</span>
               <div className="aw-approval-copy">
                 <b>
-                  {d.side === "SELL" ? "Offer to sell" : "Lock"} “{d.title}” · {tokenMoney(d.total, currency)}
+                  <span className="aw-id-chip">DR-{d.id.slice(-6).toUpperCase()}</span> {d.side === "SELL" ? "Offer to sell" : "Lock"} “{d.title}” ·{" "}
+                  {tokenMoney(d.total, currency)}
                 </b>
                 <p>
                   {d.side === "SELL"
@@ -148,6 +149,13 @@ export function LiveApprovals() {
                 {d.side !== "SELL" && <small>Debited from your default passbook only when you press approve</small>}
               </div>
               <div className="aw-approval-buttons">
+                <Button
+                  variant="outline"
+                  disabled={!!busy || !address}
+                  onClick={() => run(`x${d.id}`, () => send(`/api/workspace/${address}/drafts/${d.id}`, "DELETE"), after)}
+                >
+                  {busy === `x${d.id}` ? "…" : "Discard"}
+                </Button>
                 <Button
                   disabled={!!busy || !address}
                   onClick={() => run(d.id, () => send(`/api/workspace/${address}/drafts/${d.id}/approve`, "POST"), after)}
@@ -162,7 +170,7 @@ export function LiveApprovals() {
               <span className="aw-approval-tier">T1</span>
               <div className="aw-approval-copy">
                 <b>
-                  Offer from {o.sellerLabel || o.seller} · {o.title} · {tokenMoney(o.amount, currency)}
+                  <span className="aw-id-chip">D-{o.dealId}</span> Offer from {o.sellerLabel || o.seller} · {o.title} · {tokenMoney(o.amount, currency)}
                 </b>
                 <p>Accepting debits the total from your bank and locks it in escrow until you approve each delivery.</p>
                 <small>The seller must be one of your payees</small>
@@ -170,6 +178,9 @@ export function LiveApprovals() {
               <div className="aw-approval-buttons">
                 <Button variant="outline" onClick={() => (window.location.href = `/deal/D-${o.dealId}`)}>
                   Details
+                </Button>
+                <Button variant="outline" disabled={!!busy} onClick={() => run(`n${o.dealId}`, () => send(`/api/deals/${o.dealId}/decline`, "POST"), after)}>
+                  {busy === `n${o.dealId}` ? "…" : "Decline"}
                 </Button>
                 <Button
                   disabled={!!busy}
@@ -185,7 +196,10 @@ export function LiveApprovals() {
               <span className="aw-approval-tier">T{r.tier}</span>
               <div className="aw-approval-copy">
                 <b>
-                  Review delivery · {r.title} · milestone {r.index + 1} · {tokenMoney(r.amount, currency)}
+                  <span className="aw-id-chip">
+                    D-{r.dealId} · M{r.index + 1}
+                  </span>{" "}
+                  Review delivery · {r.title} · {tokenMoney(r.amount, currency)}
                 </b>
                 <p>
                   {r.tier === 2 ? "Within the agent's limits: approving runs on the agent's own authority." : "Above the agent's limits: your signature is needed."}
@@ -218,11 +232,16 @@ export function LiveApprovals() {
               <span className="aw-approval-tier">{t.step === "accept" ? "Offer" : `M${(t.index ?? 0) + 1}`}</span>
               <div className="aw-approval-copy">
                 <b>
-                  {t.step === "accept" ? "Accept offer" : "Deliver"} · {t.title} · {tokenMoney(t.amount, currency)}
+                  <span className="aw-id-chip">D-{t.dealId}</span> {t.step === "accept" ? "Accept offer" : "Deliver"} · {t.title} · {tokenMoney(t.amount, currency)}
                 </b>
                 <p>{t.step === "accept" ? "The buyer already locked the money in escrow." : "Upload the work and your evidence on the deal page."}</p>
               </div>
               <div className="aw-approval-buttons">
+                {t.step === "accept" && (
+                  <Button variant="outline" disabled={!!busy} onClick={() => run(`s${t.dealId}`, () => send(`/api/deals/${t.dealId}/decline`, "POST"), after)}>
+                    {busy === `s${t.dealId}` ? "…" : "Decline"}
+                  </Button>
+                )}
                 <Button onClick={() => (window.location.href = `/deal/D-${t.dealId}`)}>Open deal</Button>
               </div>
             </article>
@@ -481,7 +500,26 @@ export function LiveFriends() {
   const { data, error, reload } = useApi<{ friends: Friend[] }>("/api/friends");
   const { busy, run, note } = useAction();
   const [username, setUsername] = useState("");
+  const [found, setFound] = useState<{ username: string; name: string }[]>([]);
   const friends = data?.friends ?? [];
+  // Search as the user types: part of a username or a display name is enough.
+  useEffect(() => {
+    const q = username.trim();
+    if (q.length < 2) return;
+    const t = setTimeout(() => {
+      api<{ results: { username: string; name: string }[] }>(`/api/friends/search?q=${encodeURIComponent(q)}`)
+        .then((r) => setFound(r.results))
+        .catch(() => setFound([]));
+    }, 250);
+    return () => clearTimeout(t);
+  }, [username]);
+  const known = new Set(friends.map((f) => f.username));
+  const add = (u: string) =>
+    run(`add${u}`, () => send("/api/friends", "POST", { username: u }), async () => {
+      setUsername("");
+      setFound([]);
+      await reload();
+    });
   const incoming = friends.filter((f) => f.direction === "incoming");
   const outgoing = friends.filter((f) => f.direction === "outgoing");
   const mutual = friends.filter((f) => f.status === "ACCEPTED");
@@ -501,24 +539,41 @@ export function LiveFriends() {
         <div className="aw-friends-top">
           <section className="aw-friends-panel aw-find-friends">
             <h2>Add a friend</h2>
-            <p>Use their Mock Bank username. Only customers of your bank are found.</p>
+            <p>Type part of their name or Mock Bank username. Only customers of your bank are found.</p>
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                void run("add", () => send("/api/friends", "POST", { username }), async () => {
+                // One match: add that person. Otherwise treat the text as an exact username.
+                const target = found.length === 1 ? found[0].username : username.trim().toLowerCase();
+                void run("add", () => send("/api/friends", "POST", { username: target }), async () => {
                   setUsername("");
+                  setFound([]);
                   await reload();
                 });
               }}
             >
               <label className="aw-friends-search">
-                <input value={username} onChange={(e) => setUsername(e.target.value.toLowerCase())} placeholder="bank username" />
+                <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="name or bank username" />
               </label>
               <Button type="submit" disabled={!username || busy === "add"}>
                 {busy === "add" ? "…" : "Send request"}
               </Button>
             </form>
             <div className="aw-friend-search-results">
+              {username.trim().length >= 2 &&
+                found.map((r) => (
+                  <div className="aw-friend-result" key={`found-${r.username}`}>
+                    <span className="aw-friend-avatar violet">{initials(r.name)}</span>
+                    <span className="aw-friend-name">
+                      <b>{r.name}</b>
+                      <small>@{r.username}</small>
+                    </span>
+                    <Button variant="outline" disabled={!!busy || known.has(r.username)} onClick={() => void add(r.username)}>
+                      {known.has(r.username) ? "Already added" : busy === `add${r.username}` ? "…" : "Send request"}
+                    </Button>
+                  </div>
+                ))}
+              {username.trim().length >= 2 && found.length === 0 && <small>No one at your bank matches “{username.trim()}”.</small>}
               {outgoing.map((f) => (
                 <div className="aw-friend-result" key={f.friendshipId}>
                   <span className="aw-friend-avatar blue">{initials(f.name)}</span>
@@ -1052,6 +1107,7 @@ type DealDetail = {
   demoSeller: boolean;
   canCancel: boolean;
   canAccept: boolean;
+  declined: "me" | "them" | null;
   escrow: string | null;
   milestones: {
     index: number;
@@ -1349,6 +1405,19 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
             </section>
           ))}
         </div>
+        {data?.declined === "them" && (
+          <p className="aw-bank-error">
+            {data.role === "buyer" ? "The seller" : "The buyer"} declined this offer.{data.canCancel ? " Withdraw it to close the deal." : ""}
+          </p>
+        )}
+        {data?.declined === "me" && <p className="aw-live-ok">You declined this offer. It stays open until the other side withdraws it; you can still accept it.</p>}
+        {data?.canAccept && !data.declined && (
+          <div className="aw-d012-actions">
+            <Button variant="outline" disabled={!!busy} onClick={() => run("decline", () => send(`/api/deals/${id}/decline`, "POST"), after)}>
+              Decline
+            </Button>
+          </div>
+        )}
         {data?.canAccept && (
           <div className="aw-d012-actions">
             <Button disabled={!!busy} onClick={() => act("accept", 0)}>

@@ -2,6 +2,8 @@ import { dealTerms } from "@/lib/bank/deals";
 import { draftView, listDrafts } from "@/lib/bank/drafts";
 import { errorResponse, requireBankWallet } from "@/lib/guard";
 import { friendLabels, pendingVotes } from "@/lib/social";
+import { config } from "@/lib/config";
+import { db } from "@/lib/db";
 import { readWallet } from "@/lib/state";
 
 /**
@@ -17,6 +19,10 @@ export async function GET() {
       pendingVotes(user.id),
       friendLabels(user.id),
     ]);
+    // Offers this user turned down stay on-chain until their creator withdraws them; hide them here.
+    const declined = new Set(
+      (await db.declinedOffer.findMany({ where: { userId: user.id, escrow: config.bankContracts.fileEscrow }, select: { dealId: true } })).map((d) => d.dealId),
+    );
     const titles = new Map(drafts.filter((d) => d.dealId !== null).map((d) => [d.dealId!, d.title]));
     const reviews = state.fileDeals
       .filter((d) => d.role === "buyer" && d.status === "Active")
@@ -39,12 +45,12 @@ export async function GET() {
     type SellerTodo = { dealId: number; title: string; index: number | null; amount: string; step: "accept" | "deliver" };
     const toDeliver = selling.flatMap((d, k): SellerTodo[] => {
       const title = sellerTitles[k]?.title ?? `File deal #${d.id}`;
-      if (d.status === "Proposed") return d.offeredBy === "them" ? [{ dealId: d.id, title, index: null, amount: d.total, step: "accept" }] : [];
+      if (d.status === "Proposed") return d.offeredBy === "them" && !declined.has(d.id) ? [{ dealId: d.id, title, index: null, amount: d.total, step: "accept" }] : [];
       const next = d.milestones.find((m) => m.status === "Pending");
       return next ? [{ dealId: d.id, title, index: next.index, amount: next.amount, step: "deliver" }] : [];
     });
     // As a buyer: sellers' offers waiting for acceptance; accepting debits the bank and locks it.
-    const incoming = state.fileDeals.filter((d) => d.role === "buyer" && d.status === "Proposed" && d.offeredBy === "them");
+    const incoming = state.fileDeals.filter((d) => d.role === "buyer" && d.status === "Proposed" && d.offeredBy === "them" && !declined.has(d.id));
     const offerTitles = await Promise.all(incoming.map((d) => dealTerms(d.id, wallet, d.counterparty)));
     const offers = incoming.map((d, k) => ({
       dealId: d.id,

@@ -560,3 +560,16 @@ model DealDispute {
 
   @@unique([escrow, dealId, index])
 }
+
+/// An offer the user turned down in Approvals. Only the offer's creator can cancel it on-chain, so
+/// declining is recorded here: it leaves the decliner's queue and the other side sees it was declined.
+model DeclinedOffer {
+  id        String   @id @default(cuid())
+  userId    String
+  escrow    String
+  dealId    Int
+  createdAt DateTime @default(now())
+
+  @@unique([userId, escrow, dealId])
+  @@index([escrow, dealId])
+}

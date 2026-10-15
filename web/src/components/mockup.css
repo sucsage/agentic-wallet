@@ -1476,3 +1476,4 @@
 .aw-ai-live-steps .done{color:#89ef82}
 .aw-ai-live-steps .running{color:#9fc2ff;animation:aw-pulse 1.2s ease-in-out infinite}
 @keyframes aw-pulse{50%{opacity:.45}}
+.aw-id-chip{display:inline-block;font-family:ui-monospace,monospace;font-size:10px;padding:1px 6px;margin-right:4px;border:1px solid #3a3a3a;border-radius:6px;color:#9fc2ff;vertical-align:middle}

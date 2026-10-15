@@ -5,6 +5,7 @@ import { DealError, dealForWallet, dealTerms, deliveryInfo, demoDeliverable, syn
 import { draftView } from "@/lib/bank/drafts";
 import { roleAddresses } from "@/lib/chain";
 import { config, explorerAddress } from "@/lib/config";
+import { db } from "@/lib/db";
 import { HttpError, errorResponse, requireBankWallet } from "@/lib/guard";
 import { friendLabels } from "@/lib/social";
 
@@ -39,6 +40,7 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/deals/[id]">) {
     const draft = await dealTerms(id, buyer, deal.role === "seller" ? wallet : deal.counterparty);
     const terms = draft ? await draftView(draft) : null;
     const demoSeller = deal.role === "buyer" && deal.counterparty === roleAddresses().contractor;
+    const declines = deal.status === "Proposed" ? await db.declinedOffer.findMany({ where: { escrow: config.bankContracts.fileEscrow, dealId: id } }) : [];
     const [deliveries, friends, disputes] = await Promise.all([
       Promise.all(deal.milestones.map((m) => deliveryInfo(id, m.index))),
       friendLabels(user.id),
@@ -54,6 +56,8 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/deals/[id]">) {
       // The side that made the offer may withdraw it; the other side accepts it (a buyer pays in then).
       canCancel: deal.status === "Proposed" && deal.offeredBy === "me",
       canAccept: deal.status === "Proposed" && deal.offeredBy === "them",
+      // "me": this user turned the offer down; "them": the other side did (the creator should withdraw it).
+      declined: declines.some((d) => d.userId === user.id) ? "me" : declines.length > 0 ? "them" : null,
       milestones: deal.milestones.map((m, i) => ({
         ...m,
         name: terms?.milestones[i]?.name ?? `Milestone ${i + 1}`,
