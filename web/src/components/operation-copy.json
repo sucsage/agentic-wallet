@@ -1,0 +1,167 @@
+{
+  "L-01": {
+    "title": "Connecting to Thai bank…",
+    "description": "Opening Mock Bank · Thailand securely. You will choose which passbooks to link.",
+    "steps": [
+      "Starting a secure session",
+      "Redirecting to Mock Bank · Thailand",
+      "Waiting for the bank"
+    ],
+    "destination": "Mock Bank · Thailand",
+    "public": true
+  },
+  "L-02": {
+    "title": "Connecting to Chinese bank…",
+    "description": "Opening Mock Bank · China securely. You will choose which passbooks to link.",
+    "steps": [
+      "Starting a secure session",
+      "Redirecting to Mock Bank · China",
+      "Waiting for the bank"
+    ],
+    "destination": "Mock Bank · China",
+    "public": true
+  },
+  "L-03": {
+    "title": "Linking your passbooks…",
+    "description": "Creating your AI agent and checking your bank connection. This takes a few seconds.",
+    "steps": [
+      "Bank approved the connection",
+      "Linking 2 passbooks",
+      "Creating your AI agent"
+    ],
+    "destination": "AI Chat",
+    "public": true
+  },
+  "L-04": {
+    "title": "Verifying API key with your bank…",
+    "description": "We check the key with the issuing bank before anything opens.",
+    "steps": [
+      "Checking the key with Mock Bank · Thailand",
+      "Sending a one-time code to the admin",
+      "Loading company passbooks"
+    ],
+    "destination": "Organization verified",
+    "public": true
+  },
+  "L-05": {
+    "title": "Debiting your passbook…",
+    "description": "Locking the money for milestone 1. If anything fails, it is refunded automatically.",
+    "steps": [
+      "Policy check passed",
+      "Debiting ฿2,500 from passbook ••4821",
+      "Locking money for milestone 1"
+    ],
+    "destination": "Deal D-021",
+    "public": false
+  },
+  "L-06": {
+    "title": "Approving & paying Lin…",
+    "description": "Paying the seller and releasing your decryption key.",
+    "steps": [
+      "Paying ฿2,500 to Lin (≈ ¥510.20)",
+      "Releasing the decryption key",
+      "Updating the deal"
+    ],
+    "destination": "Deal D-021 · Download",
+    "public": false
+  },
+  "L-07": {
+    "title": "Decrypting your file…",
+    "description": "The file is decrypted on your device. We never see its contents.",
+    "steps": [
+      "Key released",
+      "Downloading the encrypted file",
+      "Decrypting in your browser"
+    ],
+    "destination": "Download · concepts-v1.zip",
+    "public": false
+  },
+  "L-08": {
+    "title": "Encrypting & uploading your work…",
+    "description": "Your file is encrypted before it leaves this browser.",
+    "steps": [
+      "Creating a key in your browser",
+      "Encrypting (AES-GCM)",
+      "Uploading + recording the fingerprint"
+    ],
+    "destination": "Deal D-015",
+    "public": false
+  },
+  "L-09": {
+    "title": "Checking the tracking number…",
+    "description": "Matching your parcel with Thunder Express (simulated).",
+    "steps": [
+      "Contacting Thunder Express",
+      "Matching TE 8841 2290 TH",
+      "Notifying the buyer"
+    ],
+    "destination": "Deals",
+    "public": false
+  },
+  "L-10": {
+    "title": "Confirming receipt & paying the seller…",
+    "description": "Money moves only after you confirmed the item arrived.",
+    "steps": [
+      "Recording that you received the item",
+      "Paying ฿18,500 to Somchai Automation",
+      "Closing the deal"
+    ],
+    "destination": "Summary",
+    "public": false
+  },
+  "L-11": {
+    "title": "Sending contact request…",
+    "description": "Lin Wei will see your request and can accept it.",
+    "steps": [
+      "Checking Lin Wei’s account",
+      "Sending your request",
+      "Waiting for Lin to accept"
+    ],
+    "destination": "Contacts",
+    "public": false
+  },
+  "L-12": {
+    "title": "Creating your group & QR…",
+    "description": "Setting up PLC Team with company passbook ••9033.",
+    "steps": [
+      "Creating PLC Team",
+      "Generating the invitation QR (valid 7 days)",
+      "Sending invites to 3 contacts"
+    ],
+    "destination": "Group wallet",
+    "public": false
+  },
+  "L-13": {
+    "title": "Checking the QR & joining…",
+    "description": "Making sure the invitation QR is valid.",
+    "steps": [
+      "Reading the invitation QR",
+      "Checking it has not expired",
+      "Adding you to PLC Team"
+    ],
+    "destination": "PLC Team",
+    "public": false
+  },
+  "L-14": {
+    "title": "Submitting your approval…",
+    "description": "Your vote is signed and counted.",
+    "steps": [
+      "Signing your vote",
+      "Counting approvals (2 of 3)",
+      "Debiting company passbook ••9033"
+    ],
+    "destination": "Group wallet",
+    "public": false
+  },
+  "L-15": {
+    "title": "AI models are reviewing…",
+    "description": "Each model gets the evidence and signs its own verdict.",
+    "steps": [
+      "Sharing evidence with 3 models",
+      "Each model signs its verdict",
+      "Counting 2 of 3"
+    ],
+    "destination": "Verdict",
+    "public": false
+  }
+}

@@ -362,31 +362,6 @@
 
 @media(min-width:651px){.aw-topbar-workspace:has(+ .aw-ai-chat-workspace) .aw-lang-toggle{display:flex}}
 
-/* Keep every workspace page on the same sidebar dimensions as AI Chat. */
-@media(min-width:651px){
-  .aw-workspace:not(.aw-ai-chat-workspace){grid-template-columns:208px minmax(0,1fr)!important}
-  .aw-workspace:not(.aw-ai-chat-workspace).aw-sidebar-collapsed{grid-template-columns:64px minmax(0,1fr)!important}
-  .aw-workspace:not(.aw-ai-chat-workspace)>.aw-sidebar{position:relative;inset:auto;width:100%;padding:14px 13px 16px;gap:12px;transform:none;visibility:visible;pointer-events:auto}
-  .aw-workspace:not(.aw-ai-chat-workspace) .aw-sidebar-menu-head{height:34px;margin-bottom:0}
-  .aw-workspace:not(.aw-ai-chat-workspace) .aw-sidebar-menu-head>small,.aw-workspace:not(.aw-ai-chat-workspace) .aw-nav-title{font-size:9px;letter-spacing:.08em}
-  .aw-workspace:not(.aw-ai-chat-workspace) .aw-sidebar .aw-sidebar-toggle{width:32px;min-width:32px;height:32px;border-radius:8px}
-  .aw-workspace:not(.aw-ai-chat-workspace) .aw-sidebar .aw-menu-glyph{width:16px;height:16px}
-  .aw-workspace:not(.aw-ai-chat-workspace) .aw-sidebar-group{gap:2px}
-  .aw-workspace:not(.aw-ai-chat-workspace) .aw-sidebar-group .aw-nav-title{margin:0 0 5px}
-  .aw-workspace:not(.aw-ai-chat-workspace) .aw-nav-item{height:36px;min-height:36px;padding:0 9px!important;gap:9px;border-radius:9px;font-size:12px}
-  .aw-workspace:not(.aw-ai-chat-workspace) .aw-nav-icon{width:16px;height:16px;stroke-width:1.7}
-  .aw-workspace:not(.aw-ai-chat-workspace) .aw-nav-badge{min-width:18px;height:18px;font-size:10px}
-  .aw-workspace:not(.aw-ai-chat-workspace) .aw-sidebar-profile{height:56px;min-height:56px;padding:7px 10px}
-  .aw-workspace:not(.aw-ai-chat-workspace).aw-sidebar-collapsed>.aw-sidebar{padding:14px 8px 16px;gap:12px}
-  .aw-workspace:not(.aw-ai-chat-workspace).aw-sidebar-collapsed .aw-sidebar-menu-head{justify-content:center}
-  .aw-workspace:not(.aw-ai-chat-workspace).aw-sidebar-collapsed .aw-sidebar-menu-head>small{display:block!important;max-width:0;opacity:0}
-  .aw-workspace:not(.aw-ai-chat-workspace).aw-sidebar-collapsed .aw-sidebar-group .aw-nav-title{display:block!important;height:auto;max-height:0;margin:0;opacity:0;visibility:hidden}
-  .aw-workspace:not(.aw-ai-chat-workspace).aw-sidebar-collapsed .aw-nav-item{width:100%;height:36px;min-height:36px;justify-content:flex-start!important;padding:0 0 0 16px!important;gap:0}
-  .aw-workspace:not(.aw-ai-chat-workspace).aw-sidebar-collapsed .aw-sidebar-profile{width:40px;height:40px;min-height:40px;justify-content:center;padding:2px}
-  .aw-workspace:not(.aw-ai-chat-workspace).aw-sidebar-collapsed .aw-sidebar-avatar{width:26px;height:26px;font-size:9px}
-  .aw-workspace:not(.aw-ai-chat-workspace)>.aw-main{margin-left:0;min-width:0}
-}
-
 .aw-draft-actions .aw-button{display:inline-flex;flex-direction:row;align-items:center;justify-content:center;gap:7px;width:max-content;min-width:max-content;white-space:nowrap}.aw-draft-actions .aw-button svg{display:block;flex:none;margin:0;vertical-align:initial}
 
 .aw-debit-overlay{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:20px;background:rgba(0,0,0,.78);backdrop-filter:blur(2px)}

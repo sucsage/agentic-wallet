@@ -1,9 +1,11 @@
 "use client";
 
+import { OperationOutlet, useOperation, useOperationActive } from "./operation-loading";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { translateMockupText, useLang } from "@/lib/i18n";
-import { Header, SIDEBAR_GROUPS, SidebarIcon, type ScreenName } from "./mockup-ui";
+import { useAppRouter as useRouter, useNavigationPending } from "./navigation";
+import { WorkspaceFrame } from "./workspace-frame";
+import { LoadingSkeleton, WorkspaceSkeleton } from "./loading-skeleton";
+import { Header, type ScreenName } from "./mockup-ui";
 import {
   AiDecisionScreen, ApprovalsScreen, BankAuthorizeScreen, CreateDealScreen, DealDetailScreen, DealsScreen,
   DisputeScreen, FriendsScreen, GroupsScreen, LandingScreen, LoginScreen, OfferScreen, PolicyScreen, SummaryScreen,
@@ -11,38 +13,32 @@ import {
 } from "./mockup-screens";
 import type { BankChoice } from "./mockup-screens";
 import "./mockup.css";
+import "./v08.css";
 
 type Route = "landing" | "login" | "bank-authorize" | `รายละเอียดดีล ${string}` | ScreenName;
-const SECTION_PATHS: Partial<Record<ScreenName, string>> = {
-  "รออนุมัติ": "/approvals",
-  "กระเป๋": "/summary",
-  "เพื่อน": "/contacts",
-  "กลุ่ม": "/groups",
-  "นโยบาย & Allowlist": "/policy",
-  "ความเป็นส่วนตัว": "/profile",
-};
 
 export function MockupApp({ initialRoute = "landing", initialBank = "thai", initialDealId = "D-014", initialScreen, initialGroupWallet, initialGroupCreate = false }: { initialRoute?: "landing" | "login" | "authorize" | "chat" | "deals" | "deal-detail"; initialBank?: BankChoice; initialDealId?: string; initialScreen?: ScreenName; initialGroupWallet?: string; initialGroupCreate?: boolean }) {
   const router = useRouter();
+  const run = useOperation();
+  const operationActive = useOperationActive();
+  const pending = useNavigationPending();
   const [route, setRoute] = useState<Route>(initialScreen ?? (initialRoute === "authorize" ? "bank-authorize" : initialRoute === "chat" ? "สร้างดีล" : initialRoute === "deals" ? "ดีลทั้งหมด" : initialRoute === "deal-detail" ? `รายละเอียดดีล ${initialDealId}` : initialRoute));
-  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedBank, setSelectedBank] = useState<BankChoice>(initialBank);
-  const lang = useLang();
   const goToScreen = (next: string) => {
     const dealMatch = next.match(/^รายละเอียดดีล (D-\d+)$/);
     if (dealMatch) {
-      router.push(`/deal/${dealMatch[1]}`);
-      setRoute(next as Route);
+      router.push(`/deals/${dealMatch[1]}`);
       return;
     }
-    if (next === "สร้างดีล") router.push("/chat");
+    if (next === "คำตัดสิน AI") { router.push("/deals/D-012/verdict"); return; }
+    if (next === "ข้อพิพาท") { router.push("/deals/D-012/dispute"); return; }
+    if (next === "สร้างดีล") { router.push("/chat"); return; }
     setRoute(next as Route);
   };
   const openLogin = () => {
-    if (initialRoute === "landing") router.push("/login");
-    else setRoute("login");
+    router.push("/login");
   };
-  const enterApp = () => { setRoute("สร้างดีล"); router.push("/chat"); };
+  const enterApp = () => router.push("/chat");
   const isApp = route !== "landing" && route !== "login" && route !== "bank-authorize";
   const screen = () => {
     switch (route) {
@@ -63,7 +59,7 @@ export function MockupApp({ initialRoute = "landing", initialBank = "thai", init
       case "รออนุมัติ": return <ApprovalsScreen />;
       case "กระเป๋": return <SummaryScreen />;
       case "เพื่อน": return <FriendsScreen />;
-      case "กลุ่ม": return <GroupsScreen initialCreateOpen={initialGroupCreate} initialWalletGroup={initialGroupWallet} onOpenCreate={() => router.push("/group/crgroup")} onCloseCreate={() => router.push("/groups")} onOpenWallet={(name) => router.push(`/group/groupwallet?name=${encodeURIComponent(name)}`)} onCloseWallet={() => router.push("/groups")} />;
+      case "กลุ่ม": return <GroupsScreen initialCreateOpen={initialGroupCreate} initialWalletGroup={initialGroupWallet} onOpenCreate={() => router.push("/groups/new")} onCloseCreate={() => router.push("/groups")} onOpenWallet={(name) => router.push(name === "PLC Team" ? "/groups/plc-team" : "/groups/nok-gun")} onCloseWallet={() => router.push("/groups")} />;
       case "นโยบาย & Allowlist": return <PolicyScreen />;
       case "กระเป๋า": return <WalletScreen />;
       case "ความเป็นส่วนตัว": return <PrivacyScreen />;
@@ -71,11 +67,15 @@ export function MockupApp({ initialRoute = "landing", initialBank = "thai", init
     }
   };
 
-  return <div className={`aw-app${route === "landing" ? " aw-app-landing" : ""}`}>
-    {route !== "bank-authorize" && <Header onLogin={openLogin} onSignup={openLogin} authenticated={isApp} landing={route === "landing"} authPage={route === "login"} />}
-    {route === "landing" && <LandingScreen onStart={openLogin} />}
-    {route === "login" && <LoginScreen initialBank={selectedBank} onAuthorize={(bank) => { setSelectedBank(bank); router.push(bank === "thai" ? "/th/authorize" : "/cn/authorize"); }} />}
-    {route === "bank-authorize" && <BankAuthorizeScreen bank={selectedBank} onCancel={() => router.push("/login")} onContinue={enterApp} />}
-    {isApp && <div className={`aw-workspace${route === "สร้างดีล" ? " aw-ai-chat-workspace" : ""}${sidebarOpen ? "" : " aw-sidebar-collapsed"}`}><aside className="aw-sidebar"><div className="aw-sidebar-menu-head"><small>{translateMockupText("MENU", lang)}</small><button className={`aw-sidebar-toggle${sidebarOpen ? " is-open" : " is-closed"}`} type="button" aria-label={translateMockupText(sidebarOpen ? "ซ่อนเมนูด้านข้าง" : "แสดงเมนูด้านข้าง", lang)} aria-expanded={sidebarOpen} title={translateMockupText(sidebarOpen ? "ซ่อนเมนู" : "แสดงเมนู", lang)} onClick={() => setSidebarOpen((open) => !open)}><svg className="aw-menu-glyph" viewBox="0 0 18 18" fill="none" aria-hidden="true"><rect x="2.25" y="2.75" width="13.5" height="12.5" rx="2.25" /><path d="M7 3v12.5" /><path className="aw-menu-chevron" d="m11.5 6.5-2.25 2.5 2.25 2.5" /></svg></button></div>{SIDEBAR_GROUPS.map(group => <nav className="aw-sidebar-group" key={group.title}><small className="aw-nav-title">{translateMockupText(group.title, lang)}</small>{group.items.map(item => <button key={item.label} title={translateMockupText(item.label, lang)} disabled={"disabled" in item && Boolean(item.disabled)} className={`aw-nav-item${item.route === route || (((typeof route === "string" && route.startsWith("รายละเอียดดีล ")) || route === "คำตัดสิน AI") && item.route === "ดีลทั้งหมด") ? " active" : ""}${"disabled" in item && item.disabled ? " disabled" : ""}`} onClick={() => { if (!item.route) return; if (item.route === "สร้างดีล") router.push("/chat"); else if (item.route === "ดีลทั้งหมด") router.push("/deal"); else { const path = SECTION_PATHS[item.route as ScreenName]; if (path) router.push(path); setRoute(item.route as Route); } }}><SidebarIcon name={item.icon} /><span className="aw-nav-label">{translateMockupText(item.label, lang)}</span>{"badge" in item && item.badge && <span className="aw-nav-badge">{item.badge}</span>}</button>)}</nav>)}<button className="aw-sidebar-profile" type="button" title="Gun · Personal ···4821" onClick={() => { router.push("/profile"); setRoute("ความเป็นส่วนตัว"); }}><span className="aw-sidebar-avatar">G</span><span className="aw-profile-copy"><b>Gun</b><small>{translateMockupText("Personal · ··4821", lang)}</small></span></button></aside><main className={`aw-main${route === "สร้างดีล" ? " aw-main-chat" : route === "ดีลทั้งหมด" ? " aw-main-deals" : (typeof route === "string" && route.startsWith("รายละเอียดดีล ")) ? " aw-main-deal-detail" : route === "คำตัดสิน AI" ? " aw-main-decision" : route === "รออนุมัติ" ? " aw-main-approvals" : route === "กระเป๋" ? " aw-main-summary" : route === "เพื่อน" ? " aw-main-friends" : route === "กลุ่ม" ? " aw-main-groups" : route === "นโยบาย & Allowlist" ? " aw-main-policy" : ""}`}><div className="aw-screen">{screen()}</div></main></div>}
+  if (isApp) return <WorkspaceFrame activeRoute={route} mainClass={route === "สร้างดีล" ? "aw-main-chat" : ""}>
+    {pending ? <WorkspaceSkeleton/> : screen()}
+  </WorkspaceFrame>;
+  return <div className={`aw-app aw-v08${route === "landing" ? " aw-app-landing" : ""}`}>
+    {(route !== "bank-authorize" || operationActive) && <Header onLogin={openLogin} onSignup={openLogin} landing={route === "landing"} authPage={route === "login"}/>}
+    <OperationOutlet publicPage>{pending ? <LoadingSkeleton/> : <>
+      {route === "landing" && <LandingScreen onStart={openLogin}/>}
+      {route === "login" && <LoginScreen initialBank={selectedBank} onAuthorize={bank => {setSelectedBank(bank);run(bank === "thai" ? "L-01" : "L-02", () => router.push(bank === "thai" ? "/th/authorize" : "/cn/authorize"));}}/>}
+      {route === "bank-authorize" && <BankAuthorizeScreen bank={selectedBank} onCancel={()=>router.push("/login")} onContinue={enterApp}/>}
+    </>}</OperationOutlet>
   </div>;
 }

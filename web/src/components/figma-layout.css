@@ -1,0 +1,102 @@
+/* Shared proportions from the 1440px Figma desktop frames. */
+.aw-app{--aw-header-height:80px;--aw-page-width:1200px;--aw-gutter:clamp(20px,4vw,56px);font-family:var(--font-geist-sans),var(--font-thai),sans-serif;background:#0f0f0f;line-height:1.5}
+.aw-app button,.aw-app a,.aw-app input{touch-action:manipulation}
+.aw-app a{text-decoration:none}
+.aw-app :focus-visible{outline:2px solid #a493ff;outline-offset:4px}
+.aw-app .aw-topbar{height:var(--aw-header-height);min-height:var(--aw-header-height);padding:0 clamp(20px,3.8vw,56px);gap:24px;background:#000;border-bottom:1px solid #262626}
+.aw-app .aw-brand{gap:12px;flex-shrink:0;cursor:pointer}
+.aw-app .aw-brand b{font-size:clamp(20px,1.95vw,28px);font-weight:800;letter-spacing:-.8px}
+.aw-app .aw-mark{width:34px;height:31px;border:0;background:linear-gradient(180deg,#d8f9ff 0%,#b5edff 35%,#8a84f8 66%,#4812b0 100%);clip-path:polygon(50% 0,100% 100%,0 100%);filter:none;flex:none}
+.aw-app .aw-topbar-workspace .aw-navbar-search{display:none}
+.aw-figma-tabs{display:flex;align-items:center;justify-content:space-between;gap:4px;max-width:650px;padding:6px;border:1px solid #3e3e3e;border-radius:40px;flex:1;min-width:0}
+.aw-figma-tabs a{display:block;padding:9px 16px;border-radius:28px;color:#858585;font-size:16px;white-space:nowrap;transition:background .15s,color .15s}
+.aw-figma-tabs a:hover{color:#fff;background:#111}
+.aw-figma-tabs a[aria-current=page]{background:#1d1d1d;color:#fff}
+.aw-app .aw-workspace-actions{flex-shrink:0;gap:13px}
+.aw-app .aw-avatar-button{width:42px;height:42px;font-size:18px}
+.aw-app .aw-notification-button{width:30px;height:36px}
+.aw-app .aw-feedback-button{padding:8px 13px;border-radius:5px;font-size:13px}
+.aw-app .aw-workspace{grid-template-columns:232px minmax(0,1fr);min-height:calc(100dvh - var(--aw-header-height))}
+.aw-app .aw-workspace.aw-sidebar-collapsed{grid-template-columns:76px minmax(0,1fr)!important}
+.aw-app .aw-workspace>.aw-sidebar{padding:22px 20px;gap:20px;background:#0b0b0b}
+.aw-app .aw-sidebar-menu-head{height:32px;margin-bottom:0}
+.aw-app .aw-sidebar-menu-head>small,.aw-app .aw-nav-title{font-size:11px;letter-spacing:.08em}
+.aw-app .aw-sidebar-group .aw-nav-title{margin-bottom:8px}
+.aw-app .aw-nav-item{height:42px;min-height:42px;font-size:13px;gap:11px;padding:0 9px}
+.aw-app .aw-nav-icon{width:19px;height:19px;flex:none}
+.aw-app .aw-nav-badge{min-width:20px;height:20px;font-size:11px}
+.aw-app .aw-sidebar .aw-sidebar-toggle{width:32px;min-width:32px;height:32px}
+.aw-app .aw-sidebar .aw-menu-glyph{width:18px;height:18px}
+.aw-app .aw-profile-copy b{font-size:14px}
+.aw-app .aw-profile-copy small{font-size:11px}
+.aw-app .aw-sidebar-collapsed>.aw-sidebar{padding:22px 12px}
+.aw-app .aw-sidebar-collapsed .aw-nav-title{height:14px;max-height:14px;margin-bottom:8px}
+.aw-app .aw-sidebar-collapsed .aw-nav-item{height:42px;min-height:42px}
+.aw-app .aw-main{padding:28px clamp(20px,2.5vw,40px) 48px}
+.aw-app .aw-screen{width:100%;max-width:var(--aw-page-width);margin-inline:auto}
+.aw-app .aw-ai-chat-layout{max-width:1280px;padding:24px;grid-template-columns:minmax(0,1fr) minmax(230px,280px);gap:20px}
+.aw-app .aw-ai-balancebar{padding:12px 24px;gap:18px;flex-wrap:wrap}
+.aw-app .aw-ai-balance-actions{gap:12px}
+.aw-app .aw-ai-chat-page{min-height:calc(100dvh - var(--aw-header-height))}
+.aw-app .aw-milestone-wrap{max-width:var(--aw-page-width);width:100%;margin-inline:auto}
+.aw-app .aw-milestone-landing{padding-inline:var(--aw-gutter)}
+.aw-app .aw-milestone-section h2{font-size:clamp(24px,2.2vw,32px)}
+.aw-app .aw-milestone-cards{gap:20px}
+.aw-app .aw-milestone-section#how-it-works .aw-milestone-card,.aw-app .aw-milestone-section#security .aw-milestone-card{padding:24px;min-height:190px}
+.aw-app .aw-bank-login-wrap{min-height:calc(100dvh - var(--aw-header-height));padding:40px 20px}
+.aw-app .aw-bank-login{width:min(100%,520px)}
+.aw-app .aw-overview-workspace,.aw-app .aw-overview-workspace.aw-sidebar-collapsed{display:block;grid-template-columns:none!important}
+.aw-app .aw-overview-workspace>.aw-sidebar{display:none}
+.aw-app .aw-overview-workspace>.aw-main{padding:32px var(--aw-gutter) 64px;margin:0}
+.aw-figma-overview{color:#f5f5f5;max-width:1200px;margin:auto}
+.aw-figma-balance{background:radial-gradient(ellipse at 24% 0%,#1d2a51 0%,#141a2c 22%,transparent 65%);padding:6px 0 0}
+.aw-figma-balance h1{margin:0;color:#a3a3a3;font-size:22px;font-weight:650;line-height:1.4}
+.aw-figma-amount{margin:4px 0 16px;font-size:clamp(40px,4.4vw,64px);font-weight:700;letter-spacing:-2px;line-height:1.25;font-variant-numeric:tabular-nums}
+.aw-figma-amount>span{font-size:26px;letter-spacing:-.5px;color:#a3a3a3;font-weight:500}
+.aw-figma-balance-footer{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap}
+.aw-figma-pills{display:flex;gap:10px;flex-wrap:wrap}
+.aw-figma-pills>span{display:inline-flex;align-items:center;gap:6px;border:1px solid #626262;border-radius:24px;padding:11px 14px;font-size:14px;color:#aaa;white-space:nowrap}
+.aw-figma-pills i,.aw-figma-milestone>i{display:block;width:10px;height:10px;border-radius:50%;background:#42ff24;flex:none}
+.aw-figma-actions{display:flex;gap:12px;flex-wrap:wrap}
+.aw-figma-actions .aw-button{display:inline-flex;align-items:center;justify-content:center;min-height:50px;padding:12px 16px;font-size:14px;border-radius:10px}
+.aw-figma-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:22px;margin:30px 0 26px}
+.aw-figma-metrics>section{padding:22px;border-radius:16px;background:#202020;min-height:148px}
+.aw-figma-metrics h2{margin:0 0 8px;font-size:14px;font-weight:400;text-transform:uppercase;color:#999}
+.aw-figma-metrics strong{display:block;font-size:30px;line-height:1.25;letter-spacing:-.6px}
+.aw-figma-metrics strong small{font-size:14px;font-weight:400;letter-spacing:0;color:#999}
+.aw-figma-metrics p{margin:4px 0 0;font-size:14px;line-height:1.45;color:#999}
+.aw-figma-metrics progress{display:block;width:100%;height:3px;margin-top:7px;border:0;background:#343434;accent-color:#75c4ff}
+.aw-figma-metrics progress::-webkit-progress-bar{background:#343434}
+.aw-figma-metrics progress::-webkit-progress-value{background:#75c4ff}
+.aw-figma-green{color:#88e875}.aw-figma-yellow{color:#f4ff32}
+.aw-figma-bottom{display:grid;grid-template-columns:minmax(0,2.04fr) minmax(0,1fr);gap:30px}
+.aw-figma-bottom h2{margin:0 0 16px;font-size:20px;font-weight:700;letter-spacing:-.3px}
+.aw-figma-milestones{display:flex;flex-direction:column;gap:12px}
+.aw-figma-milestone{display:flex;align-items:center;gap:12px;min-height:93px;padding:20px 22px;border:1px solid #666;border-radius:16px;background:#202020;color:#fff;transition:border-color .15s,background .15s}
+.aw-figma-milestone:hover{border-color:#b2a2ff;background:#252329}
+.aw-figma-milestone>i{width:15px;height:15px}
+.aw-figma-milestone h3{margin:0;font-size:17px;font-weight:700}
+.aw-figma-milestone p{margin:2px 0 0;font-size:14px;color:#bbb}
+.aw-figma-milestone-value{margin-left:auto;flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+.aw-figma-milestone-value strong{font-size:17px;white-space:nowrap}
+.aw-figma-milestone-value span{font-size:13px;line-height:1.2;padding:1px 4px;border-radius:2px}
+.aw-figma-milestone.success .aw-figma-milestone-value span{background:#287b31;color:#fff}
+.aw-figma-milestone.pending>i{background:#f4ff32}
+.aw-figma-milestone.pending p,.aw-figma-milestone.pending .aw-figma-milestone-value span{color:#efff1b}
+.aw-figma-milestone.pending .aw-figma-milestone-value span{border:1px solid #efff1b}
+.aw-figma-milestone.refused>i{background:#ff5265}
+.aw-figma-milestone.refused p,.aw-figma-milestone.refused .aw-figma-milestone-value span{color:#ff5265}
+.aw-figma-milestone.refused .aw-figma-milestone-value span{border:1px solid #ff5265}
+.aw-figma-activity{display:flex;flex-direction:column}
+.aw-figma-activity-card{flex:1;padding:28px;border:1px solid #666;border-radius:16px;background:#202020}
+.aw-figma-event{display:flex;gap:14px;align-items:flex-start}
+.aw-figma-event>span{font-size:30px;line-height:1;color:#88e875}
+.aw-figma-event p{margin:4px 0 0;font-size:14px;color:#88e875}
+.aw-figma-event time{color:#aaa;margin-right:4px}
+.aw-figma-event small{display:block;font-size:12px;color:#aaa;margin-top:4px;overflow-wrap:anywhere}
+.aw-figma-demo{margin:28px 0 0;font-size:11px;color:#777}
+@media(min-width:1600px){.aw-app .aw-main{padding-top:36px}.aw-app .aw-overview-workspace>.aw-main{padding-top:40px}}
+@media(max-width:1200px){.aw-app{--aw-header-height:72px}.aw-app .aw-topbar{padding-inline:24px;gap:18px}.aw-figma-tabs a{font-size:13px;padding:9px 10px}.aw-app .aw-feedback-button{display:none}.aw-app .aw-brand b{font-size:23px}.aw-app .aw-workspace{grid-template-columns:208px minmax(0,1fr)}.aw-app .aw-ai-chat-layout{grid-template-columns:minmax(0,1fr);padding:20px}.aw-app .aw-ai-agent-panel{width:100%;max-width:none}.aw-figma-metrics{gap:16px}.aw-figma-metrics>section{padding:18px}.aw-figma-milestone{padding:18px 16px}.aw-figma-bottom{gap:20px}}
+@media(max-width:900px){.aw-app{--aw-header-height:120px}.aw-app .aw-topbar-workspace{height:auto;min-height:120px;flex-wrap:wrap;padding-block:12px;gap:10px 16px}.aw-app .aw-topbar-workspace .aw-brand{order:0}.aw-app .aw-workspace-actions{order:1;margin-left:auto}.aw-figma-tabs{order:2;flex-basis:100%;max-width:none;overflow-x:auto;justify-content:space-between;scrollbar-width:thin}.aw-figma-tabs a{font-size:13px;flex:none;text-align:center}.aw-app .aw-topbar-public{--aw-header-height:72px;height:72px;min-height:72px}.aw-app .aw-topbar-public .aw-brand b{font-size:21px}.aw-app .aw-workspace{grid-template-columns:190px minmax(0,1fr)}.aw-figma-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.aw-figma-bottom{grid-template-columns:1fr}.aw-figma-activity-card{min-height:180px}.aw-app .aw-ai-balance-actions{margin-left:0}.aw-app .aw-page-title{flex-wrap:wrap}.aw-app .aw-profile-top{grid-template-columns:1fr}}
+@media(max-width:650px){.aw-app{--aw-gutter:20px}.aw-app .aw-topbar{padding-inline:16px}.aw-app .aw-workspace,.aw-app .aw-workspace.aw-sidebar-collapsed{display:block;position:relative;grid-template-columns:none!important}.aw-app .aw-workspace>.aw-sidebar{position:relative;inset:auto;width:100%;height:auto;min-height:0;padding:12px 16px;display:flex;flex-direction:row;align-items:center;gap:12px;overflow-x:auto;transform:none;visibility:visible;pointer-events:auto;border-right:0;border-bottom:1px solid #292929}.aw-app .aw-sidebar-menu-head,.aw-app .aw-sidebar-profile,.aw-app .aw-nav-title,.aw-app .aw-sidebar-collapsed .aw-nav-title{display:none}.aw-app .aw-sidebar-group{display:flex;flex-direction:row;gap:6px;flex:none}.aw-app .aw-nav-item,.aw-app .aw-sidebar-collapsed .aw-nav-item{width:auto;min-height:36px;height:36px;gap:6px;padding:0 10px!important;font-size:12px;white-space:nowrap}.aw-app .aw-sidebar-collapsed .aw-nav-label{display:inline;opacity:1;max-width:none;visibility:visible}.aw-app .aw-nav-badge{display:none}.aw-app .aw-main{margin:0;padding:20px 16px 32px;min-width:0}.aw-app .aw-overview-workspace>.aw-sidebar{display:none}.aw-app .aw-overview-workspace>.aw-main{padding:24px 20px 40px}.aw-figma-balance h1{font-size:18px}.aw-figma-amount{font-size:44px;letter-spacing:-1.5px}.aw-figma-amount>span{font-size:20px}.aw-figma-pills{gap:7px}.aw-figma-pills>span{font-size:11px;padding:8px 10px}.aw-figma-actions{width:100%;gap:8px}.aw-figma-actions .aw-button{flex:1;font-size:12px;min-height:44px;padding:10px}.aw-figma-metrics{gap:12px;margin-top:24px}.aw-figma-metrics>section{min-height:138px;padding:16px}.aw-figma-metrics h2{font-size:11px}.aw-figma-metrics strong{font-size:25px}.aw-figma-metrics p{font-size:12px}.aw-figma-bottom h2{font-size:18px}.aw-figma-milestone{display:grid;grid-template-columns:12px minmax(0,1fr);gap:8px 10px;padding:16px;border-radius:12px}.aw-figma-milestone>i{width:12px;height:12px}.aw-figma-milestone h3{font-size:15px}.aw-figma-milestone p{font-size:12px}.aw-figma-milestone-value{grid-column:2;margin:0;flex-direction:row;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}.aw-figma-milestone-value strong{font-size:14px}.aw-figma-milestone-value span{font-size:11px}.aw-figma-activity-card{padding:20px}.aw-app .aw-ai-chat-layout{padding:16px;gap:16px}.aw-app .aw-ai-conversation{padding:16px}.aw-app .aw-ai-balancebar{padding:12px 16px;gap:12px}.aw-app .aw-ai-bank,.aw-app .aw-ai-balance-stat{padding-right:12px}.aw-app .aw-ai-balance-actions{white-space:normal;flex-wrap:wrap;width:100%}.aw-app .aw-grid-3,.aw-app .aw-grid-4{grid-template-columns:repeat(2,minmax(0,1fr))}.aw-app .aw-home-columns,.aw-app .aw-chat-columns{grid-template-columns:1fr}.aw-app .aw-page-title h1{font-size:25px}.aw-app .aw-milestone-cards{gap:12px}.aw-app .aw-milestone-section#how-it-works .aw-milestone-card,.aw-app .aw-milestone-section#security .aw-milestone-card{min-height:0;padding:18px}}
+@media(prefers-reduced-motion:reduce){.aw-app *{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
