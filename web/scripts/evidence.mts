@@ -60,6 +60,8 @@ for (const [name, what] of [
   ["KeyReleased", "The seller's side publishes the key commitment; the buyer can now download the file."],
   ["Released", "The seller is paid from escrow."],
   ["OfferCancelled", "An offer withdrawn before acceptance."],
+  ["Disputed", "The buyer disputes a delivery; the neutral arbiter (AI, or a check for key disputes) rules on it."],
+  ["Refunded", "Money back to the buyer: a seller's refund, or the arbiter ruling for the buyer (`resolve` by the arbiter key)."],
 ] as const) {
   const found = await logs(b.fileEscrow, fileEscrowAbi, name, 4).catch(() => []);
   if (found.length) section(name, what, found.map((l) => ({ ...l, note: `deal ${l.args.dealId}${l.args.index !== undefined ? ` · milestone ${Number(l.args.index) + 1}` : ""}` })));

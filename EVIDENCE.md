@@ -1,6 +1,6 @@
 # Execution evidence
 
-Real transactions on the Agentic Wallet private chain (Hyperledger Besu, chain id 20261020), collected at block #37065 on 2026-10-15.
+Real transactions on the Agentic Wallet private chain (Hyperledger Besu, chain id 20261020), collected at block #37901 on 2026-10-15.
 Every hash opens in the public explorer at https://agentic-wallet-inky.vercel.app/explorer (no sign-in), and can be checked independently over read-only JSON-RPC at `https://agentic-wallet-inky.vercel.app/api/rpc`:
 
 ```bash
@@ -41,6 +41,8 @@ A buyer's offer locks the payment in FileEscrow in the same transaction; a selle
 | [`0xfed2400a…e928fce9`](https://agentic-wallet-inky.vercel.app/explorer/tx/0xfed2400aa20503b947eaba4982784dc2424d099420047570c263e6e7e928fce9) | #27510 | deal 1 · total 300 mTHB · seller's offer |
 | [`0xa378f095…895d0b34`](https://agentic-wallet-inky.vercel.app/explorer/tx/0xa378f0951c0c0c7140ae40b7336144611e17784c72b7f72fff10ed36895d0b34) | #30251 | deal 2 · total 600 mTHB · buyer's offer |
 | [`0xc2671576…ccd5a6c3`](https://agentic-wallet-inky.vercel.app/explorer/tx/0xc2671576c53c4cce67faf9f9bef28bfdabab76d8f01a943db6c744ffccd5a6c3) | #30630 | deal 3 · total 2500 mTHB · buyer's offer |
+| [`0x668920bf…d7836628`](https://agentic-wallet-inky.vercel.app/explorer/tx/0x668920bfc8dd65a5b1abd5dd2e61f8586456a34e9314140900ba857dd7836628) | #37789 | deal 4 · total 400 mTHB · buyer's offer |
+| [`0xf1a1a13e…208ee364`](https://agentic-wallet-inky.vercel.app/explorer/tx/0xf1a1a13e52c261cc0ed50cb53f8234c378bdaa4f1a34f6b7a7b992f1208ee364) | #37795 | deal 5 · total 400 mTHB · buyer's offer |
 
 ### Just-in-time funding (bank → mTHB)
 
@@ -51,6 +53,8 @@ The Mock Bank mints exactly the debited amount into the buyer's wallet right bef
 | [`0x080251d1…53603a0e`](https://agentic-wallet-inky.vercel.app/explorer/tx/0x080251d1c0a711d96abcdfd71eb4e6badaa8c36c631d50e47d0ff4c853603a0e) | #27471 | 800 mTHB |
 | [`0xd63644f3…04472731`](https://agentic-wallet-inky.vercel.app/explorer/tx/0xd63644f369840fc23b57f6d0124b43073c87722f3d94485bda930b4e04472731) | #30249 | 600 mTHB |
 | [`0x7222a238…fa00dcb9`](https://agentic-wallet-inky.vercel.app/explorer/tx/0x7222a23878f94c27ae5eecb4a91eb1bdb83d0dc3c8711a28a18d02a8fa00dcb9) | #30628 | 2500 mTHB |
+| [`0xa1b0cbb9…f9ce2e3d`](https://agentic-wallet-inky.vercel.app/explorer/tx/0xa1b0cbb91b8e30c5ad65fefdc76304d53ce91c8a03ca98e985b3ca8bf9ce2e3d) | #37787 | 400 mTHB |
+| [`0xbe50a1f8…6e667faa`](https://agentic-wallet-inky.vercel.app/explorer/tx/0xbe50a1f833aa2dde5ff59519c1fd44e5f1c94bfd103960ff92c878536e667faa) | #37793 | 400 mTHB |
 
 ### Settlement (mTHB → bank)
 
@@ -61,6 +65,8 @@ Tokens paid out of escrow are burned and the same amount moves from the bank's r
 | [`0xc82c95d3…da97d1ce`](https://agentic-wallet-inky.vercel.app/explorer/tx/0xc82c95d3759917bbcb3cd532623fed9f0ed7d966547e3e3ce1c4db85da97d1ce) | #27497 | 800 mTHB burned |
 | [`0xbf9668a7…cb33efb8`](https://agentic-wallet-inky.vercel.app/explorer/tx/0xbf9668a7c76606a06b1a6a71853c88e222c3b006b60449528b3b0a0dcb33efb8) | #30275 | 600 mTHB burned |
 | [`0x12a6749e…5d002d94`](https://agentic-wallet-inky.vercel.app/explorer/tx/0x12a6749ee1bf1b4fa61d8a4d39ef0dd89487b19607b6d7192e084a815d002d94) | #30703 | 2500 mTHB burned |
+| [`0x6cf21d1e…8b439772`](https://agentic-wallet-inky.vercel.app/explorer/tx/0x6cf21d1e1ad012296366f360ea242e66288f8b43bef7fdd6d27798638b439772) | #37817 | 400 mTHB burned |
+| [`0x1abd8818…89a55b61`](https://agentic-wallet-inky.vercel.app/explorer/tx/0x1abd881800670406a2266f39a73eb238fef29eeaa847860c3f4d48a989a55b61) | #37820 | 400 mTHB burned |
 
 ### OfferAccepted
 
@@ -71,6 +77,7 @@ The counterparty accepts; for a seller's offer the buyer pays in here.
 | [`0xb9d3d918…1cadbaf7`](https://agentic-wallet-inky.vercel.app/explorer/tx/0xb9d3d9182b4421293d39454d5644d01dd448cdc87ecc75433f1194e51cadbaf7) | #27475 | deal 0 |
 | [`0x9ecba553…1a684919`](https://agentic-wallet-inky.vercel.app/explorer/tx/0x9ecba553127bad6456bdfcd8446c27a7b03219a29c629cec94efd4301a684919) | #30262 | deal 2 |
 | [`0xa78cd6f2…733974bc`](https://agentic-wallet-inky.vercel.app/explorer/tx/0xa78cd6f22334a42a00033e4892c3d41495e9108a51f0cdfe6cb18e65733974bc) | #30659 | deal 3 |
+| [`0xa090c6a8…0fdf6087`](https://agentic-wallet-inky.vercel.app/explorer/tx/0xa090c6a82c9eab47f4452ad4d7105ce83443f752f5b0d94c4b7ff7960fdf6087) | #37799 | deal 4 |
 
 ### Delivered
 
@@ -81,6 +88,7 @@ The seller anchors the sha256 of the delivered file (the work hash); the file st
 | [`0xc3298d40…5e4450bd`](https://agentic-wallet-inky.vercel.app/explorer/tx/0xc3298d40ed001eb792cbbf7f4f4f426c769f8e33551927b74a79ce0c5e4450bd) | #27487 | deal 0 · milestone 1 |
 | [`0xa594bde8…97e15f6b`](https://agentic-wallet-inky.vercel.app/explorer/tx/0xa594bde8aeefcfca0ea4894e36b4760fd607d41bcdd2a7ad80dec75a97e15f6b) | #30265 | deal 2 · milestone 1 |
 | [`0x528658e5…762b2742`](https://agentic-wallet-inky.vercel.app/explorer/tx/0x528658e56ccdb25becb2bdb9721235cf6c28c00bae19883ae671c452762b2742) | #30677 | deal 3 · milestone 1 |
+| [`0x83582431…b3629acd`](https://agentic-wallet-inky.vercel.app/explorer/tx/0x8358243171911fadc22f71741536c38a4f2894b37377b8fade9b75ffb3629acd) | #37807 | deal 4 · milestone 1 |
 
 ### Approved
 
@@ -111,6 +119,7 @@ The seller is paid from escrow.
 | [`0x226f9412…a9ab3415`](https://agentic-wallet-inky.vercel.app/explorer/tx/0x226f941270b161d679a3aff87f12f58a4e2fff573c08a8a07484db21a9ab3415) | #27495 | deal 0 · milestone 1 |
 | [`0x6d7ecdcb…74a16f7d`](https://agentic-wallet-inky.vercel.app/explorer/tx/0x6d7ecdcbc1999e753cc9a98f7092eb287553eed1dd2b5ca518b33c5374a16f7d) | #30273 | deal 2 · milestone 1 |
 | [`0xf44b8fa6…1788ca78`](https://agentic-wallet-inky.vercel.app/explorer/tx/0xf44b8fa6bd5559d4345ca3f814b8dfd81e86cf093a5fb64d114477161788ca78) | #30701 | deal 3 · milestone 1 |
+| [`0x61270cd0…1c2197cc`](https://agentic-wallet-inky.vercel.app/explorer/tx/0x61270cd0eab4974b6075530c5a04de4601f442cf2c901508b115860d1c2197cc) | #37818 | deal 5 · milestone 1 |
 
 ### OfferCancelled
 
@@ -119,6 +128,23 @@ An offer withdrawn before acceptance.
 | Tx | Block | What |
 |---|---|---|
 | [`0x8b3c050b…c363b24d`](https://agentic-wallet-inky.vercel.app/explorer/tx/0x8b3c050bb4dd63516cbf6c93ac403ef70ea7f4e42dcba7b02bdd4a8dc363b24d) | #27514 | deal 1 |
+
+### Disputed
+
+The buyer disputes a delivery; the neutral arbiter (AI, or a check for key disputes) rules on it.
+
+| Tx | Block | What |
+|---|---|---|
+| [`0x1286b9e7…55eb58c2`](https://agentic-wallet-inky.vercel.app/explorer/tx/0x1286b9e7df49834b892d3777853d666d8e23c4f4044f2de48eb5c11355eb58c2) | #37812 | deal 4 · milestone 1 |
+| [`0xa8a2924a…54795e5a`](https://agentic-wallet-inky.vercel.app/explorer/tx/0xa8a2924a2eaba9807a048ab3060a529f94229e2043251909c0789c4854795e5a) | #37815 | deal 5 · milestone 1 |
+
+### Refunded
+
+Money back to the buyer: a seller's refund, or the arbiter ruling for the buyer (`resolve` by the arbiter key).
+
+| Tx | Block | What |
+|---|---|---|
+| [`0xcb7aea8d…999d1aee`](https://agentic-wallet-inky.vercel.app/explorer/tx/0xcb7aea8db5b7d2e0c236756278d76f6fe37d69f5f4ed8ad9f8c29fe4999d1aee) | #37815 | deal 4 · milestone 1 |
 
 ### Attack refused on-chain
 

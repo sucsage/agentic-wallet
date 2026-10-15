@@ -74,6 +74,21 @@ key (`ArbiterNotNeutral`), so the buyer's side can never judge its own dispute.
   delete them. The chain stores `sha256:` hashes of the terms and the amounts only. The public
   explorer labels user wallets as "Agent wallet (user)", without names.
 
+## 4b. Disputes and the neutral arbiter
+
+- The buyer can dispute inside a review window. The reason is required and stored off-chain.
+- **Key disputes** ("the released key does not open the file") are decided by a check, not by a model:
+  the server decrypts the delivery and compares its sha256 with the work hash anchored at delivery.
+- **Work disputes** go to the AI arbiter (`web/src/lib/bank/arbiter.ts`). Its inputs are:
+  - the agreed terms and acceptance criteria
+  - the seller's evidence and, when the file is text, its content
+  - the buyer's reason
+
+  It returns a ruling, a confidence, a rationale and per-criterion findings. At **≥ 75% confidence** it
+  calls `FileEscrow.resolve` with the arbiter's own key. Otherwise a human arbiter (an admin) rules at
+  `/admin/disputes` with the AI's findings in front of them.
+- The resolve transaction is on-chain. Settlement to the bank then runs as for any payout or refund.
+
 ## 5. Application security
 
 - **Sign-in.** Mock Bank login with a 6-digit demo PIN, hashed with scrypt. After **5 wrong PINs the
@@ -123,7 +138,7 @@ key (`ArbiterNotNeutral`), so the buyer's side can never judge its own dispute.
 | R3 | **An invite link is a bearer credential**: anyone holding it acts as the invited seller | A leaked link lets someone accept or deliver in the seller's name | Only the link's hash is stored; 30-day expiry; the buyer can rotate it; `no-referrer`, `noindex`; the **payout destination is set once and locked**, so a leaked link cannot redirect money; name check on Mock Bank accounts; strict rate limit on payout attempts | One-time code by SMS or email before the first action; device binding |
 | R4 | **The chain has one validator**, on a home PC reached through Tailscale Funnel | If the PC is off, the app cannot transact; one operator could rewrite history | QBFT, account permissioning, JWT-protected RPC; contracts and the Base Sepolia deployment kept as a fallback | Four or more validators run by different parties (BFT), monitoring, backups |
 | R5 | **PromptPay and other-bank payouts are simulated.** We are a mock bank, so money leaves through an internal "external" account | Nothing real is paid out; PromptPay ids cannot be name-checked | Clearly labelled as a demo in the UI; Mock Bank to Mock Bank transfers are real ledger transfers with a name check | Integration with a licensed bank or ITMX PromptPay APIs, with name inquiry |
-| R6 | **Disputes have no automated resolver yet** | A disputed milestone stays locked until the arbiter acts | The arbiter is neutral by contract; its key is not used by the web app | AI-assisted arbitration with a human arbiter's signature, and a deadline |
+| R6 | **An AI arbiter decides disputes about the work** | A wrong ruling pays the wrong side | The arbiter is neutral by contract (`ArbiterNotNeutral`) and is a separate model call with its own instructions, not the buyer's agent. It judges only against the written acceptance criteria and treats both parties' text as untrusted. It settles alone only at ≥ 75% confidence; below that a human arbiter decides at `/admin/disputes`. Key disputes are checked mechanically (hash), not by AI. Findings and rationale are shown to both sides | An appeal window before `resolve`, a panel of human arbiters for large amounts, and an evaluation set of past disputes |
 | R7 | **Prompt injection or a hallucinating model** | The agent proposes the wrong thing | Allowlist, caps and neutral-arbiter checks are on-chain; Tier 1 needs the user's click; injection scanner; the tools validate every input | Already the main control; add per-counterparty limits and anomaly alerts |
 | R8 | **Agent session key leak** | Spending up to the caps to allowlisted payees | Caps, allowlist, expiry, instant `revokeSession`, `pause()` | Short-lived keys from a KMS/HSM; alerts on unusual spending |
 | R9 | **Smart contract bugs** | Locked or lost test funds | OpenZeppelin 5 primitives, `ReentrancyGuard`, `SafeERC20`, 65 tests | External audit, Slither/Echidna in CI, formal checks of the escrow state machine |
