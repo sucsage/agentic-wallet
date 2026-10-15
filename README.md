@@ -8,6 +8,26 @@ agent still cannot move funds outside policy.
 Built for the 2026 Shenzhen International FinTech Competition (FinTechathon), International Track,
 Topic F: Agent Wallet.
 
+## For reviewers
+
+| | |
+|---|---|
+| Live app | https://agentic-wallet-inky.vercel.app (Mock Bank sign-up, test money only) |
+| Public chain explorer (no sign-in) | https://agentic-wallet-inky.vercel.app/explorer |
+| Read-only JSON-RPC (chain id 20261020) | `https://agentic-wallet-inky.vercel.app/api/rpc` |
+| Transaction hashes, grouped by what they prove | [EVIDENCE.md](EVIDENCE.md) |
+| Security self-assessment (permission tiers, known risks) | [SECURITY.md](SECURITY.md) |
+
+Our chain is a private, permissioned Hyperledger Besu network: only the app's keys can **write**, but
+anyone can **read**. To check a transaction hash yourself, without trusting our explorer:
+
+```bash
+cast receipt <tx hash> --rpc-url https://agentic-wallet-inky.vercel.app/api/rpc
+```
+
+`cd web && npx tsx --conditions=react-server --env-file=.env.local scripts/evidence.mts` regenerates
+EVIDENCE.md from the live chain.
+
 ## Layout
 
 | Path | What |
@@ -65,11 +85,11 @@ The chat agent needs one LLM provider: `LLM_BASE_URL` + `LLM_API_KEY` (any Anthr
 2. `./scripts/deploy-base-sepolia.sh`: deploys contracts, funds the other role keys, writes `.secrets/vercel.env`.
 3. Import the repo in Vercel with root directory `web/`, then paste `.secrets/vercel.env` plus the LLM variables (`LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`).
 
-## Private chain (Hyperledger Besu) — closed system with an admin explorer
+## Private chain (Hyperledger Besu) — permissioned writes, public reads
 
-The app can run on its own permissioned chain instead of a public testnet: QBFT, chain id 20261020,
-free gas, and an **account allowlist** so only the app's keys can send transactions. There is no
-public explorer: reviewers verify transaction hashes in the app at `/admin/chain` (admins only).
+The app runs on its own permissioned chain instead of a public testnet: QBFT, chain id 20261020,
+free gas, and an **account allowlist** so only the app's keys can send transactions. Reading is
+public: the app's explorer at `/explorer` and read-only JSON-RPC at `/api/rpc` (no sign-in).
 App data for this chain lives in the `besu` Postgres schema (`DB_SCHEMA=besu`), apart from the
 Base Sepolia data in `public`.
 
@@ -102,9 +122,6 @@ with `node scripts/chain-token.mjs` and update Vercel.
 `CHAIN_TOKEN=<contents of .secrets/chain-token.txt>`, `DB_SCHEMA=besu` and the usual keys, database
 and LLM settings.
 
-**Admins**: after a reviewer signs up in the app,
-`cd web && npx tsx --conditions=react-server --env-file=.env.local scripts/make-admin.mts thai <username>`.
-
 **All on one machine** (development): `bash scripts/setup-besu.sh` starts the chain with its RPC on
 127.0.0.1:8555, deploys and pushes the schema; merge `.secrets/besu.env` into `web/.env.local` and
 add `DB_SCHEMA=besu`. Stop with `cd chain && docker compose down` (`down -v` wipes the chain).
@@ -114,7 +131,7 @@ add `DB_SCHEMA=besu`. Stop with `cd chain && docker compose down` (`down -v` wip
 ```bash
 cd contracts
 npm install
-npm test          # 19 tests, including the prompt-injection "send everything to 0xEvil" cases
+npm test          # 65 tests, including the prompt-injection "send everything to 0xEvil" cases
 ```
 
 Deploy to Base Sepolia (testnet keys only):
@@ -143,11 +160,6 @@ On-chain evidence:
 - Sandbox wallet created by the factory in one tx: [`0x8556315d…291bb8f0`](https://sepolia.basescan.org/tx/0x8556315df58ce42a55cee203589b2fb12782a9e8f9638845d8bef503291bb8f0)
 - Attack with the agent's own key, bypassing the AI and the policy engine: `agentTransfer(0xBAd…Bad, 5000)` **reverted on-chain** with `RecipientNotAllowed`: [`0xa7289c26…7912cf0f`](https://sepolia.basescan.org/tx/0xa7289c26a0e0fe7c15878687a349d3fd3c527d987cc8d37af10a76e27912cf0f)
 
-## Known risks (draft for the security self-assessment)
+## Security
 
-1. **Prompt injection** through documents → policy is enforced on-chain; malicious recipients revert (tested).
-2. **Hallucinated address or amount** → recipient allowlist; milestone amounts are read from the escrow, not from the agent.
-3. **Session key leak** → per-tx and daily caps, expiry, instant revoke, pause.
-4. **Owner key compromise** → the owner has an unrestricted `execute`; it should be a hardware wallet or a Safe.
-5. **Contract bugs** → OpenZeppelin primitives, ReentrancyGuard, tests; Slither still to run.
-6. **Compliance** → only KYC'd counterparties get allowlisted; every action emits an event as an audit trail.
+Permission tiers, money-flow controls, tests and the known-risk list are in [SECURITY.md](SECURITY.md).

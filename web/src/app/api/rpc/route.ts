@@ -25,7 +25,7 @@ const READ_ONLY = new Set([
   "web3_clientVersion",
 ]);
 /** eth_getLogs over a huge range would tie up the node; reviewers can page through. */
-const MAX_LOG_RANGE = 10_000;
+const MAX_LOG_RANGE = 5_000;
 
 type Call = { jsonrpc?: string; id?: unknown; method?: unknown; params?: unknown };
 

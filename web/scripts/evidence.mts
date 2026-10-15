@@ -19,8 +19,9 @@ const b = config.bankContracts;
 async function logs(address: Address, abi: readonly unknown[], name: string, limit = 6) {
   const event = getAbiItem({ abi: abi as never, name } as never) as AbiEvent;
   const out: { hash: Hex; block: bigint; args: Record<string, unknown> }[] = [];
-  for (let start = fromBlock; start <= head; start += 10_000n) {
-    const end = start + 9_999n < head ? start + 9_999n : head;
+  // Besu caps eth_getLogs at 5,000 blocks.
+  for (let start = fromBlock; start <= head; start += 5_000n) {
+    const end = start + 4_999n < head ? start + 4_999n : head;
     const found = await pc.getLogs({ address, event, fromBlock: start, toBlock: end });
     for (const l of found) out.push({ hash: l.transactionHash!, block: l.blockNumber!, args: (l as { args?: Record<string, unknown> }).args ?? {} });
   }
