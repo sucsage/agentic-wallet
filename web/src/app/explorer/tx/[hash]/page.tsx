@@ -3,7 +3,7 @@ import Link from "next/link";
 import { addressLabels, txDetail } from "@/lib/explorer";
 
 /** One transaction: status, parties, decoded call and decoded events. */
-export default async function AdminTxPage({ params }: { params: Promise<{ hash: string }> }) {
+export default async function ExplorerTxPage({ params }: { params: Promise<{ hash: string }> }) {
   const { hash } = await params;
   const [tx, labels] = await Promise.all([txDetail(hash), addressLabels()]);
   if (!tx) return <p className="card p-4 text-sm">No transaction {hash} on this chain.</p>;
@@ -26,7 +26,7 @@ export default async function AdminTxPage({ params }: { params: Promise<{ hash: 
         <dd className="break-all font-mono">{name(tx.from)}</dd>
         <dt className="text-muted">To</dt>
         <dd className="break-all font-mono">
-          {tx.to ? <Link href={`/admin/chain/address/${tx.to}`}>{name(tx.to)}</Link> : `created ${tx.created}`}
+          {tx.to ? <Link href={`/explorer/address/${tx.to}`}>{name(tx.to)}</Link> : `created ${tx.created}`}
         </dd>
         <dt className="text-muted">Call</dt>
         <dd className="font-mono">{tx.call ? `${tx.call.contract}.${tx.call.fn}` : "—"}</dd>

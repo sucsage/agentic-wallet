@@ -283,8 +283,40 @@ export function BankAuthorizeLive({ bank, onCancel, onContinue }: { bank: BankCh
 type Step = { tool: string; summary: string; draft?: DraftView };
 type ChatItem =
   | { kind: "user"; text: string; at: string }
-  | { kind: "agent"; text: string; at: string; steps: Step[] }
+  /** `live`: still streaming; `running`: tool calls started but not finished yet. */
+  | { kind: "agent"; text: string; at: string; steps: Step[]; live?: boolean; running?: { id: string; tool: string }[] }
   | { kind: "error"; text: string };
+
+/** What the agent is doing, in words, while a tool runs. */
+const TOOL_LABEL: Record<string, string> = {
+  get_wallet_status: "Checking your wallet, limits and payees",
+  list_deals: "Reading your deals",
+  propose_bank_deal: "Drafting the deal",
+  propose_bank_sale: "Drafting the sale offer",
+  invite_seller: "Creating a wallet and invite link",
+  pause_wallet: "Pausing the wallet",
+  forecast_cashflow: "Forecasting cash flow",
+};
+
+/** Reads a Server-Sent Events response, calling `on` for each event. */
+async function readEvents(res: Response, on: (event: string, data: unknown) => void) {
+  const reader = res.body!.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let cut: number;
+    while ((cut = buf.indexOf("\n\n")) >= 0) {
+      const chunk = buf.slice(0, cut);
+      buf = buf.slice(cut + 2);
+      const event = /^event: (.*)$/m.exec(chunk)?.[1] ?? "message";
+      const data = /^data: (.*)$/m.exec(chunk)?.[1];
+      if (data) on(event, JSON.parse(data));
+    }
+  }
+}
 
 const now = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
@@ -379,19 +411,47 @@ export function LiveChat() {
       .filter((i): i is Extract<ChatItem, { kind: "user" | "agent" }> => i.kind !== "error")
       .map((i) => ({ role: i.kind === "user" ? ("user" as const) : ("assistant" as const), text: i.text }))
       .slice(-20);
-    setItems((cur) => [...cur, { kind: "user", text: text.trim(), at: now() }]);
+    setItems((cur) => [...cur, { kind: "user", text: text.trim(), at: now() }, { kind: "agent", text: "", at: now(), steps: [], live: true, running: [] }]);
     setMessage("");
     setBusy(true);
+    // Updates the agent message being streamed (always the last item).
+    const patch = (fn: (m: Extract<ChatItem, { kind: "agent" }>) => Extract<ChatItem, { kind: "agent" }>) =>
+      setItems((cur) => {
+        const last = cur[cur.length - 1];
+        return last?.kind === "agent" && last.live ? [...cur.slice(0, -1), fn(last)] : cur;
+      });
+    const fail = (msg: string) =>
+      setItems((cur) => {
+        const last = cur[cur.length - 1];
+        const rest = last?.kind === "agent" && last.live && !last.text && last.steps.length === 0 ? cur.slice(0, -1) : cur;
+        return [...rest.map((i) => (i.kind === "agent" && i.live ? { ...i, live: false, running: [] } : i)), { kind: "error", text: msg }];
+      });
     try {
-      const res = await api<{ reply: string; steps: Step[] }>(`/api/workspace/${address}/agent`, {
+      const res = await fetch(`/api/workspace/${address}/agent`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", accept: "text/event-stream" },
         body: JSON.stringify({ history, message: text.trim(), lang }),
       });
-      setItems((cur) => [...cur, { kind: "agent", text: res.reply, at: now(), steps: res.steps }]);
-      if (res.steps.some((s) => s.draft)) void refresh();
+      if (!res.ok || !res.headers.get("content-type")?.includes("text/event-stream")) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.error ?? `Request failed (${res.status})`);
+      }
+      let drafted = false;
+      await readEvents(res, (event, data) => {
+        const d = data as Record<string, unknown>;
+        if (event === "turn") patch((m) => ({ ...m, text: "" }));
+        else if (event === "text") patch((m) => ({ ...m, text: m.text + String(d.delta) }));
+        else if (event === "tool") patch((m) => ({ ...m, running: [...(m.running ?? []), { id: String(d.id), tool: String(d.name) }] }));
+        else if (event === "step") {
+          const step = d.step as Step;
+          drafted ||= Boolean(step.draft);
+          patch((m) => ({ ...m, steps: [...m.steps, step], running: (m.running ?? []).filter((r) => r.id !== d.id) }));
+        } else if (event === "done") patch((m) => ({ ...m, text: String(d.reply), steps: d.steps as Step[], live: false, running: [] }));
+        else if (event === "error") fail(String(d.error));
+      });
+      if (drafted) void refresh();
     } catch (e) {
-      setItems((cur) => [...cur, { kind: "error", text: (e as Error).message }]);
+      fail((e as Error).message);
     } finally {
       setBusy(false);
     }
@@ -481,7 +541,22 @@ export function LiveChat() {
               ) : (
                 <div key={idx}>
                   <div className="aw-ai-message-meta">Agent · {item.at}</div>
-                  {item.steps.length > 0 && (
+                  {item.live && (
+                    <div className="aw-ai-live-steps">
+                      {item.steps.map((s, i) => (
+                        <span key={i} className="done" title={s.summary}>
+                          ✓ {TOOL_LABEL[s.tool] ?? s.tool}
+                        </span>
+                      ))}
+                      {(item.running ?? []).map((r) => (
+                        <span key={r.id} className="running">
+                          ◌ {TOOL_LABEL[r.tool] ?? r.tool}…
+                        </span>
+                      ))}
+                      {!item.text && (item.running ?? []).length === 0 && <span className="running">◌ Thinking…</span>}
+                    </div>
+                  )}
+                  {!item.live && item.steps.length > 0 && (
                     <div className="aw-ai-tool-badges">
                       {item.steps.map((s, i) => (
                         <span key={i} title={s.summary}>
@@ -503,7 +578,7 @@ export function LiveChat() {
                 </div>
               ),
             )}
-            {busy && <div className="aw-ai-message-meta">Agent is thinking…</div>}
+
             <div ref={endRef} />
           </div>
           <form

@@ -21,16 +21,16 @@ function key(name: string): Hex {
 }
 
 /**
- * The private Besu chain (../chain): closed to the internet, free gas, only the server's keys may
- * send transactions. There is no public explorer; reviewers sign in as admins and use the app's
- * own explorer at /admin/chain, which is where these links point.
+ * The private Besu chain (../chain): free gas, only the server's keys may send transactions (account
+ * permissioning), and its RPC needs the server's token. Reading is public: the app's explorer at
+ * /explorer and read-only JSON-RPC at /api/rpc, which is where these links point.
  */
 const besu = defineChain({
   id: 20261020,
   name: "Agentic Wallet private chain",
   nativeCurrency: { name: "Gas (no value)", symbol: "GAS", decimals: 18 },
   rpcUrls: { default: { http: ["http://127.0.0.1:8555"] } },
-  blockExplorers: { default: { name: "Admin explorer", url: "/admin/chain" } },
+  blockExplorers: { default: { name: "Agentic Wallet explorer", url: "/explorer" } },
 });
 
 const chains: Record<string, Chain> = { baseSepolia, hardhat, besu };
@@ -94,6 +94,10 @@ export const config = {
       agent: key("AGENT_PRIVATE_KEY"),
       contractor: key("CONTRACTOR_PRIVATE_KEY"),
     };
+  },
+  /** The neutral arbiter's key: it only ever calls FileEscrow.resolve on disputed milestones. */
+  get arbiterKey() {
+    return key("ARBITER_PRIVATE_KEY");
   },
   /** The Mock Bank's hot key: the only one that may mint mTHB. Must not be the mTHB admin. */
   get bankKey() {

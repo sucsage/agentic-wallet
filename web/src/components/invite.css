@@ -34,3 +34,4 @@
 .inv-tabs{display:flex;gap:6px;flex-wrap:wrap}
 .inv-tabs button{border:1px solid #383838;background:transparent;color:#c6d0de;border-radius:20px;padding:6px 11px;font-size:12px;cursor:pointer}
 .inv-tabs button.on{background:#fff;color:#111;border-color:#fff}
+.inv-dispute{display:flex;flex-direction:column;gap:4px;padding:10px;border:1px solid #4a3f6b;border-radius:10px;background:#17142a}

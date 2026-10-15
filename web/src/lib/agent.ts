@@ -24,7 +24,7 @@ const MAX_TURNS = 12;
  * - OPENROUTER_API_KEY: OpenRouter's Anthropic-compatible endpoint
  * - otherwise: the Anthropic API directly (ANTHROPIC_API_KEY)
  */
-function llm() {
+export function llm() {
   if (process.env.LLM_BASE_URL) {
     return {
       client: new Anthropic({ baseURL: process.env.LLM_BASE_URL, apiKey: process.env.LLM_API_KEY ?? null }),
@@ -568,6 +568,13 @@ async function proposeDealSetupWithAcceptance(
   });
 }
 
+/** Progress of one agent run, for streaming it to the chat as it happens. */
+export type AgentEvent =
+  | { type: "turn"; turn: number }
+  | { type: "text"; delta: string }
+  | { type: "tool"; id: string; name: string; input: unknown }
+  | { type: "step"; id: string; step: AgentStep };
+
 export async function runAgent(
   wallet: Address,
   history: ChatTurn[],
@@ -577,6 +584,7 @@ export async function runAgent(
   attachmentText?: string,
   lang: "en" | "th" = "en",
   userId?: string,
+  onEvent?: (e: AgentEvent) => void,
 ) {
   const { client, model, direct } = llm();
   const bankWallet = (await walletUnits(wallet)).currency !== null;
@@ -619,8 +627,9 @@ export async function runAgent(
   const steps: AgentStep[] = [];
 
   for (let turn = 0; turn < MAX_TURNS; turn++) {
+    onEvent?.({ type: "turn", turn });
     // Streaming: required by some gateways for non-Claude models, and avoids HTTP timeouts.
-    const response = await client.beta.messages
+    const stream = client.beta.messages
       .stream({
         model,
         max_tokens: 16000,
@@ -636,8 +645,9 @@ export async function runAgent(
         ...(isClaude ? { output_config: { effort: "medium" as const } } : {}),
         // Server-side refusal fallback is an Anthropic API feature only.
         ...(direct ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),
-      })
-      .finalMessage();
+      });
+    if (onEvent) stream.on("text", (delta) => onEvent({ type: "text", delta }));
+    const response = await stream.finalMessage();
 
     if (response.stop_reason === "refusal") {
       return { reply: "I can't help with that request.", steps };
@@ -657,13 +667,16 @@ export async function runAgent(
     const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
     // Run sequentially: tools share signing keys and later calls depend on earlier state.
     for (const use of toolUses) {
+      onEvent?.({ type: "tool", id: use.id, name: use.name, input: use.input });
       try {
         const step = await runTool(wallet, use.name, use.input, userId);
         steps.push(step);
+        onEvent?.({ type: "step", id: use.id, step });
         results.push({ type: "tool_result", tool_use_id: use.id, content: step.summary });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         steps.push({ tool: use.name, input: use.input, summary: `Error: ${msg}` });
+        onEvent?.({ type: "step", id: use.id, step: steps[steps.length - 1] });
         results.push({ type: "tool_result", tool_use_id: use.id, content: msg, is_error: true });
       }
     }

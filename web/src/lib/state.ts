@@ -432,8 +432,8 @@ async function readAllowedRecipients(
 
   // Mapping ดึง keys ทั้งหมดไม่ได้ จึงรวบรวม address จาก events ก่อน
   const candidates = new Map<string, Address>();
-  // Blocks come every 2 s on the private chain; big ranges keep this to a call or two per read.
-  const chunkSize = 10_000n;
+  // Besu refuses eth_getLogs over more than 5,000 blocks (rpc-max-logs-range); blocks come every 2 s.
+  const chunkSize = 5_000n;
 
   for (
     let fromBlock = createdAtBlock;

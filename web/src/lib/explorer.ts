@@ -18,8 +18,8 @@ import { config } from "./config";
 import { db } from "./db";
 
 /**
- * The admin explorer: what a reviewer needs to verify transaction hashes on a chain that has no
- * public explorer. Reads go straight to the node; inputs and events are decoded with the ABIs of
+ * The public explorer: what a reviewer needs to verify transaction hashes on our private chain,
+ * which has no third-party explorer. Reads go straight to the node; inputs and events are decoded with the ABIs of
  * the contracts we deploy, and known addresses get a label.
  */
 
@@ -53,9 +53,11 @@ export async function addressLabels(): Promise<Map<string, string>> {
     const { account } = await import("./chain");
     m.set(account("bank").address.toLowerCase(), "Mock Bank key");
   }
-  // Reviewers see the bank username (a pseudonym), not the person's display name.
-  const wallets = await db.userWallet.findMany({ include: { user: { select: { bankCustomer: { select: { username: true } } } } } });
-  for (const w of wallets) m.set(w.walletAddress.toLowerCase(), `Agent wallet · @${w.user.bankCustomer?.username ?? "user"}`);
+  // Public page: a user's wallet is labelled as such, never with a name or username.
+  const wallets = await db.userWallet.findMany({ select: { walletAddress: true } });
+  for (const w of wallets) m.set(w.walletAddress.toLowerCase(), "Agent wallet (user)");
+  const invited = await db.sellerInvite.findMany({ select: { sellerWallet: true } });
+  for (const w of invited) m.set(w.sellerWallet.toLowerCase(), "Agent wallet (invited seller)");
   return m;
 }
 

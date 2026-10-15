@@ -1464,3 +1464,15 @@
 .aw-invite-link code{font-size:11px;word-break:break-all;color:#9fc2ff}
 .aw-invite-link small{color:#9da9ba;font-size:11px}
 .aw-invite-list{display:flex;flex-direction:column;gap:6px}
+.aw-arbiter{display:flex;flex-direction:column;gap:6px;margin-top:10px;padding:12px;border:1px solid #4a3f6b;border-radius:12px;background:#17142a;font-size:12px;line-height:1.5}
+.aw-arbiter p{margin:0}
+.aw-arbiter small{color:#a99ee6;font-size:11px}
+.aw-arbiter small a{color:#c9bfff}
+.aw-arbiter ul{margin:0;padding-left:16px;color:#c6d0de}
+.aw-arbiter-wait{color:#f3ed21}
+.aw-arbiter-seller{color:#89ef82}
+.aw-arbiter-buyer{color:#559bff}
+.aw-ai-live-steps{display:flex;flex-direction:column;gap:4px;margin:4px 0 8px;font-size:12px}
+.aw-ai-live-steps .done{color:#89ef82}
+.aw-ai-live-steps .running{color:#9fc2ff;animation:aw-pulse 1.2s ease-in-out infinite}
+@keyframes aw-pulse{50%{opacity:.45}}
