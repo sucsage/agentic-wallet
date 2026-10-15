@@ -532,9 +532,9 @@ describe("AgentWallet", async function () {
           await asSeller.write.offerToSell([wallet.address, ownerAddr, usdc.address, fileTerms(1), REVIEW, ""]);
           await viem.assertions.revertWithCustomErrorWithArgs(propose(call(fileEscrow, "accept", [2n])), wallet, "ArbiterNotNeutral", [ownerAddr]);
 
-          // The seller's moves, and malformed calldata, are never the wallet's to make.
+          // The seller's moves on a deal the wallet does not sell, and malformed calldata, are refused.
           const claim = encodeFunctionData({ abi: fileEscrow.abi, functionName: "claim", args: [0n, 0n] });
-          await viem.assertions.revertWithCustomError(propose(claim), wallet, "InvalidProposal");
+          await viem.assertions.revertWithCustomError(propose(claim), wallet, "NotSellerOfDeal");
           const padded = `${call(fileEscrow, "accept", [0n])}${"00".repeat(32)}` as `0x${string}`;
           await viem.assertions.revertWithCustomError(propose(padded), wallet, "InvalidProposal");
         });
@@ -593,6 +593,122 @@ describe("AgentWallet", async function () {
             "RecipientNotAllowed",
             [getAddress(contractor.account.address)],
           );
+        });
+      });
+
+      describe("the seller's moves when the wallet sells, through approved calls", () => {
+        const fileEscrowAs = (fileEscrow: { address: `0x${string}` }, client: typeof owner) =>
+          viem.getContractAt("FileEscrow", fileEscrow.address, { client: { wallet: client } });
+
+        async function runCall(ctx: Awaited<ReturnType<typeof deploy>>, data: `0x${string}`) {
+          const id = await ctx.wallet.read.proposalCount();
+          await ctx.asAgent.write.propose([2, ctx.fileEscrow.address, 0n, 0n, data, "seller action"]);
+          await ctx.asA.write.approve([id]);
+          return ctx.asB.write.approve([id]);
+        }
+
+        /** A buyer (the contractor key, funded) offers 300 for a file to the wallet as the seller. */
+        async function buyerOffer(arbiterAddr = arbiter.account.address) {
+          const ctx = await networkHelpers.loadFixture(deploy);
+          const { usdc, fileEscrow, wallet } = ctx;
+          await usdc.write.mint([contractor.account.address, usd(1_000)]);
+          const usdcAsBuyer = await viem.getContractAt("MockUSDC", usdc.address, { client: { wallet: contractor } });
+          await usdcAsBuyer.write.approve([fileEscrow.address, usd(1_000)]);
+          const asBuyer = await fileEscrowAs(fileEscrow, contractor);
+          await asBuyer.write.offerToBuy([wallet.address, arbiterAddr, usdc.address, fileTerms(300), REVIEW, ""]);
+          return { ...ctx, asBuyer };
+        }
+
+        it("accepts a buyer's offer, delivers, releases the key and claims the payment", async () => {
+          const ctx = await buyerOffer();
+          const { usdc, fileEscrow, wallet, asBuyer } = ctx;
+          const f = fileEscrow.abi;
+          await runCall(ctx, encodeFunctionData({ abi: f, functionName: "accept", args: [0n] }));
+          assert.equal((await fileEscrow.read.getDeal([0n])).status, 1); // Active
+
+          await runCall(ctx, encodeFunctionData({ abi: f, functionName: "deliver", args: [0n, 0n, keccak256(toHex("logo.svg")), "app:delivery"] }));
+          assert.equal((await fileEscrow.read.getMilestone([0n, 0n])).status, 1); // Delivered
+
+          await asBuyer.write.approve([0n, 0n]);
+          await runCall(ctx, encodeFunctionData({ abi: f, functionName: "releaseKey", args: [0n, 0n, keccak256(toHex("key"))] }));
+          assert.equal((await fileEscrow.read.getMilestone([0n, 0n])).status, 3); // KeyReleased
+
+          const before = await usdc.read.balanceOf([wallet.address]);
+          await networkHelpers.time.increase(REVIEW + 1n);
+          await runCall(ctx, encodeFunctionData({ abi: f, functionName: "claim", args: [0n, 0n] }));
+          assert.equal((await fileEscrow.read.getMilestone([0n, 0n])).status, 4); // Released
+          assert.equal(await usdc.read.balanceOf([wallet.address]), before + usd(300));
+        });
+
+        it("offers its own work for sale; the buyer accepts and pays in", async () => {
+          const ctx = await networkHelpers.loadFixture(deploy);
+          const { usdc, fileEscrow, wallet } = ctx;
+          const f = fileEscrow.abi;
+          const offer = (arb: `0x${string}`, tok: `0x${string}`) =>
+            encodeFunctionData({ abi: f, functionName: "offerToSell", args: [contractor.account.address, arb, tok, fileTerms(300), REVIEW, ""] });
+          await runCall(ctx, offer(arbiter.account.address, usdc.address));
+          const deal = await fileEscrow.read.getDeal([0n]);
+          assert.equal(deal.seller, getAddress(wallet.address));
+          assert.equal(deal.creator, getAddress(wallet.address));
+
+          // The buyer accepts and pays in; the wallet delivers as usual.
+          await usdc.write.mint([contractor.account.address, usd(300)]);
+          const usdcAsBuyer = await viem.getContractAt("MockUSDC", usdc.address, { client: { wallet: contractor } });
+          await usdcAsBuyer.write.approve([fileEscrow.address, usd(300)]);
+          await (await fileEscrowAs(fileEscrow, contractor)).write.accept([0n]);
+          assert.equal((await fileEscrow.read.getDeal([0n])).status, 1); // Active
+          await runCall(ctx, encodeFunctionData({ abi: f, functionName: "deliver", args: [0n, 0n, keccak256(toHex("logo.svg")), "app:delivery"] }));
+
+          // It can withdraw an offer nobody accepted yet, but not a buyer's offer to it.
+          await runCall(ctx, offer(arbiter.account.address, usdc.address));
+          await runCall(ctx, encodeFunctionData({ abi: f, functionName: "cancel", args: [1n] }));
+          assert.equal((await fileEscrow.read.getDeal([1n])).status, 2); // Cancelled
+
+          // Its own owner as arbiter, or another token, is refused.
+          const propose = (data: `0x${string}`) => ctx.asAgent.write.propose([2, fileEscrow.address, 0n, 0n, data, "x"]);
+          await viem.assertions.revertWithCustomErrorWithArgs(
+            propose(offer(owner.account.address, usdc.address)), wallet, "ArbiterNotNeutral", [getAddress(owner.account.address)],
+          );
+          await viem.assertions.revertWithCustomError(propose(offer(arbiter.account.address, fileEscrow.address)), wallet, "WrongToken");
+        });
+
+        it("can give the buyer's money back before it settles", async () => {
+          const ctx = await buyerOffer();
+          const { usdc, fileEscrow } = ctx;
+          await runCall(ctx, encodeFunctionData({ abi: fileEscrow.abi, functionName: "accept", args: [0n] }));
+          const before = await usdc.read.balanceOf([contractor.account.address]);
+          await runCall(ctx, encodeFunctionData({ abi: fileEscrow.abi, functionName: "refund", args: [0n, 0n] }));
+          assert.equal((await fileEscrow.read.getMilestone([0n, 0n])).status, 6); // Refunded
+          assert.equal(await usdc.read.balanceOf([contractor.account.address]), before + usd(300));
+        });
+
+        it("refuses a non-neutral arbiter, another token, and deals it does not sell", async () => {
+          const propose = (ctx: Awaited<ReturnType<typeof deploy>>, data: `0x${string}`) =>
+            ctx.asAgent.write.propose([2, ctx.fileEscrow.address, 0n, 0n, data, "x"]);
+          const ownerAddr = getAddress(owner.account.address);
+
+          // The buyer names the wallet's own owner as the arbiter.
+          const ctx = await buyerOffer(owner.account.address);
+          const accept = encodeFunctionData({ abi: ctx.fileEscrow.abi, functionName: "accept", args: [0n] });
+          await viem.assertions.revertWithCustomErrorWithArgs(propose(ctx, accept), ctx.wallet, "ArbiterNotNeutral", [ownerAddr]);
+
+          // Paid in a token that is not the wallet's.
+          const other = await viem.deployContract("MockUSDC");
+          await other.write.mint([contractor.account.address, usd(10)]);
+          const otherAsBuyer = await viem.getContractAt("MockUSDC", other.address, { client: { wallet: contractor } });
+          await otherAsBuyer.write.approve([ctx.fileEscrow.address, usd(10)]);
+          await ctx.asBuyer.write.offerToBuy([ctx.wallet.address, arbiter.account.address, other.address, fileTerms(1), REVIEW, ""]);
+          const acceptOther = encodeFunctionData({ abi: ctx.fileEscrow.abi, functionName: "accept", args: [1n] });
+          await viem.assertions.revertWithCustomError(propose(ctx, acceptOther), ctx.wallet, "WrongToken");
+
+          // A deal between strangers: delivering on it is not the wallet's move.
+          const asStranger = await fileEscrowAs(ctx.fileEscrow, stranger);
+          const usdcAsStranger = await viem.getContractAt("MockUSDC", ctx.usdc.address, { client: { wallet: stranger } });
+          await ctx.usdc.write.mint([stranger.account.address, usd(10)]);
+          await usdcAsStranger.write.approve([ctx.fileEscrow.address, usd(10)]);
+          await asStranger.write.offerToBuy([evil.account.address, arbiter.account.address, ctx.usdc.address, fileTerms(1), REVIEW, ""]);
+          const deliver = encodeFunctionData({ abi: ctx.fileEscrow.abi, functionName: "deliver", args: [2n, 0n, keccak256(toHex("x")), ""] });
+          await viem.assertions.revertWithCustomError(propose(ctx, deliver), ctx.wallet, "NotSellerOfDeal");
         });
       });
 

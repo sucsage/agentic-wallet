@@ -82,6 +82,10 @@ export async function transfer(input: {
   const { key, kind, fromId, toId, amount } = input;
   if (amount <= 0n) throw new Error("Amount must be positive");
   if ((fromId === null) !== (kind === "DEPOSIT")) throw new Error("Only a deposit has no source account");
+  // A fresh database has no reserve yet: open it on first use instead of failing the transfer.
+  for (const c of Object.keys(RESERVES) as Currency[]) {
+    if (fromId === RESERVES[c].id || toId === RESERVES[c].id) await reserveAccount(c);
+  }
 
   try {
     return await db.$transaction(async (tx) => {

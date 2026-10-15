@@ -1,0 +1,5 @@
+# Never upload local secrets or backups; Vercel gets its env from project settings.
+.env*
+*.bak
+.next
+node_modules

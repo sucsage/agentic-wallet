@@ -1,2 +1,4 @@
 .secrets/
 .claude/
+contracts/deployments/20261020.json
+.DS_Store

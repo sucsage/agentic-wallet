@@ -8,6 +8,7 @@ const KIND_LABEL = {
   FUND: "Locked for a deal",
   REFUND: "Refund from a deal",
   PAYOUT: "Payment received",
+  WITHDRAW: "Payment from a deal (invited seller)",
 } as const;
 
 /**

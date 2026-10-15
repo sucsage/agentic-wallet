@@ -1,6 +1,6 @@
 import "server-only";
 
-import { type Address, type Hex, encodeFunctionData, getAddress, keccak256, parseUnits, toHex } from "viem";
+import { type Address, type Hex, encodeFunctionData, getAddress, keccak256, parseEventLogs, parseUnits, toHex } from "viem";
 
 import type { Currency } from "@/generated/prisma/client";
 
@@ -48,7 +48,8 @@ export async function createWorkspace(
         dailyLimit: limits.dailyLimit,
         approvers: [roles.owner],
         threshold: walletDefaults.threshold,
-        recipients: [roles.contractor],
+        // Bank wallets start with an empty allowlist: users add friends as payees themselves.
+        recipients: bankToken ? [] : [roles.contractor],
         escrows: [config.contracts.escrow],
       },
       // Bank wallets hold no idle money; the factory could not mint mTHB / mCNY anyway.
@@ -56,7 +57,12 @@ export async function createWorkspace(
     ],
   });
   if (outcome.status !== "success") throw new Error(`Wallet creation failed: ${"error" in outcome ? outcome.error : ""}`);
-  const address = getAddress(outcome.result as Address);
+  // The address comes from the receipt's WalletCreated event. The pre-send simulation's result is
+  // only a prediction: two users creating wallets at the same moment were both given the same one.
+  const receipt = await publicClient().getTransactionReceipt({ hash: outcome.hash });
+  const [created] = parseEventLogs({ abi: agentWalletFactoryAbi, eventName: "WalletCreated", logs: receipt.logs });
+  if (!created) throw new Error("Wallet creation succeeded but emitted no WalletCreated event");
+  const address = getAddress(created.args.wallet);
 
   if (bankToken) {
     // File deals go through FileEscrow, which the factory's Config cannot allowlist yet.

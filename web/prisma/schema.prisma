@@ -20,11 +20,15 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  sessions     Session[]
-  accounts     Account[]
-  profile      Profile?
-  wallets      UserWallet[]
-  bankCustomer BankCustomer?
+  sessions        Session[]
+  accounts        Account[]
+  profile         Profile?
+  wallets         UserWallet[]
+  bankCustomer    BankCustomer?
+  dealDrafts      DealDraft[]
+  friendsAsked    Friendship[]  @relation("friendRequester")
+  friendsReceived Friendship[]  @relation("friendAddressee")
+  groups          GroupMember[]
 }
 
 model Session {
@@ -240,6 +244,8 @@ model BankCustomer {
   user        User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
   /// When the customer last agreed to let the app use the linked accounts.
   consentedAt DateTime?
+  /// Reviewer access to the chain explorer (/admin/chain). Set only by scripts/make-admin.mts.
+  isAdmin     Boolean          @default(false)
   createdAt   DateTime         @default(now())
 
   accounts BankAccount[]
@@ -250,6 +256,8 @@ model BankCustomer {
 enum BankAccountKind {
   USER
   RESERVE
+  /// Money leaving the demo bank for a PromptPay id or another bank (simulated, one per currency).
+  EXTERNAL
 }
 
 enum BankTransferKind {
@@ -261,6 +269,9 @@ enum BankTransferKind {
   REFUND
   /// Reserve → seller (or buyer), after the tokens are redeemed on-chain.
   PAYOUT
+  /// An invited seller's earnings → the payout destination they chose (a Mock Bank account, or
+  /// the EXTERNAL account standing in for PromptPay / another bank).
+  WITHDRAW
 }
 
 model BankAccount {
@@ -307,3 +318,206 @@ model BankTransfer {
   @@index([fromId])
   @@index([toId])
 }
+
+// ---------------------------------------------------------------------------------------------
+// Deal drafts (PDPA): what the agent drafts for a bank-paid file deal. Names, titles and
+// milestone descriptions live only here, where they can be deleted; the chain gets their hash.
+// ---------------------------------------------------------------------------------------------
+
+enum DealDraftStatus {
+  DRAFT
+  FUNDED
+  FAILED
+  CANCELLED
+}
+
+/// Who drafted the deal: the buyer (locks money when approved) or the seller (offers work; the
+/// buyer pays in when they accept).
+enum DraftSide {
+  BUY
+  SELL
+}
+
+model DealDraft {
+  id            String          @id @default(cuid())
+  side          DraftSide       @default(BUY)
+  /// SELL drafts: the buyer's wallet the offer is made to. BUY drafts: null (the wallet is the buyer).
+  buyer         String?
+  userId        String
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  walletAddress String
+  seller        String
+  title         String
+  summary       String
+  /// [{ name, amount (minor units, string), hasFile, due, acceptance }]
+  milestones    Json
+  reviewHours   Int
+  /// sha256 of the terms, written on-chain as the offer's termsURI ("sha256:<hex>").
+  termsHash     String
+  status        DealDraftStatus @default(DRAFT)
+  /// The mandate's EIP-712 digest once approved: the funding record's id.
+  fundingId     String?
+  dealId        Int?
+  /// Last funding result (steps, tx hashes, error), for the UI.
+  result        Json?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([userId, walletAddress])
+}
+
+// ---------------------------------------------------------------------------------------------
+// Social: friends and groups. Being friends never allowlists anyone: adding a friend as a payee
+// is a separate owner action. A group deal needs `threshold` member votes before the proposer's
+// own bank account is debited, so a group shares decisions, not a pot of idle money.
+// ---------------------------------------------------------------------------------------------
+
+enum FriendshipStatus {
+  PENDING
+  ACCEPTED
+}
+
+model Friendship {
+  id          String           @id @default(cuid())
+  requesterId String
+  addresseeId String
+  requester   User             @relation("friendRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  addressee   User             @relation("friendAddressee", fields: [addresseeId], references: [id], onDelete: Cascade)
+  status      FriendshipStatus @default(PENDING)
+  createdAt   DateTime         @default(now())
+  acceptedAt  DateTime?
+
+  @@unique([requesterId, addresseeId])
+  @@index([addresseeId])
+}
+
+enum GroupRole {
+  ADMIN
+  MEMBER
+}
+
+model Group {
+  id          String   @id @default(cuid())
+  name        String
+  currency    Currency
+  createdById String
+  /// Member votes a group deal needs before it is locked (N of M).
+  threshold   Int
+  createdAt   DateTime @default(now())
+
+  members   GroupMember[]
+  proposals GroupProposal[]
+}
+
+model GroupMember {
+  groupId  String
+  userId   String
+  group    Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role     GroupRole @default(MEMBER)
+  joinedAt DateTime  @default(now())
+
+  @@id([groupId, userId])
+  @@index([userId])
+}
+
+enum GroupProposalStatus {
+  OPEN
+  REJECTED
+  EXECUTED
+  FAILED
+}
+
+model GroupProposal {
+  id         String              @id @default(cuid())
+  groupId    String
+  group      Group               @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  proposerId String
+  /// The proposer's bank-deal draft; it is locked from the proposer's account once approved.
+  draftId    String              @unique
+  status     GroupProposalStatus @default(OPEN)
+  createdAt  DateTime            @default(now())
+
+  votes GroupVote[]
+
+  @@index([groupId])
+}
+
+model GroupVote {
+  proposalId String
+  userId     String
+  proposal   GroupProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  approve    Boolean
+  createdAt  DateTime      @default(now())
+
+  @@id([proposalId, userId])
+}
+
+/// A seller's delivery for one FileEscrow milestone (PDPA: the file and note live here and can be
+/// deleted; the chain holds only the sha256 work hash and a commitment to the key).
+model DealDelivery {
+  id           String   @id @default(cuid())
+  /// FileEscrow address: deal ids restart with every escrow deployment.
+  escrow       String
+  dealId       Int
+  index        Int
+  sellerUserId String
+  /// The seller's evidence: what was delivered and how it meets the acceptance criteria.
+  note         String
+  fileName     String?
+  mime         String?
+  size         Int?
+  /// AES-256-GCM ciphertext of the file; the key below stays on the server (demo custody).
+  ciphertext   Bytes?
+  iv           String?
+  tag          String?
+  fileKey      String?
+  /// sha256 of the file (or of the note when there is no file): the work hash anchored on-chain.
+  sha256       String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([escrow, dealId, index])
+}
+
+// ---------------------------------------------------------------------------------------------
+// Invited sellers: someone without an account is hired through a link. The server runs an agent
+// wallet for them (the contracts see an ordinary seller wallet); the link is the only credential,
+// so it is stored as a hash, and the payout destination can be set once and never changed.
+// ---------------------------------------------------------------------------------------------
+
+enum PayoutMethod {
+  /// A Mock Bank account number; the account holder's name must match.
+  MOCKBANK
+  /// PromptPay: phone, citizen id or e-wallet id, typed or read from a PromptPay QR code.
+  PROMPTPAY
+  /// Another bank's account number (simulated transfer).
+  BANK
+}
+
+model SellerInvite {
+  id           String        @id @default(cuid())
+  /// sha256 of the link's secret; the secret itself is shown to the buyer once.
+  tokenHash    String        @unique
+  /// The buyer who invited them.
+  userId       String
+  buyerWallet  String
+  /// The agent wallet the server runs for the invited seller.
+  sellerWallet String        @unique
+  name         String
+  currency     Currency
+  payoutMethod PayoutMethod?
+  /// Account number or PromptPay id, as entered.
+  payoutTarget String?
+  /// Bank code for BANK payouts (e.g. KBANK).
+  payoutBank   String?
+  payoutName   String?
+  /// The Mock Bank account paid for MOCKBANK payouts.
+  payoutAccountId String?
+  payoutSetAt  DateTime?
+  expiresAt    DateTime
+  createdAt    DateTime      @default(now())
+
+  @@index([userId])
+}
+

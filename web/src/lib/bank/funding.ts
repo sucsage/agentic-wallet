@@ -13,7 +13,7 @@ import {
 } from "viem";
 
 import { agentWalletAbi, fileEscrowAbi, mockTHBAbi } from "../abis";
-import { type TxOutcome, account, publicClient, send } from "../chain";
+import { type TxOutcome, account, atFreshBlock, publicClient, send } from "../chain";
 import { config } from "../config";
 import { db } from "../db";
 import { InsufficientFunds, accountOf, reserveIdFor, transfer } from "./ledger";
@@ -35,6 +35,12 @@ import { InsufficientFunds, accountOf, reserveIdFor, transfer } from "./ledger";
  * funding stays PENDING and the caller retries later. Refunding first revokes the mandate, so no
  * late or replayed transaction can lock the money after it went back to the buyer.
  */
+
+/** A contract read that sees at least everything this process already confirmed (see chain.ts). */
+const fresh = ((args: Parameters<ReturnType<typeof publicClient>["readContract"]>[0]) =>
+  atFreshBlock((blockNumber) => publicClient().readContract({ ...args, blockNumber }))) as ReturnType<
+  typeof publicClient
+>["readContract"];
 
 export const KIND_SETUP_FILE_DEAL = 4;
 
@@ -152,16 +158,16 @@ export async function fundJustInTime(walletInput: Address, m: Mandate, signature
   const mthb = bankAccount ? config.bankToken(bankAccount.currency) : null;
   const reserveId = bankAccount ? reserveIdFor(bankAccount.currency) : "";
 
-  const minted = () => pc.readContract({ address: mthb!, abi: mockTHBAbi, functionName: "minted", args: [fundingId] });
+  const minted = () => fresh({ address: mthb!, abi: mockTHBAbi, functionName: "minted", args: [fundingId] });
   const mandateUsed = () =>
-    pc.readContract({ address: wallet, abi: agentWalletAbi, functionName: "mandateUsed", args: [fundingId] });
+    fresh({ address: wallet, abi: agentWalletAbi, functionName: "mandateUsed", args: [fundingId] });
   const debitRow = () => db.bankTransfer.findUnique({ where: { idempotencyKey: keys.debit } });
 
   // 1. Check. Nothing moves until the owner's signature and the request itself are confirmed.
   if (m.kind !== KIND_SETUP_FILE_DEAL || getAddress(m.target) !== fileEscrow || m.amount <= 0n) {
     return result("REJECTED", { error: "Only a buyer's file-deal offer can be funded from the bank" });
   }
-  const owner = await pc.readContract({ address: wallet, abi: agentWalletAbi, functionName: "owner" });
+  const owner = await fresh({ address: wallet, abi: agentWalletAbi, functionName: "owner" });
   const signer = await recoverTypedDataAddress({ ...typedMandate(wallet, m), signature });
   if (signer !== getAddress(owner)) return result("REJECTED", { error: "The mandate is not signed by the wallet owner" });
   if (!bankAccount) return result("REJECTED", { error: "This wallet has no Mock Bank account" });
@@ -239,7 +245,7 @@ export async function fundJustInTime(walletInput: Address, m: Mandate, signature
     // b. Burn the tokens minted for this funding, so mTHB in circulation matches the reserve again.
     if (await minted()) {
       const redeemed = () =>
-        pc.readContract({ address: token, abi: mockTHBAbi, functionName: "redeemed", args: [wallet, fundingId] });
+        fresh({ address: token, abi: mockTHBAbi, functionName: "redeemed", args: [wallet, fundingId] });
       if (await redeemed()) {
         steps.push({ step: "redeem", done: true });
       } else {
@@ -284,9 +290,9 @@ function isCertainFailure(outcome: TxOutcome): boolean {
  */
 async function findLock(wallet: Address, digest: Hex, lockTx?: Hex): Promise<{ dealId?: number } | null> {
   const pc = publicClient();
-  const count = await pc.readContract({ address: wallet, abi: agentWalletAbi, functionName: "proposalCount" });
+  const count = await fresh({ address: wallet, abi: agentWalletAbi, functionName: "proposalCount" });
   for (let id = count; id > 0n; id--) {
-    const p = await pc.readContract({ address: wallet, abi: agentWalletAbi, functionName: "getProposal", args: [id - 1n] });
+    const p = await fresh({ address: wallet, abi: agentWalletAbi, functionName: "getProposal", args: [id - 1n] });
     if (p.mandateHash !== digest) continue;
     if (!lockTx) return {};
     const receipt = await pc.getTransactionReceipt({ hash: lockTx });

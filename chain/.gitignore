@@ -1,0 +1,6 @@
+# Generated per machine by scripts/setup-besu.sh (genesis, validator key, allowlist, compose file)
+network/
+qbft-config.json
+permissions_config.toml
+docker-compose.yml
+jwt-public.pem

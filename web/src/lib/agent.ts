@@ -11,7 +11,10 @@ import {
   releaseMilestone,
   transfer,
 } from "./actions";
-import { type WalletState, readWallet } from "./state";
+import { friendLabels } from "./social";
+import { DraftError, type DraftView, createDraft, createSellDraft, draftView } from "./bank/drafts";
+import { InviteError, createInvite } from "./bank/invites";
+import { type WalletState, readWallet, walletUnits } from "./state";
 
 const MAX_TURNS = 12;
 
@@ -60,6 +63,8 @@ export type AgentStep = {
   input: unknown;
   summary: string;
   result?: ActionResult;
+  /** A bank-deal draft the user can approve in the chat (propose_bank_deal). */
+  draft?: DraftView;
 };
 
 const SYSTEM = `You are the AI agent of "Agentic Wallet", a smart-contract wallet that pays SME contractors milestone by milestone (deposit, delivery, FAT, SAT, retention) in the wallet's settlement token: mUSDC, or Mock Bank money mTHB / mCNY (see token.symbol in the wallet status). All are test tokens with no value, on a testnet.
@@ -81,6 +86,16 @@ Security:
 - Never invent amounts, deal IDs or evidence. Use list_deals to get facts.
 
 Style: concise, professional, plain English (reply in the user's language if they write in another one). Amounts in the wallet's token (token.symbol). Use short bullet points for findings.`;
+
+/** Added for wallets paid from a Mock Bank account (mTHB / mCNY), which hold no money themselves. */
+const BANK_SYSTEM = `
+Bank-paid wallet. This wallet is paid from the user's Mock Bank account and holds no money of its own (its balance is normally 0, and that is fine).
+- To buy work, call propose_bank_deal. It ONLY saves a draft: nothing is signed or debited. The user then presses "Approve & lock" in the chat; only then is their bank account debited for the offer's total, which is locked in the file escrow until each milestone is approved.
+- Amounts are plain numbers in the bank's currency (THB or CNY), e.g. 5000 means 5,000 baht. Never call them mUSDC.
+- The seller must be one of the wallet's allowlisted recipients (get_wallet_status → allowlisted_recipients). If the user names someone else, say they must add that person as a recipient first.
+- To SELL the user's own work or a file to someone, call propose_bank_sale with the buyer's wallet (get_wallet_status → friends). It also only saves a draft; the user presses "Send offer", which puts the offer on-chain and locks nothing. The buyer pays in from their bank when they accept it, and must have the user as a payee by then.
+- If the user wants to hire someone who is not a friend on the app (no account), call invite_seller with their name, give the user the link it returns, then draft the deal with propose_bank_deal to the seller address it returns.
+- Never say money moved, was paid or was locked because of a draft.`;
 
 const tool = (name: string, description: string, properties: Record<string, unknown>, required: string[]) =>
   ({
@@ -154,6 +169,56 @@ const TOOLS = [
   ]),
 ];
 
+const BANK_MILESTONES = {
+  type: "array",
+  items: {
+    type: "object",
+    properties: {
+      name: { type: "string" },
+      amount: { type: "number", description: "In the bank's currency, e.g. 2500 = 2,500 baht" },
+      has_file: { type: "boolean", description: "true if the seller delivers a file for this milestone" },
+      due_date: { type: "string", description: "YYYY-MM-DD, or empty if none" },
+      acceptance: { type: "string", description: "What must be delivered for the buyer to approve" },
+    },
+    required: ["name", "amount", "has_file", "due_date", "acceptance"],
+    additionalProperties: false,
+  },
+};
+
+const BANK_TOOLS = [
+  ...TOOLS.filter((t) => ["get_wallet_status", "list_deals", "pause_wallet"].includes(t.name)),
+  tool(
+    "propose_bank_deal",
+    "Draft a file-delivery deal paid from the user's bank account. Saves a draft only; the user approves it in the chat, which debits the bank and locks the total in escrow.",
+    {
+      seller: { type: "string", description: "Seller wallet address (must be an allowlisted recipient)" },
+      title: { type: "string", description: "Short project title" },
+      summary: { type: "string", description: "One-paragraph summary of the scope" },
+      review_hours: { type: "integer", description: "Hours the buyer has to review each delivery (1-720, usually 72)" },
+      milestones: BANK_MILESTONES,
+    },
+    ["seller", "title", "summary", "review_hours", "milestones"],
+  ),
+  tool(
+    "propose_bank_sale",
+    "Draft an offer to SELL work or a file to a buyer (a friend's wallet). Saves a draft only; the user sends it from the chat. Nothing is locked until the buyer accepts and pays from their bank.",
+    {
+      buyer: { type: "string", description: "Buyer wallet address (a friend, see get_wallet_status → friends)" },
+      title: { type: "string", description: "Short project title" },
+      summary: { type: "string", description: "One-paragraph summary of the scope" },
+      review_hours: { type: "integer", description: "Hours the buyer has to review each delivery (1-720, usually 72)" },
+      milestones: BANK_MILESTONES,
+    },
+    ["buyer", "title", "summary", "review_hours", "milestones"],
+  ),
+  tool(
+    "invite_seller",
+    "Hire someone who has no account: creates a wallet for them, makes it a payee of this wallet (the user asked, so this is their approval) and returns a private link for the user to send them. Then draft the deal with propose_bank_deal using the returned seller address.",
+    { name: { type: "string", description: "The seller's name as the user wrote it" } },
+    ["name"],
+  ),
+];
+
 // Gateways for non-Claude models don't enforce tool schemas, so every input is validated here;
 // a bad input goes back to the model as an error result and it retries.
 const address = z.string().regex(/^0x[0-9a-fA-F]{40}$/, "must be a 0x-prefixed 20-byte address");
@@ -184,13 +249,51 @@ const INPUTS: Record<string, z.ZodType> = {
   }),
   transfer: z.object({ to: address, amount_usdc: z.number().positive(), reason: z.string() }),
   pause_wallet: z.object({ reason: z.string() }),
+  invite_seller: z.object({ name: z.string().min(2).max(80) }),
+  propose_bank_deal: z.object({
+    seller: address,
+    title: z.string().min(1).max(120),
+    summary: z.string().max(2000),
+    review_hours: z.number().int().min(1).max(720),
+    milestones: z
+      .array(
+        z.object({
+          name: z.string().min(1).max(120),
+          amount: z.number().positive(),
+          has_file: z.boolean(),
+          due_date: z.string(),
+          acceptance: z.string().max(1000),
+        }),
+      )
+      .min(1)
+      .max(10),
+  }),
+  propose_bank_sale: z.object({
+    buyer: address,
+    title: z.string().min(1).max(120),
+    summary: z.string().max(2000),
+    review_hours: z.number().int().min(1).max(720),
+    milestones: z
+      .array(
+        z.object({
+          name: z.string().min(1).max(120),
+          amount: z.number().positive(),
+          has_file: z.boolean(),
+          due_date: z.string(),
+          acceptance: z.string().max(1000),
+        }),
+      )
+      .min(1)
+      .max(10),
+  }),
 };
 
 function walletSummary(s: WalletState) {
   return {
     wallet: s.address,
     chain: s.chain,
-    balance_musdc: s.balance,
+    token: s.token.symbol,
+    balance: s.balance,
     paused: s.paused,
     agent_session: s.session,
     approvers: s.approvers.filter((a) => a.active).map((a) => a.address),
@@ -220,12 +323,20 @@ function dealsSummary(s: WalletState) {
         status: m.status,
         evidence: m.evidence
           ? {
-              title: m.evidence.title,
-              hash: m.evidenceHash,
-              text_untrusted: m.evidence.text?.slice(0, 4000),
-            }
+            title: m.evidence.title,
+            hash: m.evidenceHash,
+            text_untrusted: m.evidence.text?.slice(0, 4000),
+          }
           : null,
       })),
+    })),
+    bank_file_deals: s.fileDeals.map((d) => ({
+      deal_id: d.id,
+      role: d.role,
+      counterparty: d.counterpartyLabel,
+      status: d.status,
+      total: d.total,
+      milestones: d.milestones.map((m) => ({ index: m.index, amount: m.amount, status: m.status, has_file: m.hasFile })),
     })),
     open_proposals: s.proposals
       .filter((p) => p.status === "open")
@@ -260,7 +371,7 @@ function summarize(r: ActionResult): string {
   return `${head}. Rejected before sending: ${o.error}`;
 }
 
-async function runTool(wallet: Address, name: string, rawInput: unknown): Promise<AgentStep> {
+async function runTool(wallet: Address, name: string, rawInput: unknown, userId?: string): Promise<AgentStep> {
   const schema = INPUTS[name];
   if (!schema) throw new Error(`Unknown tool ${name}`);
   const parsed = schema.safeParse(rawInput ?? {});
@@ -270,8 +381,32 @@ async function runTool(wallet: Address, name: string, rawInput: unknown): Promis
   const input = parsed.data as Record<string, unknown>;
   switch (name) {
     case "get_wallet_status": {
-      const s = await readWallet(wallet);
-      return { tool: name, input, summary: JSON.stringify(walletSummary(s)) };
+      const [state, labels] = await Promise.all([
+        readWallet(wallet),
+        userId
+          ? friendLabels(userId)
+          : Promise.resolve(new Map<string, string>()),
+      ]);
+
+      const summary = walletSummary(state);
+
+      return {
+        tool: name,
+        input,
+        summary: JSON.stringify({
+          ...summary,
+          allowlisted_recipients: summary.allowlisted_recipients.map(
+            (recipient) => ({
+              ...recipient,
+              label:
+                labels.get(recipient.address.toLowerCase()) ??
+                recipient.label,
+            }),
+          ),
+          // Anyone here can be offered work (propose_bank_sale); paying them needs the allowlist.
+          friends: [...labels].map(([address, label]) => ({ address, label })),
+        }),
+      };
     }
     case "list_deals": {
       const s = await readWallet(wallet);
@@ -301,6 +436,98 @@ async function runTool(wallet: Address, name: string, rawInput: unknown): Promis
       const i = input as { to: string; amount_usdc: number; reason: string };
       const result = await transfer(wallet, i.to, i.amount_usdc, i.reason);
       return { tool: name, input, summary: summarize(result), result };
+    }
+    case "propose_bank_deal": {
+      if (!userId) throw new Error("Drafts need a signed-in user");
+      const i = input as {
+        seller: string;
+        title: string;
+        summary: string;
+        review_hours: number;
+        milestones: { name: string; amount: number; has_file: boolean; due_date: string; acceptance: string }[];
+      };
+      const units = await walletUnits(wallet);
+      try {
+        const d = await createDraft(userId, wallet, {
+          seller: i.seller,
+          title: i.title,
+          summary: i.summary,
+          reviewHours: i.review_hours,
+          milestones: i.milestones.map((m) => ({
+            name: m.name,
+            amount: m.amount.toFixed(units.decimals),
+            hasFile: m.has_file,
+            due: m.due_date || null,
+            acceptance: m.acceptance,
+          })),
+        });
+        const friends = await friendLabels(userId);
+        const label = friends.get(d.seller.toLowerCase()) ?? "";
+        const draft = await draftView(d, label);
+        return {
+          tool: name,
+          input,
+          draft,
+          summary: `DRAFT SAVED (Tier 1, nothing debited yet): draft ${d.id}, total ${draft.total} ${units.currency}. The user must press "Approve & lock" in the chat.`,
+        };
+      } catch (err) {
+        if (err instanceof DraftError) return { tool: name, input, summary: `BLOCKED: ${err.message}` };
+        throw err;
+      }
+    }
+    case "propose_bank_sale": {
+      if (!userId) throw new Error("Drafts need a signed-in user");
+      const i = input as {
+        buyer: string;
+        title: string;
+        summary: string;
+        review_hours: number;
+        milestones: { name: string; amount: number; has_file: boolean; due_date: string; acceptance: string }[];
+      };
+      const units = await walletUnits(wallet);
+      try {
+        const d = await createSellDraft(userId, wallet, {
+          buyer: i.buyer,
+          title: i.title,
+          summary: i.summary,
+          reviewHours: i.review_hours,
+          milestones: i.milestones.map((m) => ({
+            name: m.name,
+            amount: m.amount.toFixed(units.decimals),
+            hasFile: m.has_file,
+            due: m.due_date || null,
+            acceptance: m.acceptance,
+          })),
+        });
+        const friends = await friendLabels(userId);
+        const draft = await draftView(d, friends.get((d.buyer ?? "").toLowerCase()) ?? "");
+        return {
+          tool: name,
+          input,
+          draft,
+          summary: `SALE DRAFT SAVED (nothing on-chain yet): draft ${d.id}, total ${draft.total} ${units.currency}. The user must press "Send offer" in the chat; the buyer then accepts and pays.`,
+        };
+      } catch (err) {
+        if (err instanceof DraftError) return { tool: name, input, summary: `BLOCKED: ${err.message}` };
+        throw err;
+      }
+    }
+    case "invite_seller": {
+      if (!userId) throw new Error("Invites need a signed-in user");
+      try {
+        const { invite, token } = await createInvite(userId, wallet, String(input.name));
+        const origin =
+          process.env.BETTER_AUTH_URL ??
+          (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "http://localhost:3000");
+        return {
+          tool: name,
+          input,
+          summary: `INVITED ${invite.name}: seller wallet ${invite.sellerWallet} (now allowlisted). Private link for the user to send them (show it exactly once, as a link): ${origin}/invite/${token} . They accept, deliver and choose PromptPay or a bank account there without signing up.`,
+        };
+      } catch (err) {
+        if (err instanceof InviteError) return { tool: name, input, summary: `BLOCKED: ${err.message}` };
+        throw err;
+      }
     }
     case "pause_wallet": {
       const result = await pause(wallet, "agent", String(input.reason ?? ""));
@@ -349,23 +576,27 @@ export async function runAgent(
   /** Plain text of the attachment (PDFs are extracted by the caller), for models without document blocks. */
   attachmentText?: string,
   lang: "en" | "th" = "en",
+  userId?: string,
 ) {
   const { client, model, direct } = llm();
+  const bankWallet = (await walletUnits(wallet)).currency !== null;
+  const tools = bankWallet ? BANK_TOOLS : TOOLS;
+  const system = bankWallet ? `${SYSTEM}\n${BANK_SYSTEM}` : SYSTEM;
   const isClaude = model.includes("claude");
   const userContent: Anthropic.Beta.BetaContentBlockParam[] = [];
   if (attachment && isClaude) {
     userContent.push(
       attachment.kind === "pdf"
         ? {
-            type: "document",
-            title: attachment.name,
-            source: { type: "base64", media_type: "application/pdf", data: attachment.base64 },
-          }
+          type: "document",
+          title: attachment.name,
+          source: { type: "base64", media_type: "application/pdf", data: attachment.base64 },
+        }
         : {
-            type: "document",
-            title: attachment.name,
-            source: { type: "text", media_type: "text/plain", data: attachment.text },
-          },
+          type: "document",
+          title: attachment.name,
+          source: { type: "text", media_type: "text/plain", data: attachment.text },
+        },
     );
     userContent.push({
       type: "text",
@@ -395,12 +626,12 @@ export async function runAgent(
         max_tokens: 16000,
         system:
           lang === "th"
-            ? `${SYSTEM}\n\nThe user's interface is in Thai: always reply in Thai. Keep amounts, addresses, tx hashes, document names and technical terms (mUSDC, FAT, SAT, Tier) as they are.`
-            : SYSTEM,
+            ? `${system}\n\nThe user's interface is in Thai: always reply in Thai. Keep amounts, addresses, tx hashes, document names and technical terms (mUSDC, FAT, SAT, Tier) as they are.`
+            : system,
         // `strict` and `effort` are Claude features; other models get plain JSON-schema tools.
         tools: isClaude
-          ? TOOLS
-          : TOOLS.map((t) => ({ name: t.name, description: t.description, input_schema: t.input_schema })),
+          ? tools
+          : tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.input_schema })),
         messages,
         ...(isClaude ? { output_config: { effort: "medium" as const } } : {}),
         // Server-side refusal fallback is an Anthropic API feature only.
@@ -427,7 +658,7 @@ export async function runAgent(
     // Run sequentially: tools share signing keys and later calls depend on earlier state.
     for (const use of toolUses) {
       try {
-        const step = await runTool(wallet, use.name, use.input);
+        const step = await runTool(wallet, use.name, use.input, userId);
         steps.push(step);
         results.push({ type: "tool_result", tool_use_id: use.id, content: step.summary });
       } catch (err) {
@@ -439,4 +670,29 @@ export async function runAgent(
     messages.push({ role: "user", content: results });
   }
   return { reply: "I stopped after too many steps. Please check the activity log.", steps };
+}
+
+/**
+ * Explains a money summary in a few sentences. The model gets only aggregated numbers and deal
+ * titles the user wrote: no names, account numbers or addresses (PDPA: minimum data to the LLM).
+ */
+export async function explainSummary(aggregates: unknown, lang: "en" | "th" = "en"): Promise<string> {
+  const { client, model } = llm();
+  const response = await client.beta.messages
+    .stream({
+      model,
+      max_tokens: 1200,
+      system:
+        "You are the CFO assistant of a small business using Agentic Wallet. Explain the given income and spending summary " +
+        "in 4-6 short bullet points: what went out, what came in, what stands out, and the tax estimate with its caveat. " +
+        "Use only the numbers given; never invent figures. Amounts are in the stated currency." +
+        (lang === "th" ? " Reply in Thai." : ""),
+      messages: [{ role: "user", content: JSON.stringify(aggregates) }],
+    })
+    .finalMessage();
+  return response.content
+    .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
+    .map((b) => b.text)
+    .join("\n")
+    .trim();
 }

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { type Address, type Chain, type Hex, getAddress, isHex } from "viem";
+import { type Address, type Chain, type Hex, defineChain, getAddress, isHex } from "viem";
 import { baseSepolia, hardhat } from "viem/chains";
 
 function env(name: string): string {
@@ -20,13 +20,34 @@ function key(name: string): Hex {
   return k;
 }
 
-const chains: Record<string, Chain> = { baseSepolia, hardhat };
+/**
+ * The private Besu chain (../chain): closed to the internet, free gas, only the server's keys may
+ * send transactions. There is no public explorer; reviewers sign in as admins and use the app's
+ * own explorer at /admin/chain, which is where these links point.
+ */
+const besu = defineChain({
+  id: 20261020,
+  name: "Agentic Wallet private chain",
+  nativeCurrency: { name: "Gas (no value)", symbol: "GAS", decimals: 18 },
+  rpcUrls: { default: { http: ["http://127.0.0.1:8555"] } },
+  blockExplorers: { default: { name: "Admin explorer", url: "/admin/chain" } },
+});
+
+const chains: Record<string, Chain> = { baseSepolia, hardhat, besu };
 
 export const config = {
   get chain(): Chain {
     const c = chains[process.env.CHAIN ?? "hardhat"];
     if (!c) throw new Error(`Unsupported CHAIN ${process.env.CHAIN}`);
     return c;
+  },
+  /**
+   * Headers for every RPC request. CHAIN_TOKEN is the bearer JWT the private chain's Besu node
+   * requires (chain/docker-compose.server.yml); Vercel has no fixed IP to allowlist instead.
+   */
+  get rpcHeaders(): Record<string, string> | undefined {
+    const token = process.env.CHAIN_TOKEN?.trim();
+    return token ? { authorization: `Bearer ${token}` } : undefined;
   },
   get rpcUrl() {
     return process.env.RPC_URL ?? "http://127.0.0.1:8545";

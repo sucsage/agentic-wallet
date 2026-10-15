@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { authClient } from "@/lib/auth-client";
 import { useT } from "@/lib/i18n";
 
@@ -10,13 +11,13 @@ export function AccountLink() {
   if (isPending) return null;
   if (!data)
     return (
-      <a className="btn-ghost text-xs" href="/login">
+      <Link className="btn-ghost text-xs" href="/login">
         {t("auth.signIn")}
-      </a>
+      </Link>
     );
   const { name, image } = data.user;
   return (
-    <a className="btn-ghost text-xs" href="/profile">
+    <Link className="btn-ghost text-xs" href="/profile">
       {image ? (
         // eslint-disable-next-line @next/next/no-img-element -- provider avatar, any host
         <img src={image} alt="" className="h-5 w-5 rounded-full" referrerPolicy="no-referrer" />
@@ -26,6 +27,6 @@ export function AccountLink() {
         </span>
       )}
       <span className="max-w-32 truncate">{name}</span>
-    </a>
+    </Link>
   );
 }

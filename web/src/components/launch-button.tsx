@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useSyncExternalStore } from "react";
 
@@ -49,9 +50,9 @@ export function LaunchButton() {
     return (
       <div className="flex flex-col gap-2">
         <div>
-          <a className="btn-primary px-5 py-2.5 text-base" href="/login">
+          <Link className="btn-primary px-5 py-2.5 text-base" href="/login">
             {t("launch.signIn")}
-          </a>
+          </Link>
         </div>
         <p className="text-xs text-muted">{t("launch.note")}</p>
       </div>

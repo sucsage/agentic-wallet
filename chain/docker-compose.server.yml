@@ -1,0 +1,12 @@
+# Chain server mode (e.g. a home PC behind Tailscale Funnel; the web app runs on Vercel):
+#   docker compose -f docker-compose.yml -f docker-compose.server.yml up -d
+#   tailscale funnel --bg 8555          # public HTTPS URL -> 127.0.0.1:8555
+# Besu itself requires a bearer JWT on every RPC call (no proxy needed). It is verified against
+# chain/jwt-public.pem; tokens are issued on the dev machine with scripts/chain-token.mjs and the
+# private key never comes here. Without a valid token: 401. Transactions still come only from the
+# allowlisted app keys.
+services:
+  validator1:
+    environment:
+      BESU_RPC_HTTP_AUTHENTICATION_ENABLED: "true"
+      BESU_RPC_HTTP_AUTHENTICATION_JWT_PUBLIC_KEY_FILE: /cfg/jwt-public.pem

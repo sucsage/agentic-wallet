@@ -34,8 +34,23 @@ export const ROLE_LABEL: Record<Role, string> = {
 };
 
 let _public: ReturnType<typeof makePublic> | undefined;
+/** HTTP transport to the chain, with the gateway key when the chain sits behind one. */
+function rpcTransport() {
+  const headers = config.rpcHeaders;
+  return http(config.rpcUrl, headers ? { fetchOptions: { headers } } : undefined);
+}
+
 function makePublic() {
-  return createPublicClient({ chain: config.chain, transport: http(config.rpcUrl) });
+  // Receipts are polled every second: blocks come every 2 s on the private chain (viem waits 4 s by default).
+  const base = createPublicClient({ chain: config.chain, transport: rpcTransport(), pollingInterval: 1_000 });
+  // Every contract read sees at least what this process already confirmed (see freshBlock), unless
+  // the caller pinned a block itself. Without this, a page read right after a write can show the old state.
+  return base.extend((c) => ({
+    readContract: ((args: Parameters<typeof c.readContract>[0]) =>
+      args.blockNumber !== undefined || args.blockTag !== undefined
+        ? c.readContract(args)
+        : atFreshBlock((blockNumber) => c.readContract({ ...args, blockNumber }))) as typeof c.readContract,
+  })) as unknown as typeof base;
 }
 export function publicClient() {
   return (_public ??= makePublic());
@@ -60,7 +75,7 @@ export function roleAddresses(): Record<Exclude<Role, "bank">, Address> {
 }
 
 function walletClient(role: Role) {
-  return createWalletClient({ account: account(role), chain: config.chain, transport: http(config.rpcUrl) });
+  return createWalletClient({ account: account(role), chain: config.chain, transport: rpcTransport() });
 }
 
 // One in-flight transaction per role per server instance, so nonces don't collide.
@@ -86,6 +101,45 @@ export type TxOutcome =
 function isContractRevert(err: unknown): boolean {
   if (!(err instanceof Error && "walk" in err)) return false;
   return (err as BaseError).walk((e) => (e as Error).name === "ContractFunctionRevertedError") !== null;
+}
+
+/**
+ * Public RPCs such as sepolia.base.org are load-balanced: right after a transaction confirms, the
+ * next request can land on a node a block or two behind and see the old state (a balance of 0
+ * right after a mint). So every read or simulation that follows our own writes is pinned to a
+ * block at least as new as the last receipt we saw; a node that lacks it errors and is retried.
+ */
+let confirmedBlock = 0n;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+let lastFresh: { n: bigint; at: number } | null = null;
+
+/** A block number no older than any transaction this process has confirmed (reused for 1 s). */
+export async function freshBlock(): Promise<bigint> {
+  if (lastFresh && lastFresh.n >= confirmedBlock && Date.now() - lastFresh.at < 1000) return lastFresh.n;
+  for (let i = 0; i < 20; i++) {
+    const n = await publicClient().getBlockNumber({ cacheTime: 0 });
+    if (n >= confirmedBlock) {
+      lastFresh = { n, at: Date.now() };
+      return n;
+    }
+    await sleep(500);
+  }
+  return confirmedBlock;
+}
+
+/** Runs `fn` at a fresh block, retrying while the node answering has not caught up to it. */
+export async function atFreshBlock<T>(fn: (blockNumber: bigint) => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    const block = await freshBlock();
+    try {
+      return await fn(block);
+    } catch (err) {
+      // A contract revert is a real answer; anything else may be a node without that block.
+      if (isContractRevert(err) || attempt >= 5) throw err;
+      await sleep(800);
+    }
+  }
 }
 
 /** Turns a viem error into a short readable reason, e.g. `RecipientNotAllowed(0xBad…)`. */
@@ -155,7 +209,7 @@ export async function send<
   let simulationError: string | undefined;
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    simulated = await pc.simulateContract({ ...(call as any), account: account(role) });
+    simulated = await atFreshBlock((blockNumber) => pc.simulateContract({ ...(call as any), account: account(role), blockNumber }));
   } catch (err) {
     simulationError = revertReason(err);
     if (!opts.force) {
@@ -166,9 +220,17 @@ export async function send<
   return serialize(role, async () => {
     for (let attempt = 0; ; attempt++) {
       try {
+        // Gas is estimated at a fresh block too: a stale node would estimate a revert and refuse.
+        const gas = opts.force
+          ? 400_000n
+          : await atFreshBlock((blockNumber) =>
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              pc.estimateContractGas({ ...(call as any), account: account(role), blockNumber }),
+            ).then((g) => (g * 12n) / 10n);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const hash = await wc.writeContract({ ...(call as any), gas: opts.force ? 400_000n : undefined });
+        const hash = await wc.writeContract({ ...(call as any), gas });
         const receipt = await pc.waitForTransactionReceipt({ hash });
+        if (receipt.blockNumber > confirmedBlock) confirmedBlock = receipt.blockNumber;
         if (receipt.status === "success") {
           return { status: "success", hash, url: explorerTx(hash), result: jsonSafe(simulated?.result) };
         }

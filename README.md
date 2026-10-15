@@ -65,6 +65,50 @@ The chat agent needs one LLM provider: `LLM_BASE_URL` + `LLM_API_KEY` (any Anthr
 2. `./scripts/deploy-base-sepolia.sh`: deploys contracts, funds the other role keys, writes `.secrets/vercel.env`.
 3. Import the repo in Vercel with root directory `web/`, then paste `.secrets/vercel.env` plus the LLM variables (`LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`).
 
+## Private chain (Hyperledger Besu) — closed system with an admin explorer
+
+The app can run on its own permissioned chain instead of a public testnet: QBFT, chain id 20261020,
+free gas, and an **account allowlist** so only the app's keys can send transactions. There is no
+public explorer: reviewers verify transaction hashes in the app at `/admin/chain` (admins only).
+App data for this chain lives in the `besu` Postgres schema (`DB_SCHEMA=besu`), apart from the
+Base Sepolia data in `public`.
+
+```
+Vercel (web + signing keys) ──HTTPS + Bearer JWT──▶ Tailscale Funnel ──▶ Besu   (chain server, e.g. a home PC)
+```
+
+Besu checks a bearer JWT on every RPC call itself (no proxy): no token or a bad one gets 401. The
+token is issued on the dev machine (`node scripts/chain-token.mjs [days]`, private key in `.secrets/`,
+public key in `chain/jwt-public.pem`). The chain server holds only the validator key and that public key.
+
+**Chain server on a home PC (Windows, no domain, no public IP)**:
+
+1. Install Docker Desktop (WSL 2) and Tailscale; set Windows sleep to *Never* and let both start at
+   sign-in.
+2. On the dev machine: `bash scripts/setup-besu.sh --config-only` (genesis, validator key, allowlist,
+   JWT key pair and `.secrets/chain-token.txt`). Copy the `chain/` folder to the PC.
+3. On the PC, in PowerShell, in `chain/`:
+   `docker compose -f docker-compose.yml -f docker-compose.server.yml up -d`, then
+   `tailscale funnel --bg 8555` for a fixed public HTTPS URL `https://<pc>.<tailnet>.ts.net`.
+4. From the dev machine:
+   `BESU_RPC_URL=https://<pc>.<tailnet>.ts.net CHAIN_TOKEN=$(cat .secrets/chain-token.txt) bash scripts/deploy-besu.sh`
+   and `cd web && DB_SCHEMA=besu npx prisma db push`.
+
+The chain is only up while the PC is: keep it powered and online during the review and the final,
+and keep the Base Sepolia deployment as a fallback. Tokens expire (default 90 days); issue a new one
+with `node scripts/chain-token.mjs` and update Vercel.
+
+**Vercel env**: the values from `.secrets/besu.env`, plus `RPC_URL=https://<pc>.<tailnet>.ts.net`,
+`CHAIN_TOKEN=<contents of .secrets/chain-token.txt>`, `DB_SCHEMA=besu` and the usual keys, database
+and LLM settings.
+
+**Admins**: after a reviewer signs up in the app,
+`cd web && npx tsx --conditions=react-server --env-file=.env.local scripts/make-admin.mts thai <username>`.
+
+**All on one machine** (development): `bash scripts/setup-besu.sh` starts the chain with its RPC on
+127.0.0.1:8555, deploys and pushes the schema; merge `.secrets/besu.env` into `web/.env.local` and
+add `DB_SCHEMA=besu`. Stop with `cd chain && docker compose down` (`down -v` wipes the chain).
+
 ## Contracts
 
 ```bash

@@ -5,6 +5,7 @@ import { type Address, getAddress } from "viem";
 import { agentWalletAbi } from "./abis";
 import { getSession } from "./auth";
 import { customerOfUser } from "./bank/customers";
+import { primaryWalletAddress } from "./user-wallets";
 import { publicClient, roleAddresses } from "./chain";
 import { db } from "./db";
 
@@ -47,6 +48,21 @@ export async function requireCustomer() {
   const customer = await customerOfUser(user.id);
   if (!customer) throw new HttpError(403, "Sign in through the Mock Bank first");
   return { user, customer };
+}
+
+/** A reviewer: a bank customer flagged isAdmin (only scripts/make-admin.mts sets it). */
+export async function requireAdmin() {
+  const { user, customer } = await requireCustomer();
+  if (!customer.isAdmin) throw new HttpError(403, "Admins only");
+  return { user, customer };
+}
+
+/** The signed-in customer's agent wallet (the one their bank account pays for). */
+export async function requireBankWallet() {
+  const { user, customer } = await requireCustomer();
+  const primary = await primaryWalletAddress(user.id);
+  if (!primary) throw new HttpError(409, "Create your agent wallet first");
+  return { user, customer, wallet: await demoWallet(primary) };
 }
 
 /** A sandbox wallet that belongs to the signed-in user (UserWallet row) and to this demo on-chain. */

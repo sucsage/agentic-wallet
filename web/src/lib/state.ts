@@ -1,8 +1,8 @@
 import "server-only";
 
-import { type Abi, type Address, type Hex, decodeEventLog, decodeFunctionData, formatUnits, getAddress, pad, toHex } from "viem";
+import { type Abi, type Address, type Hex, decodeEventLog, decodeFunctionData, formatUnits, getAddress, pad, toHex, parseAbiItem } from "viem";
 
-import { agentWalletAbi, milestoneEscrowAbi, mockUSDCAbi } from "./abis";
+import { agentWalletAbi, fileEscrowAbi, milestoneEscrowAbi, mockUSDCAbi } from "./abis";
 import { type Role, ROLE_LABEL, publicClient, roleAddresses } from "./chain";
 import { config, explorerAddress, explorerTx } from "./config";
 
@@ -104,6 +104,64 @@ export type AuditEntry = {
 };
 
 export type WalletState = Awaited<ReturnType<typeof readWallet>>;
+
+export const FILE_DEAL_STATUS = ["Proposed", "Active", "Cancelled"] as const;
+export const FILE_MILESTONE_STATUS = ["Pending", "Delivered", "Approved", "KeyReleased", "Released", "Disputed", "Refunded"] as const;
+
+/** A FileEscrow deal this wallet is party to (bank-paid deals: buyer offers locked just in time). */
+export type FileDealView = {
+  id: number;
+  role: "buyer" | "seller";
+  counterparty: Address;
+  counterpartyLabel: string;
+  /** Who made the offer: while it is Proposed, only the other side can accept it. */
+  offeredBy: "me" | "them";
+  total: string;
+  status: (typeof FILE_DEAL_STATUS)[number];
+  reviewHours: number;
+  termsURI: string;
+  milestones: { index: number; amount: string; hasFile: boolean; status: (typeof FILE_MILESTONE_STATUS)[number]; deadline: number }[];
+};
+
+/** FileEscrow deals for wallets that have one configured; empty otherwise (older mUSDC setups). */
+export async function readFileDeals(wallet: Address, u?: Units): Promise<FileDealView[]> {
+  if (!process.env.FILE_ESCROW_ADDRESS) return [];
+  const escrow = config.bankContracts.fileEscrow;
+  const units = u ?? (await walletUnits(wallet));
+  const pc = publicClient();
+  const ids = await pc.readContract({ address: escrow, abi: fileEscrowAbi, functionName: "dealsOf", args: [wallet] });
+  return Promise.all(
+    ids.map(async (id) => {
+      const d = await pc.readContract({ address: escrow, abi: fileEscrowAbi, functionName: "getDeal", args: [id] });
+      const buyer = getAddress(d.buyer) === wallet;
+      const counterparty = getAddress(buyer ? d.seller : d.buyer);
+      const milestones = await Promise.all(
+        Array.from({ length: Number(d.milestoneCount) }, async (_, i) => {
+          const m = await pc.readContract({ address: escrow, abi: fileEscrowAbi, functionName: "getMilestone", args: [id, BigInt(i)] });
+          return {
+            index: i,
+            amount: amountOf(m.amount, units),
+            hasFile: m.hasFile,
+            status: FILE_MILESTONE_STATUS[m.status],
+            deadline: Number(m.deadline),
+          };
+        }),
+      );
+      return {
+        id: Number(id),
+        role: buyer ? ("buyer" as const) : ("seller" as const),
+        counterparty,
+        counterpartyLabel: labelFor(counterparty),
+        offeredBy: getAddress(d.creator) === wallet ? ("me" as const) : ("them" as const),
+        total: amountOf(d.total, units),
+        status: FILE_DEAL_STATUS[d.status],
+        reviewHours: Number(d.reviewPeriod) / 3600,
+        termsURI: d.termsURI,
+        milestones,
+      };
+    }),
+  );
+}
 
 const ZERO_HASH = `0x${"0".repeat(64)}`;
 
@@ -359,6 +417,66 @@ export async function readAudit(wallet: Address, fromBlock: bigint, dealIds: num
   }
 }
 
+
+async function readAllowedRecipients(
+  wallet: Address,
+  createdAtBlock: bigint,
+) {
+  const pc = publicClient();
+  const contractor = roleAddresses().contractor;
+  const blockNumber = await pc.getBlockNumber();
+
+  const event = parseAbiItem(
+    "event RecipientSet(address indexed recipient, bool allowed)",
+  );
+
+  // Mapping ดึง keys ทั้งหมดไม่ได้ จึงรวบรวม address จาก events ก่อน
+  const candidates = new Map<string, Address>();
+  // Blocks come every 2 s on the private chain; big ranges keep this to a call or two per read.
+  const chunkSize = 10_000n;
+
+  for (
+    let fromBlock = createdAtBlock;
+    fromBlock <= blockNumber;
+    fromBlock += chunkSize
+  ) {
+    const end = fromBlock + chunkSize - 1n;
+
+    const logs = await pc.getLogs({
+      address: wallet,
+      event,
+      fromBlock,
+      toBlock: end < blockNumber ? end : blockNumber,
+      strict: true,
+    });
+
+    for (const log of logs) {
+      const address = getAddress(log.args.recipient);
+      candidates.set(address.toLowerCase(), address);
+    }
+  }
+
+  // ตรวจสถานะจริง เพราะบางรายอาจถูกถอดออกภายหลัง
+  const checked = await Promise.all(
+    [...candidates.values()].map(async (address) => ({
+      address,
+      label: address,
+      allowed: await pc.readContract({
+        address: wallet,
+        abi: agentWalletAbi,
+        functionName: "allowedRecipient",
+        args: [address],
+        blockNumber,
+      }),
+    })),
+  );
+
+  // Wallets made before the demo contractor was retired still allow it on-chain; it is not a payee users chose.
+  return checked
+    .filter((recipient) => recipient.allowed && recipient.address.toLowerCase() !== contractor.toLowerCase())
+    .map(({ address, label }) => ({ address, label }));
+}
+
 export async function readWallet(addressInput: string) {
   const wallet = getAddress(addressInput);
   const pc = publicClient();
@@ -369,7 +487,7 @@ export async function readWallet(addressInput: string) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     pc.readContract({ address: wallet, abi: agentWalletAbi, functionName, args } as any) as Promise<any>;
 
-  const [owner, paused, session, remaining, threshold, epoch, createdAtBlock, balance, ownerApproves, contractorOk, escrowOk] =
+  const [owner, paused, session, remaining, threshold, epoch, createdAtBlock, balance, ownerApproves, escrowOk] =
     await Promise.all([
       read("owner") as Promise<Address>,
       read("paused") as Promise<boolean>,
@@ -385,12 +503,12 @@ export async function readWallet(addressInput: string) {
         args: [wallet],
       }),
       read("isApprover", [roles.owner]) as Promise<boolean>,
-      read("allowedRecipient", [roles.contractor]) as Promise<boolean>,
       read("allowedEscrow", [config.contracts.escrow]) as Promise<boolean>,
     ]);
 
+  const recipients = await readAllowedRecipients(wallet,createdAtBlock);
   const [expiresAt, maxPerTx, dailyLimit] = session;
-  const deals = await readDeals(wallet, units);
+  const [deals, fileDeals] = await Promise.all([readDeals(wallet, units), readFileDeals(wallet, units)]);
   const proposals = (await readProposals(wallet, epoch, units)).map((p) => {
     if (!p.release) return p;
     const m = deals.find((d) => d.id === p.release!.dealId)?.milestones[p.release.index];
@@ -421,11 +539,14 @@ export async function readWallet(addressInput: string) {
     approvers: [{ role: "owner" as Role, address: roles.owner, active: ownerApproves }],
     threshold: Number(threshold),
     allowlist: {
-      recipients: contractorOk ? [{ address: roles.contractor, label: "Contractor" }] : [],
-      escrows: escrowOk ? [{ address: config.contracts.escrow, label: "MilestoneEscrow" }] : [],
+      recipients,
+      escrows: escrowOk 
+        ? [{ address: config.contracts.escrow, label: "MilestoneEscrow" }] 
+        : [],
     },
     roles,
     deals,
+    fileDeals,
     proposals,
   };
 }

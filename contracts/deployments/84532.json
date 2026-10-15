@@ -1,10 +1,12 @@
 {
   "chainId": 84532,
-  "startBlock": "47986030",
+  "startBlock": "48102230",
   "contracts": {
-    "MockUSDC": "0x3b190bdeca8b04849418e403a7a0a380314fddc5",
-    "MilestoneEscrow": "0x8c0a2b2d19b3a4c5fcc3cc89454807f7f7a99c6a",
-    "AgentWalletFactory": "0x3258ddda874fcf21b6cb5c2069c2836b53d902ec",
-    "FileEscrow": "0xc96fbcef6dcee0996baf8dce66494cbe31e43d38"
-  }
+    "MockUSDC": "0x7067bd30fe964b537e5708396956f12b87b3773d",
+    "MilestoneEscrow": "0x7b2932701af8213e3190c6d3cc535cd8a5f8c279",
+    "AgentWalletFactory": "0xe03fece3c807e0f19a6e4ca1394ac8a3503e5235",
+    "MockTHB": "0xf74a3dda6df2aafe0b1164af0987f983e2028b50",
+    "FileEscrow": "0xf17a822d2902f6774690bcaf2fb31c095a07cb48"
+  },
+  "bank": "0x36bECB3A99dD28F14E69F040D12f2255C1eeD388"
 }
