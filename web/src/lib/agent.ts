@@ -13,6 +13,7 @@ import {
 } from "./actions";
 import { friendLabels } from "./social";
 import { DraftError, type DraftView, createDraft, createSellDraft, draftView } from "./bank/drafts";
+import { InviteError, createInvite } from "./bank/invites";
 import { type WalletState, readWallet, walletUnits } from "./state";
 
 const MAX_TURNS = 12;
@@ -93,6 +94,7 @@ Bank-paid wallet. This wallet is paid from the user's Mock Bank account and hold
 - Amounts are plain numbers in the bank's currency (THB or CNY), e.g. 5000 means 5,000 baht. Never call them mUSDC.
 - The seller must be one of the wallet's allowlisted recipients (get_wallet_status → allowlisted_recipients). If the user names someone else, say they must add that person as a recipient first.
 - To SELL the user's own work or a file to someone, call propose_bank_sale with the buyer's wallet (get_wallet_status → friends). It also only saves a draft; the user presses "Send offer", which puts the offer on-chain and locks nothing. The buyer pays in from their bank when they accept it, and must have the user as a payee by then.
+- If the user wants to hire someone who is not a friend on the app (no account), call invite_seller with their name, give the user the link it returns, then draft the deal with propose_bank_deal to the seller address it returns.
 - Never say money moved, was paid or was locked because of a draft.`;
 
 const tool = (name: string, description: string, properties: Record<string, unknown>, required: string[]) =>
@@ -209,6 +211,12 @@ const BANK_TOOLS = [
     },
     ["buyer", "title", "summary", "review_hours", "milestones"],
   ),
+  tool(
+    "invite_seller",
+    "Hire someone who has no account: creates a wallet for them, makes it a payee of this wallet (the user asked, so this is their approval) and returns a private link for the user to send them. Then draft the deal with propose_bank_deal using the returned seller address.",
+    { name: { type: "string", description: "The seller's name as the user wrote it" } },
+    ["name"],
+  ),
 ];
 
 // Gateways for non-Claude models don't enforce tool schemas, so every input is validated here;
@@ -241,6 +249,7 @@ const INPUTS: Record<string, z.ZodType> = {
   }),
   transfer: z.object({ to: address, amount_usdc: z.number().positive(), reason: z.string() }),
   pause_wallet: z.object({ reason: z.string() }),
+  invite_seller: z.object({ name: z.string().min(2).max(80) }),
   propose_bank_deal: z.object({
     seller: address,
     title: z.string().min(1).max(120),
@@ -500,6 +509,23 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
         };
       } catch (err) {
         if (err instanceof DraftError) return { tool: name, input, summary: `BLOCKED: ${err.message}` };
+        throw err;
+      }
+    }
+    case "invite_seller": {
+      if (!userId) throw new Error("Invites need a signed-in user");
+      try {
+        const { invite, token } = await createInvite(userId, wallet, String(input.name));
+        const origin =
+          process.env.BETTER_AUTH_URL ??
+          (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "http://localhost:3000");
+        return {
+          tool: name,
+          input,
+          summary: `INVITED ${invite.name}: seller wallet ${invite.sellerWallet} (now allowlisted). Private link for the user to send them (show it exactly once, as a link): ${origin}/invite/${token} . They accept, deliver and choose PromptPay or a bank account there without signing up.`,
+        };
+      } catch (err) {
+        if (err instanceof InviteError) return { tool: name, input, summary: `BLOCKED: ${err.message}` };
         throw err;
       }
     }

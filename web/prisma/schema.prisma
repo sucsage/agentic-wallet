@@ -256,6 +256,8 @@ model BankCustomer {
 enum BankAccountKind {
   USER
   RESERVE
+  /// Money leaving the demo bank for a PromptPay id or another bank (simulated, one per currency).
+  EXTERNAL
 }
 
 enum BankTransferKind {
@@ -267,6 +269,9 @@ enum BankTransferKind {
   REFUND
   /// Reserve → seller (or buyer), after the tokens are redeemed on-chain.
   PAYOUT
+  /// An invited seller's earnings → the payout destination they chose (a Mock Bank account, or
+  /// the EXTERNAL account standing in for PromptPay / another bank).
+  WITHDRAW
 }
 
 model BankAccount {
@@ -474,3 +479,45 @@ model DealDelivery {
 
   @@unique([escrow, dealId, index])
 }
+
+// ---------------------------------------------------------------------------------------------
+// Invited sellers: someone without an account is hired through a link. The server runs an agent
+// wallet for them (the contracts see an ordinary seller wallet); the link is the only credential,
+// so it is stored as a hash, and the payout destination can be set once and never changed.
+// ---------------------------------------------------------------------------------------------
+
+enum PayoutMethod {
+  /// A Mock Bank account number; the account holder's name must match.
+  MOCKBANK
+  /// PromptPay: phone, citizen id or e-wallet id, typed or read from a PromptPay QR code.
+  PROMPTPAY
+  /// Another bank's account number (simulated transfer).
+  BANK
+}
+
+model SellerInvite {
+  id           String        @id @default(cuid())
+  /// sha256 of the link's secret; the secret itself is shown to the buyer once.
+  tokenHash    String        @unique
+  /// The buyer who invited them.
+  userId       String
+  buyerWallet  String
+  /// The agent wallet the server runs for the invited seller.
+  sellerWallet String        @unique
+  name         String
+  currency     Currency
+  payoutMethod PayoutMethod?
+  /// Account number or PromptPay id, as entered.
+  payoutTarget String?
+  /// Bank code for BANK payouts (e.g. KBANK).
+  payoutBank   String?
+  payoutName   String?
+  /// The Mock Bank account paid for MOCKBANK payouts.
+  payoutAccountId String?
+  payoutSetAt  DateTime?
+  expiresAt    DateTime
+  createdAt    DateTime      @default(now())
+
+  @@index([userId])
+}
+

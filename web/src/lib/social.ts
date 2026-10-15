@@ -6,6 +6,7 @@ import type { Currency } from "@/generated/prisma/client";
 
 import { agentWalletAbi } from "./abis";
 import { approveDraft } from "./bank/drafts";
+import { inviteLabels } from "./bank/invites";
 import { type TxOutcome, publicClient, send } from "./chain";
 import { db } from "./db";
 import { primaryWalletAddress } from "./user-wallets";
@@ -125,10 +126,10 @@ export async function setFriendPayee(userId: string, friendshipId: string, allow
   return send("owner", { address: mine, abi: agentWalletAbi, functionName: "setRecipient", args: [theirs, allowed] });
 }
 
-/** Display names for addresses this user deals with: friends' wallets. */
+/** Display names for addresses this user deals with: friends' wallets and sellers they invited. */
 export async function friendLabels(userId: string): Promise<Map<string, string>> {
-  const friends = await listFriends(userId);
-  return new Map(friends.filter((f) => f.wallet).map((f) => [f.wallet!.toLowerCase(), f.name]));
+  const [friends, invited] = await Promise.all([listFriends(userId), inviteLabels(userId)]);
+  return new Map([...invited, ...friends.filter((f) => f.wallet).map((f) => [f.wallet!.toLowerCase(), f.name] as const)]);
 }
 
 // ------------------------------------------------------------------------------------------

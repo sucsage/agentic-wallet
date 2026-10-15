@@ -1,0 +1,300 @@
+import "server-only";
+
+import { createHash, randomBytes } from "node:crypto";
+
+import { type Address, getAddress } from "viem";
+
+import type { Currency, PayoutMethod, SellerInvite } from "@/generated/prisma/client";
+
+import { createWorkspace } from "../actions";
+import { agentWalletAbi } from "../abis";
+import { type TxOutcome, send } from "../chain";
+import { db } from "../db";
+import { readFileDeals } from "../state";
+import { accountOf, openAccount, transfer } from "./ledger";
+
+/**
+ * Sellers without an account. The buyer invites someone by name and gets a link; the server runs
+ * an agent wallet for that person, so the contracts see an ordinary seller wallet and every step
+ * (accept, deliver, key release, claim, bank payout) is the same code as for a signed-in seller.
+ *
+ * The link's secret is the only credential, so only its hash is stored. Whoever holds the link can
+ * act as the seller, which is why the payout destination is set once and locked: a leaked link can
+ * deliver work, but cannot redirect money that was already headed somewhere.
+ *
+ * Earnings land in the invited seller's demo bank account (PAYOUT, as for any seller) and are then
+ * swept to the destination they chose (WITHDRAW): another Mock Bank account, whose holder's name
+ * must match, or PromptPay / another bank, simulated by an EXTERNAL account per currency.
+ */
+
+export class InviteError extends Error {}
+
+const LINK_DAYS = 30;
+
+const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
+
+/** The invited seller's wallet, labelled for the buyer; null for any other address. */
+export async function inviteLabels(userId: string): Promise<Map<string, string>> {
+  const rows = await db.sellerInvite.findMany({ where: { userId }, select: { sellerWallet: true, name: true } });
+  return new Map(rows.map((r) => [r.sellerWallet.toLowerCase(), `${r.name} (invited)`]));
+}
+
+export function listInvites(userId: string) {
+  return db.sellerInvite.findMany({ where: { userId }, orderBy: { createdAt: "desc" } });
+}
+
+/**
+ * Creates the seller's wallet and bank account, makes them a payee of the buyer's wallet (the
+ * buyer's click is that approval) and returns the link's secret, shown to the buyer this once.
+ */
+export async function createInvite(
+  userId: string,
+  buyerWallet: Address,
+  name: string,
+): Promise<{ invite: SellerInvite; token: string; payee: TxOutcome }> {
+  const clean = name.trim().replace(/\s+/g, " ").slice(0, 80);
+  if (clean.length < 2) throw new InviteError("Enter the seller's name");
+  const buyerAccount = await accountOf(buyerWallet);
+  if (!buyerAccount) throw new InviteError("Your wallet has no Mock Bank account");
+  const currency = buyerAccount.currency;
+
+  const { address: sellerWallet } = await createWorkspace({ currency });
+  await openAccount(sellerWallet, `Invited seller · ${clean}`, currency);
+  const payee = await send("owner", { address: buyerWallet, abi: agentWalletAbi, functionName: "setRecipient", args: [sellerWallet, true] });
+
+  const token = randomBytes(24).toString("base64url");
+  const invite = await db.sellerInvite.create({
+    data: {
+      tokenHash: hashToken(token),
+      userId,
+      buyerWallet,
+      sellerWallet,
+      name: clean,
+      currency,
+      expiresAt: new Date(Date.now() + LINK_DAYS * 86_400_000),
+    },
+  });
+  return { invite, token, payee };
+}
+
+/** A new link for an invite (the old one stops working), e.g. when the buyer lost it. */
+export async function rotateInviteLink(userId: string, inviteId: string): Promise<string> {
+  const token = randomBytes(24).toString("base64url");
+  const updated = await db.sellerInvite.updateMany({
+    where: { id: inviteId, userId },
+    data: { tokenHash: hashToken(token), expiresAt: new Date(Date.now() + LINK_DAYS * 86_400_000) },
+  });
+  if (updated.count !== 1) throw new InviteError("Invite not found");
+  return token;
+}
+
+export async function inviteByToken(token: string): Promise<SellerInvite> {
+  if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) throw new InviteError("This link is not valid");
+  const invite = await db.sellerInvite.findUnique({ where: { tokenHash: hashToken(token) } });
+  if (!invite) throw new InviteError("This link is not valid or was replaced by a newer one");
+  if (invite.expiresAt < new Date()) throw new InviteError("This link has expired; ask the buyer for a new one");
+  return invite;
+}
+
+// ------------------------------------------------------------------------------------------
+// Payout destination
+// ------------------------------------------------------------------------------------------
+
+/** Lower case, single spaces, without Thai and English titles: what a bank's name check compares. */
+function normalName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/^(นาย|นางสาว|นาง|น\.ส\.|mr\.?|mrs\.?|ms\.?|miss)\s*/u, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** "Somchai Jaidee" -> "Somchai J***", as a bank shows the payee before a transfer. */
+function maskName(name: string): string {
+  const [first, ...rest] = name.trim().split(/\s+/);
+  return [first, ...rest.map((w) => `${w[0]}***`)].join(" ");
+}
+
+const digits = (s: string) => s.replace(/\D/g, "");
+
+/** Mock Bank account numbers as the bank prints them (see customers.ts). */
+function formatMockAccountNo(raw: string, currency: Currency): string | null {
+  const d = digits(raw);
+  if (currency === "THB") return d.length === 10 ? `${d.slice(0, 3)}-${d[3]}-${d.slice(4, 9)}-${d[9]}` : null;
+  return d.length === 16 ? d.replace(/(\d{4})(?=\d)/g, "$1 ") : null;
+}
+
+/** Thai citizen id check digit. */
+function validCitizenId(id: string): boolean {
+  if (!/^\d{13}$/.test(id)) return false;
+  const sum = [...id.slice(0, 12)].reduce((t, c, i) => t + Number(c) * (13 - i), 0);
+  return (11 - (sum % 11)) % 10 === Number(id[12]);
+}
+
+/** PromptPay ids: a Thai mobile number, a citizen / tax id, or a 15-digit e-wallet id. */
+export function normalPromptPayId(raw: string): string | null {
+  let d = digits(raw);
+  if (d.startsWith("66") && d.length === 11) d = `0${d.slice(2)}`;
+  if (/^0[689]\d{8}$/.test(d)) return d;
+  if (validCitizenId(d)) return d;
+  if (/^\d{15}$/.test(d)) return d;
+  return null;
+}
+
+/** CRC-16/CCITT-FALSE, the checksum at the end of every Thai QR (EMVCo) payload. */
+function crc16(s: string): string {
+  let crc = 0xffff;
+  for (const byte of Buffer.from(s, "utf8")) {
+    crc ^= byte << 8;
+    for (let i = 0; i < 8; i++) crc = crc & 0x8000 ? ((crc << 1) ^ 0x1021) & 0xffff : (crc << 1) & 0xffff;
+  }
+  return crc.toString(16).toUpperCase().padStart(4, "0");
+}
+
+function tlv(payload: string): Map<string, string> {
+  const out = new Map<string, string>();
+  let i = 0;
+  while (i + 4 <= payload.length) {
+    const tag = payload.slice(i, i + 2);
+    const len = Number(payload.slice(i + 2, i + 4));
+    if (!Number.isInteger(len) || i + 4 + len > payload.length) throw new InviteError("This QR code is not a Thai QR payment code");
+    out.set(tag, payload.slice(i + 4, i + 4 + len));
+    i += 4 + len;
+  }
+  return out;
+}
+
+/**
+ * Reads the PromptPay id from a Thai QR payment code (EMVCo merchant-presented, tag 29 with the
+ * PromptPay AID). Bill-payment QR codes (tag 30) belong to a company's biller id, not a person.
+ */
+export function promptPayFromQr(payload: string): string {
+  const p = payload.trim();
+  if (p.length < 20 || p.slice(-8, -4) !== "6304") throw new InviteError("This QR code is not a Thai QR payment code");
+  if (crc16(p.slice(0, -4)) !== p.slice(-4).toUpperCase()) throw new InviteError("The QR code's checksum does not match");
+  const top = tlv(p);
+  const pp = top.get("29");
+  if (!pp) throw new InviteError("Only PromptPay QR codes can receive payouts here");
+  const sub = tlv(pp);
+  if (sub.get("00") !== "A000000677010111") throw new InviteError("Only PromptPay QR codes can receive payouts here");
+  const raw = sub.get("01") ?? sub.get("02") ?? sub.get("03");
+  if (!raw) throw new InviteError("The QR code has no PromptPay id");
+  // Phone numbers are written as 0066 + number without the leading 0.
+  const id = normalPromptPayId(raw.startsWith("0066") ? `0${raw.slice(4)}` : raw);
+  if (!id) throw new InviteError("The QR code's PromptPay id is not valid");
+  return id;
+}
+
+const THAI_BANKS = ["BBL", "KBANK", "KTB", "SCB", "BAY", "TTB", "GSB", "BAAC", "UOB", "CIMBT", "KKP", "LH", "TISCO", "GHB"] as const;
+export const PAYOUT_BANKS = THAI_BANKS;
+
+function externalAccount(currency: Currency) {
+  const id = currency === "THB" ? "external-thb" : "external-cny";
+  return db.bankAccount.upsert({
+    where: { id },
+    update: {},
+    create: { id, kind: "EXTERNAL", label: `Outside the demo bank (${currency})`, currency },
+  });
+}
+
+export type PayoutInput =
+  | { method: "MOCKBANK"; accountNo: string; name: string }
+  | { method: "PROMPTPAY"; promptPayId?: string; qr?: string; name: string }
+  | { method: "BANK"; bank: string; accountNo: string; name: string };
+
+/**
+ * Sets where the seller's money goes. Once set it cannot be changed through the link. A Mock Bank
+ * account must belong to someone with the given name; the response shows the masked name, as a
+ * bank shows the payee before a transfer. Then sweeps whatever was already earned.
+ */
+export async function setPayout(invite: SellerInvite, input: PayoutInput): Promise<SellerInvite> {
+  if (invite.payoutSetAt) throw new InviteError("The payout account is already set and locked");
+  const name = input.name.trim().replace(/\s+/g, " ").slice(0, 120);
+  if (name.length < 2) throw new InviteError("Enter the account holder's name");
+
+  let data: { payoutMethod: PayoutMethod; payoutTarget: string; payoutBank?: string; payoutAccountId?: string; payoutName: string };
+  if (input.method === "MOCKBANK") {
+    const accountNo = formatMockAccountNo(input.accountNo, invite.currency);
+    if (!accountNo) throw new InviteError("Enter the full Mock Bank account number");
+    const account = await db.bankAccount.findUnique({ where: { accountNo }, include: { customer: true } });
+    if (!account?.customer) throw new InviteError("No Mock Bank account has this number");
+    if (account.currency !== invite.currency) throw new InviteError(`This account holds ${account.currency}, the deal pays ${invite.currency}`);
+    if (normalName(account.customer.displayName) !== normalName(name)) {
+      throw new InviteError("The name does not match the account holder");
+    }
+    data = { payoutMethod: "MOCKBANK", payoutTarget: accountNo, payoutAccountId: account.id, payoutName: maskName(account.customer.displayName) };
+  } else if (input.method === "PROMPTPAY") {
+    const id = input.qr ? promptPayFromQr(input.qr) : normalPromptPayId(input.promptPayId ?? "");
+    if (!id) throw new InviteError("Enter a mobile number, a 13-digit citizen id or an e-wallet id");
+    if (invite.currency !== "THB") throw new InviteError("PromptPay pays baht only");
+    data = { payoutMethod: "PROMPTPAY", payoutTarget: id, payoutName: maskName(name) };
+  } else {
+    if (!(THAI_BANKS as readonly string[]).includes(input.bank)) throw new InviteError("Choose a bank");
+    const accountNo = digits(input.accountNo);
+    if (accountNo.length < 10 || accountNo.length > 12) throw new InviteError("A Thai bank account number has 10 to 12 digits");
+    data = { payoutMethod: "BANK", payoutTarget: accountNo, payoutBank: input.bank, payoutName: maskName(name) };
+  }
+
+  // Set once: the update only matches while no destination is set, so two requests cannot both win.
+  const updated = await db.sellerInvite.updateMany({ where: { id: invite.id, payoutSetAt: null }, data: { ...data, payoutSetAt: new Date() } });
+  if (updated.count !== 1) throw new InviteError("The payout account is already set and locked");
+  const fresh = await db.sellerInvite.findUniqueOrThrow({ where: { id: invite.id } });
+  await sweepInvite(getAddress(fresh.sellerWallet));
+  return fresh;
+}
+
+/**
+ * Moves what an invited seller has earned to their payout destination, one transfer per paid
+ * milestone so it is paid exactly once. Does nothing for other wallets or before a destination is set.
+ */
+export async function sweepInvite(sellerWalletInput: Address): Promise<void> {
+  const sellerWallet = getAddress(sellerWalletInput);
+  const invite = await db.sellerInvite.findUnique({ where: { sellerWallet } });
+  if (!invite?.payoutSetAt) return;
+  const from = await accountOf(sellerWallet);
+  if (!from) return;
+  const to = invite.payoutAccountId ?? (await externalAccount(invite.currency)).id;
+  const earned = await db.bankTransfer.findMany({ where: { toId: from.id, kind: "PAYOUT" } });
+  for (const t of earned) {
+    await transfer({ key: `withdraw:${t.idempotencyKey}`, kind: "WITHDRAW", fromId: from.id, toId: to, amount: t.amount });
+  }
+}
+
+// ------------------------------------------------------------------------------------------
+// What the invited seller sees
+// ------------------------------------------------------------------------------------------
+
+export async function inviteView(invite: SellerInvite) {
+  const sellerWallet = getAddress(invite.sellerWallet);
+  const [buyer, deals, account] = await Promise.all([
+    db.user.findUnique({ where: { id: invite.userId }, select: { name: true } }),
+    readFileDeals(sellerWallet),
+    accountOf(sellerWallet),
+  ]);
+  const [paidOut, withdrawn] = account
+    ? await Promise.all([
+        db.bankTransfer.aggregate({ where: { toId: account.id, kind: "PAYOUT" }, _sum: { amount: true } }),
+        db.bankTransfer.aggregate({ where: { fromId: account.id, kind: "WITHDRAW" }, _sum: { amount: true } }),
+      ])
+    : [null, null];
+  return {
+    name: invite.name,
+    buyerName: buyer?.name ?? "The buyer",
+    currency: invite.currency,
+    expiresAt: invite.expiresAt,
+    sellerWallet,
+    earned: (paidOut?._sum.amount ?? 0n).toString(),
+    sent: (withdrawn?._sum.amount ?? 0n).toString(),
+    payout: invite.payoutSetAt
+      ? {
+          method: invite.payoutMethod,
+          // Only the last digits: the page is reachable by whoever has the link.
+          target: `··${invite.payoutTarget!.replace(/\D/g, "").slice(-4)}`,
+          bank: invite.payoutBank,
+          name: invite.payoutName,
+          setAt: invite.payoutSetAt,
+        }
+      : null,
+    deals: deals.filter((d) => d.role === "seller"),
+  };
+}

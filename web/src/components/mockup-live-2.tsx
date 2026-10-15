@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
+import QRCode from "qrcode";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -533,6 +534,7 @@ export function LiveFriends() {
             </div>
           </section>
         </div>
+        <InviteByLink />
         <section className="aw-friends-panel aw-friend-requests">
           <header>
             <h2>Friend requests</h2>
@@ -592,6 +594,102 @@ export function LiveFriends() {
       </main>
     </div>,
     lang,
+  );
+}
+
+type InviteRow = { id: string; name: string; wallet: string; payoutSet: boolean; expiresAt: string };
+
+/**
+ * Hire someone without an account: their wallet is made and allowlisted at once, and they get a
+ * link (also as a QR code) to accept, deliver and choose a PromptPay id or bank account for payment.
+ */
+function InviteByLink() {
+  const { data, reload } = useApi<{ invites: InviteRow[] }>("/api/invites");
+  const { busy, run, note } = useAction();
+  const [name, setName] = useState("");
+  const [shown, setShown] = useState<{ name: string; link: string; qr: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const show = async (who: string, link: string) => {
+    setCopied(false);
+    setShown({ name: who, link, qr: await QRCode.toDataURL(link, { margin: 1, width: 220 }) });
+  };
+
+  return (
+    <section className="aw-friends-panel aw-invite-panel">
+      <h2>Hire someone without an account</h2>
+      <p>They get a link: no sign-up, they accept, deliver and are paid to PromptPay or any bank account. Creating the link makes them a payee.</p>
+      {note}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void run(
+            "invite",
+            async () => {
+              const r = await send<{ link: string; invite: { name: string } }>("/api/invites", "POST", { name });
+              await show(r.invite.name, r.link);
+              return r;
+            },
+            async () => {
+              setName("");
+              await reload();
+            },
+          );
+        }}
+      >
+        <label className="aw-friends-search">
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Seller's name, e.g. Somchai Jaidee" maxLength={80} />
+        </label>
+        <Button type="submit" disabled={name.trim().length < 2 || !!busy}>
+          {busy === "invite" ? "Creating wallet…" : "Create link"}
+        </Button>
+      </form>
+      {shown && (
+        <div className="aw-invite-link">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={shown.qr} alt={`QR code of the link for ${shown.name}`} width={140} height={140} />
+          <div>
+            <b>Link for {shown.name}</b>
+            <code>{shown.link}</code>
+            <small>Send it privately (LINE, email). Anyone with it acts as the seller; it is shown only now.</small>
+            <Button
+              variant="outline"
+              onClick={() => {
+                void navigator.clipboard.writeText(shown.link).then(() => setCopied(true));
+              }}
+            >
+              {copied ? "Copied ✓" : "Copy link"}
+            </Button>
+          </div>
+        </div>
+      )}
+      {(data?.invites.length ?? 0) > 0 && (
+        <div className="aw-invite-list">
+          {data!.invites.map((i) => (
+            <div key={i.id} className="aw-friend-result">
+              <span className="aw-friend-avatar blue">{initials(i.name)}</span>
+              <span className="aw-friend-name">
+                <b>{i.name}</b>
+                <small>{i.payoutSet ? "payout account set" : "no payout account yet"} · allowlisted</small>
+              </span>
+              <Button
+                variant="outline"
+                disabled={!!busy}
+                onClick={() =>
+                  run(`l${i.id}`, async () => {
+                    const r = await send<{ link: string }>(`/api/invites/${i.id}/link`, "POST");
+                    await show(i.name, r.link);
+                    return r;
+                  })
+                }
+              >
+                {busy === `l${i.id}` ? "…" : "New link"}
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 

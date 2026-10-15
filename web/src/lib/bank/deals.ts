@@ -10,6 +10,7 @@ import { config } from "../config";
 import { db } from "../db";
 import { type FileDealView, readFileDeals, walletUnits } from "../state";
 import { type Mandate, ownerSignMandate } from "./funding";
+import { sweepInvite } from "./invites";
 import { InsufficientFunds, accountOf, openAccount, reserveIdFor, transfer } from "./ledger";
 
 /**
@@ -462,6 +463,7 @@ async function doSync(dealId: number): Promise<void> {
           const out = await releaseKeyFor(seller, dealId, i);
           if (out.status === "success" && buyerIsUser && (await confirmKeyFor(buyer, dealId, i))) {
             await settleToWalletBank(seller, token, currency, redeemId("payout", dealId, i), m.amount, "PAYOUT");
+            await sweepInvite(seller);
           }
         }
         return;
@@ -469,6 +471,7 @@ async function doSync(dealId: number): Promise<void> {
         if (open && buyerIsUser && sellerIsUser) {
           if (await confirmKeyFor(buyer, dealId, i)) {
             await settleToWalletBank(seller, token, currency, redeemId("payout", dealId, i), m.amount, "PAYOUT");
+            await sweepInvite(seller);
           }
         } else if (!open) {
           if (demoSeller) {
@@ -480,7 +483,10 @@ async function doSync(dealId: number): Promise<void> {
         return;
       case 4: // Released: the seller was paid on-chain; settle it in the bank
         if (demoSeller) await payoutContractor(token, currency, dealId, i, m.amount);
-        else if (sellerIsUser) await settleToWalletBank(seller, token, currency, redeemId("payout", dealId, i), m.amount, "PAYOUT");
+        else if (sellerIsUser) {
+          await settleToWalletBank(seller, token, currency, redeemId("payout", dealId, i), m.amount, "PAYOUT");
+          await sweepInvite(seller);
+        }
         continue;
       case 5: // Disputed: waits for the arbiter
         return;
