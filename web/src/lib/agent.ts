@@ -11,7 +11,7 @@ import {
   releaseMilestone,
   transfer,
 } from "./actions";
-import { friendLabels } from "./social";
+import { SocialError, createGroup, friendLabels, groupDetail, listFriends, listGroups, pendingVotes, proposeToGroup } from "./social";
 import { DraftError, type DraftView, createDraft, createSellDraft, discardDraft, draftView, listDrafts } from "./bank/drafts";
 import { db } from "./db";
 import { InviteError, createInvite } from "./bank/invites";
@@ -103,6 +103,7 @@ E-money wallet. Deals are paid from the user's THB / CNY wallet balance (topped 
 - To SELL the user's own work, a file or an item to someone, call propose_bank_sale with the buyer's name (get_wallet_status → friends). It also only saves a draft; the user presses "Send offer", which puts the offer on-chain and locks nothing. The buyer pays from their wallet balance when they accept it, and must have the user as a payee by then.
 - If the user wants to hire someone who is not a friend on the app (no account), call invite_seller with their name, give the user the link it returns, then draft the deal with propose_bank_deal to the seller address it returns.
 - Never say money moved, was paid or was locked because of a draft.
+- Groups: friends can form a group that decides purchases together. A member puts one of their purchase drafts to the group's vote; it is locked from the proposer's wallet only when enough members vote yes (the group's votes needed, at least 2), and nobody can approve it alone. Use list_groups to answer questions about groups (never guess), create_group when the user asks to form one (members must be accepted friends; ask how many yes votes are needed if they did not say), and propose_to_group to put a draft (DR-…) to a vote. You cannot vote for anyone: members vote in the app (Groups or Approvals).
 - KYC: if get_wallet_status shows identity_verified false and a deal's total is above unverified_deal_limit, you may still draft it, but tell the user they must verify their identity first (Profile page: ThaID for Thai banks, National Network Identity for Chinese banks) before "Approve & lock" will work.`;
 
 const tool = (name: string, description: string, properties: Record<string, unknown>, required: string[]) =>
@@ -236,6 +237,26 @@ const BANK_TOOLS = [
     { name: { type: "string", description: "The seller's name as the user wrote it" } },
     ["name"],
   ),
+  tool("list_groups", "The user's groups: members, votes needed, open votes and recent proposals (by name and draft reference).", {}, []),
+  tool(
+    "create_group",
+    "Create a group of the user's friends that votes on purchases together. Only when the user asks.",
+    {
+      name: { type: "string", description: "Group name" },
+      members: { type: "array", items: { type: "string" }, description: "Friends' names (get_wallet_status → friends); the user is added automatically" },
+      votes_needed: { type: "integer", description: "Yes votes needed to lock a group deal, from 2 to the number of members including the user" },
+    },
+    ["name", "members", "votes_needed"],
+  ),
+  tool(
+    "propose_to_group",
+    "Put one of the user's purchase drafts to a group's vote. Nothing is locked until enough members vote yes.",
+    {
+      group: { type: "string", description: "The group's name from list_groups" },
+      draft_ref: { type: "string", description: "The draft's reference from list_deals, e.g. DR-4F2K9A" },
+    },
+    ["group", "draft_ref"],
+  ),
   tool(
     "remember_nickname",
     "Remember what the user calls one of their contacts, so that name works in every chat from now on.",
@@ -349,6 +370,9 @@ const INPUTS: Record<string, z.ZodType> = {
   discard_draft: z.object({ draft_ref: z.string().min(3).max(40) }),
   propose_bank_deal: z.object({ seller: z.string().min(1).max(120), ...DEAL_FIELDS }),
   propose_bank_sale: z.object({ buyer: z.string().min(1).max(120), ...DEAL_FIELDS }),
+  list_groups: z.object({}).passthrough(),
+  create_group: z.object({ name: z.string().trim().min(1).max(80), members: z.array(z.string().min(1).max(120)).min(1).max(19), votes_needed: z.number().int().min(2).max(20) }),
+  propose_to_group: z.object({ group: z.string().min(1).max(80), draft_ref: z.string().min(3).max(40) }),
   remember_nickname: z.object({ nickname: z.string().trim().min(1).max(40), contact: z.string().min(1).max(120) }),
   forget_nickname: z.object({ nickname: z.string().trim().min(1).max(40) }),
 };
@@ -567,6 +591,76 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
           open_proposals: s.proposals.filter((p) => p.status === "open").length,
         }),
       };
+    }
+    case "list_groups": {
+      if (!userId) throw new Error("Groups need a signed-in user");
+      const [groups, votes, drafts] = await Promise.all([listGroups(userId), pendingVotes(userId), listDrafts(userId, wallet)]);
+      const details = await Promise.all(groups.map((g) => groupDetail(userId, g.id)));
+      const refOf = new Map(drafts.map((d) => [d.id, draftRef(d.id)]));
+      return {
+        tool: name,
+        input,
+        summary: JSON.stringify({
+          groups: details.map((g) => ({
+            name: g.name,
+            currency: g.currency,
+            votes_needed: g.threshold,
+            members: g.members.map((m) => (m.userId === userId ? "you" : m.user.name)),
+            proposals: g.proposals.slice(0, 5).map((p) => ({
+              title: p.title,
+              draft_ref: refOf.get(p.draftId) ?? null,
+              proposed_by: p.proposerId === userId ? "you" : (g.members.find((m) => m.userId === p.proposerId)?.user.name ?? "a former member"),
+              status: p.status.toLowerCase(),
+              yes: p.yes,
+              no: p.no,
+              deal: p.dealId !== null ? `D-${p.dealId}` : null,
+            })),
+          })),
+          waiting_for_your_vote: votes.map((v) => ({ group: v.group.name, title: v.title, yes_so_far: v.yes })),
+          note: groups.length === 0 ? "The user is in no group yet. They can create one on the Groups page or ask you to." : undefined,
+        }),
+      };
+    }
+    case "create_group": {
+      if (!userId) throw new Error("Groups need a signed-in user");
+      const i = input as { name: string; members: string[]; votes_needed: number };
+      const customer = await db.bankCustomer.findUnique({ where: { userId }, select: { currency: true } });
+      if (!customer) return { tool: name, input, summary: "BLOCKED: the user's wallet is not open yet" };
+      const friends = (await listFriends(userId)).filter((f) => f.status === "ACCEPTED");
+      const ids: string[] = [];
+      for (const m of i.members) {
+        const r = m.trim().toLowerCase();
+        const hits = friends.filter((f) => f.name.toLowerCase() === r);
+        const loose = hits.length ? hits : friends.filter((f) => f.name.toLowerCase().includes(r));
+        if (loose.length !== 1) {
+          return { tool: name, input, summary: `BLOCKED: "${m}" ${loose.length ? "matches several friends" : "is not an accepted friend"}. Friends: ${friends.map((f) => f.name).join(", ") || "none yet"}` };
+        }
+        ids.push(loose[0].userId);
+      }
+      try {
+        await createGroup(userId, customer.currency, { name: i.name, memberIds: ids, threshold: i.votes_needed });
+        return { tool: name, input, summary: `GROUP CREATED: "${i.name}" with ${ids.length + 1} members (you included); ${i.votes_needed} yes votes lock a group deal. It is on the Groups page.` };
+      } catch (err) {
+        if (err instanceof SocialError) return { tool: name, input, summary: `BLOCKED: ${err.message}` };
+        throw err;
+      }
+    }
+    case "propose_to_group": {
+      if (!userId) throw new Error("Groups need a signed-in user");
+      const i = input as { group: string; draft_ref: string };
+      const groups = await listGroups(userId);
+      const g = groups.filter((x) => x.name.toLowerCase() === i.group.trim().toLowerCase());
+      if (g.length !== 1) return { tool: name, input, summary: `BLOCKED: ${g.length ? "several groups have that name" : `no group "${i.group}"`}. Groups: ${groups.map((x) => x.name).join(", ") || "none"}` };
+      const ref = i.draft_ref.trim().toUpperCase().replace(/^DR-/, "");
+      const d = (await listDrafts(userId, wallet)).find((x) => x.id.slice(-6).toUpperCase() === ref);
+      if (!d) return { tool: name, input, summary: `BLOCKED: no draft DR-${ref}; use list_deals for the references` };
+      try {
+        const r = await proposeToGroup(userId, g[0].id, d.id);
+        return { tool: name, input, summary: `PUT TO THE VOTE: "${d.title}" in "${g[0].name}". Your yes counts already (${r.yes}/${g[0].threshold}). It is locked from your wallet only when ${g[0].threshold} members vote yes; the others vote in the app.` };
+      } catch (err) {
+        if (err instanceof SocialError) return { tool: name, input, summary: `BLOCKED: ${err.message}` };
+        throw err;
+      }
     }
     case "remember_nickname": {
       if (!userId) throw new Error("Nicknames need a signed-in user");
