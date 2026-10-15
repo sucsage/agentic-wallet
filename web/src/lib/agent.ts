@@ -413,7 +413,10 @@ function resolveContact(list: Contact[], ref: string): Contact | string {
     return list.find((c) => c.address.toLowerCase() === r) ?? "That address is not one of your contacts; use a name from get_wallet_status";
   }
   const plain = (n: string) => n.toLowerCase().replace(/\s*\(invited\)\s*$/, "");
-  const exact = list.filter((c) => c.name.toLowerCase() === r || plain(c.name) === r);
+  // An exact name wins; "Somchai" also finds "Somchai (invited)" when nobody else is called that.
+  const exactName = list.filter((c) => c.name.toLowerCase() === r);
+  if (exactName.length === 1) return exactName[0];
+  const exact = list.filter((c) => plain(c.name) === r);
   if (exact.length === 1) return exact[0];
   const partial = list.filter((c) => c.name.toLowerCase().includes(r));
   if (partial.length === 1) return partial[0];
