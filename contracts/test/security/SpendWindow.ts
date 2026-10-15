@@ -72,7 +72,7 @@ describe("AgentWallet: the agent's daily spending window", async function () {
 
         if (action === "pay") {
           const to = pick(r, [payeeA, payeeB]);
-          const amount = usd(1 + Math.floor(r() * 400));
+          let amount = usd(1 + Math.floor(r() * 400));
           // State before the call, read from the chain; the tally of what was paid is the model's own.
           const session = await wallet.read.sessions([agent.account.address]);
           const paused = await wallet.read.paused();
@@ -80,6 +80,9 @@ describe("AgentWallet: the agent's daily spending window", async function () {
           const latest = await networkHelpers.time.latest();
           const day = Math.floor((latest + 1) / DAY);
           const spent = paidOnDay.get(day) ?? 0n;
+          // Often aim exactly at the edge: spend what is left of the day (or the per-payment cap) to the unit.
+          if (r() < 0.35 && session[2] > spent) amount = session[2] - spent < session[1] ? session[2] - spent : session[1];
+          if (r() < 0.1) amount = session[1] + 1n; // one over the per-payment cap
           const nearEdge = (latest + 1) % DAY < 10 || (latest + 1) % DAY > DAY - 10 || Math.abs(Number(session[0]) - (latest + 1)) < 10;
           const shouldPass =
             !paused && allowed && session[0] > BigInt(latest + 1) && amount <= session[1] && spent + amount <= session[2];
