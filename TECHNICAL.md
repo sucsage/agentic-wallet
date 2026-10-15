@@ -96,7 +96,7 @@ and threshold, recipient allowlist and escrow allowlist.
 | 0 Read | (off-chain) | nothing to enforce |
 | 1 Propose | `propose` → `approve` ×N → execute | `threshold` approvers; proposals expire after 3 days and go stale if the approver set changes |
 | 1 Owner mandate | `executeMandate(m, sig)` | EIP-712 signature by the owner; deadline; single use; the same call checks as below |
-| 2 Auto | `agentTransfer`, `agentReleaseMilestone`, `agentApproveFile` | active session key, per-tx cap, daily cap, allowlisted recipient/escrow, wallet is the deal's payer, settlement token only |
+| 2 Auto | `agentTransfer`, `agentReleaseMilestone`, `agentApproveFile` | active session key, per-tx cap, daily cap, allowlisted recipient/escrow, wallet is the deal's payer, settlement token only; only a freshly `Delivered` file milestone (confirming a released key is the buyer's own decision) |
 | 3 Emergency | `pause` | agent, approvers or owner may pause; only the owner unpauses; `revokeSession` is instant |
 
 Generic calls are not generic. `_checkCall` and `_checkFileCall` decode the calldata and allow only:
