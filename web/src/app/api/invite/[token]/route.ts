@@ -1,6 +1,7 @@
 import { after } from "next/server";
 import { getAddress } from "viem";
 
+import { disputeOf, disputeView } from "@/lib/bank/arbiter";
 import { dealTerms, deliveryInfo, syncDeal } from "@/lib/bank/deals";
 import { InviteError, inviteByToken, inviteView } from "@/lib/bank/invites";
 import { HttpError, errorResponse, rateLimit } from "@/lib/guard";
@@ -37,6 +38,7 @@ export async function GET(req: Request, ctx: RouteContext<"/api/invite/[token]">
               acceptance: milestones[i]?.acceptance ?? null,
               canDeliver: d.status === "Active" && (m.status === "Pending" || m.status === "Delivered"),
               delivery: await deliveryInfo(d.id, m.index),
+              dispute: disputeView(await disputeOf(d.id, m.index)),
             })),
           ),
         };

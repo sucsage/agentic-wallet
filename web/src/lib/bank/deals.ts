@@ -10,6 +10,7 @@ import { config } from "../config";
 import { db } from "../db";
 import { type FileDealView, readFileDeals, walletUnits } from "../state";
 import { type Mandate, ownerSignMandate } from "./funding";
+import { arbitrate } from "./arbiter";
 import { sweepInvite } from "./invites";
 import { InsufficientFunds, accountOf, openAccount, reserveIdFor, transfer } from "./ledger";
 
@@ -488,7 +489,11 @@ async function doSync(dealId: number): Promise<void> {
           await sweepInvite(seller);
         }
         continue;
-      case 5: // Disputed: waits for the arbiter
+      case 5: // Disputed: the neutral arbiter decides (mechanically for a key, AI for the work)
+        if (await arbitrate(dealId, i)) {
+          i--; // resolved on-chain: settle this milestone in the same run
+          continue;
+        }
         return;
       case 6: // Refunded: back to the buyer's bank
         if (buyerIsUser) await settleToWalletBank(buyer, token, currency, redeemId("refund", dealId, i), m.amount, "REFUND");

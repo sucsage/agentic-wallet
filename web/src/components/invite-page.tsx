@@ -21,6 +21,7 @@ type Milestone = {
   deadline: number;
   canDeliver: boolean;
   delivery: { note: string; fileName: string | null; sha256: string } | null;
+  dispute: { reason: string; status: string; decision: string | null; confidence: number | null; rationale: string | null; txHash: string | null } | null;
 };
 
 type Deal = {
@@ -197,6 +198,20 @@ function DealCard({ base, deal, money, onDone }: { base: string; deal: Deal; mon
             <small className="inv-muted">
               Delivered: {m.delivery.fileName ?? "evidence only"} · sha256 {m.delivery.sha256.slice(0, 12)}… on-chain
             </small>
+          )}
+          {m.dispute && (
+            <div className="inv-dispute">
+              <small className="inv-label">⚖ DISPUTE · NEUTRAL ARBITER</small>
+              <small>Buyer&apos;s reason: {m.dispute.reason}</small>
+              {m.dispute.decision ? (
+                <small className={m.dispute.decision === "seller" ? "inv-ok" : "inv-error"}>
+                  {m.dispute.status === "RESOLVED" ? "Ruling" : "Recommendation"}: {m.dispute.decision === "seller" ? "you are paid" : "the buyer is refunded"}
+                  {m.dispute.confidence !== null && ` · ${Math.round(m.dispute.confidence * 100)}% confident`} · {m.dispute.rationale}
+                </small>
+              ) : (
+                <small className="inv-step">The arbiter is comparing your evidence with the acceptance criteria…</small>
+              )}
+            </div>
           )}
           {m.canDeliver && <Deliver base={base} dealId={deal.id} index={m.index} again={Boolean(m.delivery)} onDone={onDone} />}
         </div>

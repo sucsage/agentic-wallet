@@ -1,5 +1,6 @@
 import { after } from "next/server";
 
+import { disputeOf, disputeView } from "@/lib/bank/arbiter";
 import { DealError, dealForWallet, dealTerms, deliveryInfo, demoDeliverable, syncDeal } from "@/lib/bank/deals";
 import { draftView } from "@/lib/bank/drafts";
 import { roleAddresses } from "@/lib/chain";
@@ -38,9 +39,10 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/deals/[id]">) {
     const draft = await dealTerms(id, buyer, deal.role === "seller" ? wallet : deal.counterparty);
     const terms = draft ? await draftView(draft) : null;
     const demoSeller = deal.role === "buyer" && deal.counterparty === roleAddresses().contractor;
-    const [deliveries, friends] = await Promise.all([
+    const [deliveries, friends, disputes] = await Promise.all([
       Promise.all(deal.milestones.map((m) => deliveryInfo(id, m.index))),
       friendLabels(user.id),
+      Promise.all(deal.milestones.map((m) => disputeOf(id, m.index))),
     ]);
     return Response.json({
       ...deal,
@@ -58,6 +60,7 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/deals/[id]">) {
         acceptance: terms?.milestones[i]?.acceptance ?? null,
         moves: moves(deal.role, deal.status, m.status, m.deadline),
         delivery: deliveries[i],
+        dispute: disputeView(disputes[i]),
         // A file can be downloaded by the seller any time, by the buyer once the key is released.
         canDownload:
           Boolean(deliveries[i]?.fileName) && (deal.role === "seller" || m.status === "KeyReleased" || m.status === "Released"),

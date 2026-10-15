@@ -196,7 +196,7 @@ export function LiveApprovals() {
                 <Button
                   variant="outline"
                   disabled={!!busy}
-                  onClick={() => run(`d${r.dealId}-${r.index}`, () => send(`/api/deals/${r.dealId}/action`, "POST", { action: "dispute", index: r.index }), after)}
+                  onClick={() => (window.location.href = `/deal/D-${r.dealId}`)}
                 >
                   Dispute
                 </Button>
@@ -1064,8 +1064,106 @@ type DealDetail = {
     delivery: { note: string; fileName: string | null; size: number | null; sha256: string; deliveredAt: string } | null;
     canDownload: boolean;
     deliverable: { text: string; sha256: string } | null;
+    dispute: DisputeInfo | null;
   }[];
 };
+
+type DisputeInfo = {
+  phase: "work" | "key";
+  reason: string;
+  status: "OPEN" | "DECIDING" | "NEEDS_REVIEW" | "RESOLVED";
+  decision: "seller" | "buyer" | null;
+  confidence: number | null;
+  rationale: string | null;
+  findings: { criterion: string; met: boolean; evidence: string }[] | null;
+  decidedBy: string | null;
+  txHash: string | null;
+};
+
+/** The neutral arbiter's view of a disputed milestone: the buyer's reason, then the ruling and why. */
+export function ArbiterPanel({ d, role }: { d: DisputeInfo; role: "buyer" | "seller" }) {
+  const by = d.decidedBy?.startsWith("ai:") ? `AI arbiter (${d.decidedBy.slice(3).split("/").pop()})` : d.decidedBy === "check:key" ? "Key check (no AI needed)" : d.decidedBy;
+  const winner = d.decision === "seller" ? (role === "seller" ? "you are paid" : "the seller is paid") : role === "buyer" ? "you are refunded" : "the buyer is refunded";
+  return (
+    <div className="aw-arbiter">
+      <small>⚖ NEUTRAL ARBITER · {d.phase === "key" ? "dispute about the released key" : "dispute about the work"}</small>
+      <p>
+        <b>Buyer&apos;s reason:</b> {d.reason}
+      </p>
+      {(d.status === "OPEN" || d.status === "DECIDING") && <p className="aw-arbiter-wait">Deciding… the arbiter compares the evidence with the acceptance criteria.</p>}
+      {d.decision && (
+        <>
+          <p className={d.decision === "seller" ? "aw-arbiter-seller" : "aw-arbiter-buyer"}>
+            <b>
+              {d.status === "RESOLVED" ? "Ruling" : "Recommendation"}: {d.decision === "seller" ? "pay the seller" : "refund the buyer"}
+            </b>
+            {d.confidence !== null && ` · confidence ${Math.round(d.confidence * 100)}%`}
+            {d.status === "RESOLVED" && ` · ${winner}`}
+          </p>
+          {d.rationale && <p>{d.rationale}</p>}
+          {d.findings && d.findings.length > 0 && (
+            <ul>
+              {d.findings.map((f, i) => (
+                <li key={i}>
+                  {f.met ? "✓" : "✗"} <b>{f.criterion}</b> · {f.evidence}
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+      {d.status === "NEEDS_REVIEW" && <p className="aw-arbiter-wait">Not confident enough to settle on its own: a human arbiter decides with these findings.</p>}
+      <small>
+        {by && `Decided by ${by}`}
+        {d.txHash && (
+          <>
+            {" · "}
+            <a href={`/explorer/tx/${d.txHash}`} target="_blank" rel="noreferrer">
+              resolve tx ↗
+            </a>
+          </>
+        )}
+      </small>
+    </div>
+  );
+}
+
+function DisputeForm({ dealId, index, onDone, onCancel }: { dealId: number; index: number; onDone: () => Promise<void>; onCancel: () => void }) {
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await send<{ outcome: Outcome }>(`/api/deals/${dealId}/action`, "POST", { action: "dispute", index, reason });
+      if (r.outcome.status !== "success") setMsg(r.outcome.error ?? r.outcome.status);
+      else await onDone();
+    } catch (err) {
+      setMsg((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <form className="aw-deliver-form" onSubmit={submit}>
+      <label>
+        <span>What does the delivery fail? Name the acceptance criterion. A neutral arbiter (not your agent) reads this, the seller&apos;s evidence and the terms, then pays the seller or refunds you.</span>
+        <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} maxLength={2000} required minLength={10} />
+      </label>
+      <div className="aw-d012-actions">
+        <Button type="submit" variant="danger" disabled={busy || reason.trim().length < 10}>
+          {busy ? "Opening dispute…" : "Open dispute"}
+        </Button>
+        <Button type="button" variant="outline" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+      {msg && <p className="aw-bank-error">{msg}</p>}
+    </form>
+  );
+}
 
 /** The seller's delivery form for one milestone: evidence note plus an optional file (max 4 MB). */
 function DeliverForm({ dealId, index, onDone }: { dealId: number; index: number; onDone: () => Promise<void> }) {
@@ -1121,7 +1219,7 @@ const SELLER_STEP: Record<string, string> = {
   Approved: "Approved · the agent releases your key",
   KeyReleased: "Key released · payment on its way to your bank",
   Released: "Paid to your bank",
-  Disputed: "Disputed · waiting for the arbiter",
+  Disputed: "Disputed · the neutral arbiter is deciding",
   Refunded: "Refunded to the buyer",
 };
 
@@ -1131,7 +1229,7 @@ const STEP: Record<string, string> = {
   Approved: "Approved · waiting for the seller's key",
   KeyReleased: "File unlocked · confirming the key and paying the seller",
   Released: "Paid to the seller",
-  Disputed: "Disputed · waiting for the arbiter",
+  Disputed: "Disputed · the neutral arbiter is deciding",
   Refunded: "Refunded to your bank",
 };
 
@@ -1146,6 +1244,7 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
     await reload();
     await refresh();
   };
+  const [disputing, setDisputing] = useState<number | null>(null);
   const act = (action: string, index: number) => run(`${action}${index}`, () => send(`/api/deals/${id}/action`, "POST", { action, index }), after);
 
   return localizeMockupNode(
@@ -1206,6 +1305,18 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
                 </div>
               )}
               {m.moves.includes("deliver") && <DeliverForm dealId={id} index={m.index} onDone={after} />}
+              {disputing === m.index && m.moves.includes("dispute") && (
+                <DisputeForm
+                  dealId={id}
+                  index={m.index}
+                  onCancel={() => setDisputing(null)}
+                  onDone={async () => {
+                    setDisputing(null);
+                    await after();
+                  }}
+                />
+              )}
+              {m.dispute && <ArbiterPanel d={m.dispute} role={data.role} />}
               {m.deliverable && (
                 <div className="aw-d012-success">
                   ✓ &nbsp;File: “{m.deliverable.text}” · sha256 {m.deliverable.sha256.slice(0, 12)}… matches the hash anchored on-chain
@@ -1218,8 +1329,8 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
                       {busy === `approve${m.index}` ? "…" : "Approve work"}
                     </Button>
                   )}
-                  {m.moves.includes("dispute") && (
-                    <Button variant="outline" disabled={!!busy} onClick={() => act("dispute", m.index)}>
+                  {m.moves.includes("dispute") && disputing !== m.index && (
+                    <Button variant="outline" disabled={!!busy} onClick={() => setDisputing(m.index)}>
                       Dispute
                     </Button>
                   )}

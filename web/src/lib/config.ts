@@ -95,6 +95,10 @@ export const config = {
       contractor: key("CONTRACTOR_PRIVATE_KEY"),
     };
   },
+  /** The neutral arbiter's key: it only ever calls FileEscrow.resolve on disputed milestones. */
+  get arbiterKey() {
+    return key("ARBITER_PRIVATE_KEY");
+  },
   /** The Mock Bank's hot key: the only one that may mint mTHB. Must not be the mTHB admin. */
   get bankKey() {
     return key("BANK_PRIVATE_KEY");

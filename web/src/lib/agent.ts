@@ -24,7 +24,7 @@ const MAX_TURNS = 12;
  * - OPENROUTER_API_KEY: OpenRouter's Anthropic-compatible endpoint
  * - otherwise: the Anthropic API directly (ANTHROPIC_API_KEY)
  */
-function llm() {
+export function llm() {
   if (process.env.LLM_BASE_URL) {
     return {
       client: new Anthropic({ baseURL: process.env.LLM_BASE_URL, apiKey: process.env.LLM_API_KEY ?? null }),

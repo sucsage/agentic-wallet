@@ -24,12 +24,13 @@ const ERROR_ABI = [...agentWalletAbi, ...milestoneEscrowAbi, ...mockUSDCAbi, ...
 );
 
 /** `bank` is the Mock Bank server, not a person: it only mints mTHB. */
-export type Role = "owner" | "agent" | "contractor" | "bank";
+export type Role = "owner" | "agent" | "contractor" | "bank" | "arbiter";
 
 export const ROLE_LABEL: Record<Role, string> = {
   owner: "Owner",
   agent: "AI Agent",
   contractor: "Contractor",
+  arbiter: "Arbiter",
   bank: "Mock Bank",
 };
 
@@ -60,13 +61,13 @@ const accounts = new Map<Role, Account>();
 export function account(role: Role): Account {
   let a = accounts.get(role);
   if (!a) {
-    a = privateKeyToAccount(role === "bank" ? config.bankKey : config.keys[role]);
+    a = privateKeyToAccount(role === "bank" ? config.bankKey : role === "arbiter" ? config.arbiterKey : config.keys[role]);
     accounts.set(role, a);
   }
   return a;
 }
 
-export function roleAddresses(): Record<Exclude<Role, "bank">, Address> {
+export function roleAddresses(): Record<Exclude<Role, "bank" | "arbiter">, Address> {
   return {
     owner: account("owner").address,
     agent: account("agent").address,

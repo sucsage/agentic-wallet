@@ -521,3 +521,42 @@ model SellerInvite {
   @@index([userId])
 }
 
+
+// ---------------------------------------------------------------------------------------------
+// Disputes: the buyer's reason, and the neutral arbiter's decision. A dispute about the released
+// key is checked mechanically (does the key open the file with the anchored hash?); a dispute
+// about the work goes to the AI arbiter, which resolves on-chain only when it is confident and
+// otherwise leaves it for a human arbiter. The chain holds only the outcome (resolve tx).
+// ---------------------------------------------------------------------------------------------
+
+enum DisputeStatus {
+  OPEN
+  DECIDING
+  NEEDS_REVIEW
+  RESOLVED
+}
+
+model DealDispute {
+  id             String        @id @default(cuid())
+  escrow         String
+  dealId         Int
+  index          Int
+  /// "work": the buyer objects to the delivery; "key": the released key does not open the file.
+  phase          String
+  reason         String
+  raisedByUserId String?
+  status         DisputeStatus @default(OPEN)
+  /// "seller" (pay out) or "buyer" (refund).
+  decision       String?
+  confidence     Float?
+  rationale      String?
+  /// [{ criterion, met, evidence }] from the arbiter.
+  findings       Json?
+  /// "ai:<model>", "check:key" or "admin:<userId>".
+  decidedBy      String?
+  txHash         String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@unique([escrow, dealId, index])
+}
