@@ -16,6 +16,7 @@ Topic F: Agent Wallet.
 | Public chain explorer (no sign-in) | https://agentic-wallet-inky.vercel.app/explorer |
 | Read-only JSON-RPC (chain id 20261020) | `https://agentic-wallet-inky.vercel.app/api/rpc` |
 | Transaction hashes, grouped by what they prove | [EVIDENCE.md](EVIDENCE.md) |
+| Technical documentation (architecture, core algorithms, security design) | [TECHNICAL.md](TECHNICAL.md) |
 | Security self-assessment (permission tiers, known risks) | [SECURITY.md](SECURITY.md) |
 
 Our chain is a private, permissioned Hyperledger Besu network: only the app's keys can **write**, but
