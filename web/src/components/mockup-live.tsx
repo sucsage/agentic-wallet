@@ -527,6 +527,11 @@ export function LiveChat() {
   const [maxChats, setMaxChats] = useState(5);
   const [chatId, setChatId] = useState<string | null>(null);
   const [loadingChat, setLoadingChat] = useState(false);
+  // A card linked through Stripe covers a short balance at approval (shown in the debit dialog).
+  const [card, setCard] = useState<StripeLinkView["link"]>(null);
+  useEffect(() => {
+    api<StripeLinkView>("/api/bank/stripe-link").then((v) => setCard(v.link)).catch(() => setCard(null));
+  }, []);
   const [confirm, setConfirmState] = useState<DraftView | null>(null);
   // Balance when the dialog opened: after the debit the account refreshes, and "balance after"
   // must not subtract the same deal twice.
@@ -920,10 +925,21 @@ export function LiveChat() {
                       {account?.label} {account?.accountNo}
                     </b>
                   </p>
+                  {balanceAfter !== null && balanceAfter < 0 && card && !debitResult && (
+                    <p>
+                      <span>Short by {tokenMoney(-balanceAfter, currency)}: charged first to</span>
+                      <b>
+                        {card.brand.toUpperCase()} ••{card.last4} (Stripe)
+                      </b>
+                    </p>
+                  )}
                   <p>
                     <span>Balance after</span>
-                    <b>{balanceAfter !== null ? tokenMoney(balanceAfter, currency) : "…"}</b>
+                    <b>{balanceAfter !== null ? tokenMoney(card && balanceAfter < 0 ? 0 : balanceAfter, currency) : "…"}</b>
                   </p>
+                  {balanceAfter !== null && balanceAfter < 0 && !card && !debitResult && (
+                    <p className="aw-bank-error">Not enough money in your bank. Top up, or link a card on the Profile page.</p>
+                  )}
                 </div>
                 {debitResult ? (
                   <div className="aw-debit-checks">
@@ -1201,6 +1217,95 @@ function KycCard() {
   );
 }
 
+type StripeLinkView = { enabled: boolean; link: { brand: string; last4: string; exp: string; since: string } | null };
+
+/** A card linked through Stripe, used like a second bank: it covers a short balance at approval. */
+function StripeLinkCard() {
+  const [view, setView] = useState<StripeLinkView | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const load = () => api<StripeLinkView>("/api/bank/stripe-link").then(setView).catch(() => setView(null));
+  useEffect(() => {
+    const session = new URLSearchParams(window.location.search).get("stripe_link");
+    if (session) {
+      window.history.replaceState(null, "", window.location.pathname);
+      if (session === "cancelled") {
+        // Reading the redirect's result once on mount is what this effect is for.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setMsg({ ok: false, text: "Linking cancelled" });
+      } else {
+        void api<{ brand: string; last4: string }>("/api/bank/stripe-link/confirm", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ session }),
+        })
+          .then((c) => setMsg({ ok: true, text: `✓ ${c.brand} ••${c.last4} linked` }))
+          .catch((e) => setMsg({ ok: false, text: (e as Error).message }))
+          .finally(() => void load());
+        return;
+      }
+    }
+    void load();
+  }, []);
+  async function link() {
+    setBusy(true);
+    try {
+      const { url } = await api<{ url: string }>("/api/bank/stripe-link", { method: "POST" });
+      window.location.assign(url);
+    } catch (e) {
+      setMsg({ ok: false, text: (e as Error).message });
+      setBusy(false);
+    }
+  }
+  async function remove() {
+    if (!window.confirm("Unlink this card? Deals will then be paid from your bank balance only.")) return;
+    setBusy(true);
+    try {
+      await api("/api/bank/stripe-link", { method: "DELETE" });
+      setMsg({ ok: true, text: "Card unlinked" });
+      await load();
+    } catch (e) {
+      setMsg({ ok: false, text: (e as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Card className="aw-kyc-card">
+      <header>
+        <h2>Linked card · Stripe</h2>
+        {view?.link ? <span className="aw-kyc-ok">✓ Linked</span> : view ? <span className="aw-kyc-no">Not linked</span> : null}
+      </header>
+      {!view && <Loading text="Checking your linked card…" />}
+      {msg && <p className={msg.ok ? "aw-live-ok" : "aw-bank-error"}>{msg.text}</p>}
+      {view?.link ? (
+        <>
+          <p>
+            <b>
+              {view.link.brand.toUpperCase()} ••{view.link.last4}
+            </b>{" "}
+            · expires {view.link.exp} · test mode. When your bank balance is short at &quot;Approve &amp; lock&quot;, the missing amount is charged here
+            and paid into your account first.
+          </p>
+          <Button variant="outline" disabled={busy} onClick={() => void remove()}>
+            Unlink card
+          </Button>
+        </>
+      ) : (
+        view && (
+          <>
+            <p>Link a card once, like linking a bank: deals you approve are then never stopped by a short balance. Stripe test mode, test card 4242 4242 4242 4242.</p>
+            <Button disabled={busy || !view.enabled} onClick={() => void link()}>
+              {busy ? "Opening Stripe…" : "Link a card with Stripe"}
+            </Button>
+          </>
+        )
+      )}
+      <small className="aw-kyc-note">Stripe in Thailand cannot debit a bank account directly, and PromptPay needs you each time; a card is the reusable source.</small>
+    </Card>
+  );
+}
+
 export function LivePrivacy() {
   const lang = useLang();
   const { me } = useAppData();
@@ -1255,6 +1360,7 @@ export function LivePrivacy() {
             </div>
           </Card>
           <KycCard />
+          <StripeLinkCard />
           <Card className="aw-profile-passbooks">
             <header>
               <div>

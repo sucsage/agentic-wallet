@@ -22,10 +22,14 @@ function key(): string {
   return k;
 }
 
-async function stripe<T>(path: string, body?: URLSearchParams): Promise<T> {
+export async function stripe<T>(path: string, body?: URLSearchParams, opts: { idempotencyKey?: string; method?: string } = {}): Promise<T> {
   const res = await fetch(`https://api.stripe.com/v1/${path}`, {
-    method: body ? "POST" : "GET",
-    headers: { authorization: `Bearer ${key()}`, ...(body ? { "content-type": "application/x-www-form-urlencoded" } : {}) },
+    method: opts.method ?? (body ? "POST" : "GET"),
+    headers: {
+      authorization: `Bearer ${key()}`,
+      ...(body ? { "content-type": "application/x-www-form-urlencoded" } : {}),
+      ...(opts.idempotencyKey ? { "idempotency-key": opts.idempotencyKey } : {}),
+    },
     body,
   });
   const json = (await res.json()) as T & { error?: { message?: string } };

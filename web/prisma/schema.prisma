@@ -32,6 +32,7 @@ model User {
   aliases         ContactAlias[]
   agentChats      AgentChat[]
   kyc             KycVerification?
+  stripeLink      StripeLink?
 }
 
 model Session {
@@ -664,4 +665,18 @@ model MockIdCode {
   expiresAt     DateTime
   usedAt        DateTime?
   createdAt     DateTime    @default(now())
+}
+
+/// A card linked through Stripe (test mode) as a second funding source: when the Mock Bank balance
+/// is short at "Approve & lock", the shortfall is charged here off-session and credited (TOPUP).
+model StripeLink {
+  userId          String   @id
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  customerId      String
+  paymentMethodId String
+  brand           String
+  last4           String
+  expMonth        Int
+  expYear         Int
+  createdAt       DateTime @default(now())
 }

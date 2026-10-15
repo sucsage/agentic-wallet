@@ -124,6 +124,10 @@ key (`ArbiterNotNeutral`), so the buyer's side can never judge its own dispute.
 - **Card top-ups cannot be forged.** Top-ups use Stripe Checkout in test mode only (live keys are
   refused). The browser's return proves nothing: the server fetches the Checkout Session from Stripe
   and credits it only if Stripe says it is paid, for this user, in this currency, once per session id.
+- **A linked card is charged only for a real shortfall, once.** Off-session charges carry the funding
+  id as Stripe's idempotency key and the ledger key; they run only after the mint-cap check passes,
+  so a deal that cannot be locked never charges the card. Only test keys are accepted, and the app
+  stores the card's brand, last four digits and expiry, never the number.
 - **Previews before payment cannot replace the work.** A delivered image is shown to the buyer only as
   a 720 px JPEG with a tiled watermark; the original stays encrypted until the key is released.
 - **Chain access.** Besu runs **account permissioning**, so only the app's own keys can send

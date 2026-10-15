@@ -11,9 +11,11 @@ import { db } from "../db";
 import { type FileDealView, readFileDeals, walletUnits } from "../state";
 import { CARRIER_LABEL, type Carrier, bookParcel, checkTracking, trackParcel } from "../post";
 import { type DraftMilestone, deliveryOf } from "./drafts";
-import { type Mandate, ownerSignMandate } from "./funding";
+import { type Mandate, mintCapError, ownerSignMandate } from "./funding";
 import { arbitrate } from "./arbiter";
 import { sweepInvite } from "./invites";
+import { coverShortfall } from "./stripe-link";
+import { TopupError } from "./topup";
 import { InsufficientFunds, accountOf, openAccount, reserveIdFor, transfer } from "./ledger";
 
 /**
@@ -205,6 +207,14 @@ export async function acceptAndPay(wallet: Address, dealId: number): Promise<Acc
   const id = redeemId("accept", dealId);
 
   // 1. Debit: the transfer row is the funding record, written before anything happens on-chain.
+  // A short balance is covered from the linked Stripe card first (once per deal).
+  if (!(await db.bankTransfer.findUnique({ where: { idempotencyKey: `accept:${id}:debit` } }))) {
+    const capError = await mintCapError(token, d.total, currency);
+    if (capError) throw new DealError(capError);
+    await coverShortfall(wallet, d.total, `accept:${id}`).catch((e) => {
+      throw e instanceof TopupError ? new DealError(e.message) : e;
+    });
+  }
   try {
     await transfer({ key: `accept:${id}:debit`, kind: "FUND", fromId: account.id, toId: reserveIdFor(currency), amount: d.total });
   } catch (err) {

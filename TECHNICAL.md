@@ -271,6 +271,28 @@ Top up ─► POST /api/bank/topup {amount ≤ KYC limit} ─► Stripe Checkout
 - **Test keys only.** Live keys are refused.
 - **Ledger invariant.** It becomes: sum of balances = deposits + top-ups.
 
+### 3.9 A card linked like a bank (Stripe, test mode)
+
+A customer can link a card once on Stripe's page (Checkout in setup mode). The card is saved to a
+Stripe Customer, and the app keeps only its brand, last four digits and expiry. Stripe in Thailand
+cannot debit a bank account directly, and PromptPay needs the customer for every payment, so a card
+is the only reusable source.
+
+```
+Approve & lock (or Accept & pay)
+  ─► mint-cap check (refuse before any money moves)
+  ─► bank balance short? ─► charge the shortfall to the linked card, off-session
+                            (PaymentIntent, idempotency key = the funding id)
+                         ─► ledger TOPUP "stripe-auto:<funding id>"
+  ─► the funding saga as before (debit → mint → lock)
+```
+
+- **Once per funding.** A retry never charges twice: Stripe receives the same idempotency key, and the ledger the same transfer key.
+- **No charge without a reason.** A deal that the bank token cannot mint (above its per-deal or daily cap) is refused before the card is touched.
+- **The money stays.** If the lock later fails, the refund goes to the bank account, so the card charge stays as the customer's balance.
+- **Limits.** The same KYC limits as top-ups apply.
+- **Unlinking** detaches the card at Stripe.
+
 ---
 
 ## 4. The AI agent

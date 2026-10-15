@@ -2,7 +2,7 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 
-import { type Address, formatUnits, getAddress, parseUnits } from "viem";
+import { type Address, formatUnits, getAddress, hashTypedData, parseUnits } from "viem";
 
 import type { DealDraft, Prisma } from "@/generated/prisma/client";
 
@@ -13,7 +13,9 @@ import { db } from "../db";
 import { KycRequired, requireKycFor } from "../kyc";
 import { walletUnits } from "../state";
 import { offerToSell } from "./deals";
-import { type FundingResult, fileOfferMandate, fundJustInTime, ownerSignMandate } from "./funding";
+import { type FundingResult, fileOfferMandate, fundJustInTime, mintCapError, ownerSignMandate, typedMandate } from "./funding";
+import { coverShortfall } from "./stripe-link";
+import { TopupError } from "./topup";
 
 /**
  * Bank-paid file deals, in two steps the user can tell apart:
@@ -257,6 +259,16 @@ async function approveClaimed(userId: string, wallet: Address, draft: DealDraft)
   };
   await db.dealDraft.update({ where: { id: draft.id }, data: { result: keep as unknown as Prisma.InputJsonValue } });
 
+  // A short bank balance is covered from the linked Stripe card first (once per funding id).
+  const fundingId = hashTypedData(typedMandate(wallet, mandate));
+  if (!(await db.bankTransfer.findUnique({ where: { idempotencyKey: `funding:${fundingId}:debit` } }))) {
+    // Never charge the card for a deal the bank token cannot mint.
+    const capError = await mintCapError(units.address, mandate.amount, units.currency ?? "");
+    if (capError) throw new DraftError(capError);
+    await coverShortfall(wallet, mandate.amount, `funding:${fundingId}`).catch((e) => {
+      throw e instanceof TopupError ? new DraftError(e.message) : e;
+    });
+  }
   const funding = await fundJustInTime(wallet, mandate, signature);
   const status = funding.status === "FUNDED" ? "FUNDED" : funding.status === "PENDING" || funding.status === "COMPENSATING" ? "DRAFT" : "FAILED";
   const updated = await db.dealDraft.update({

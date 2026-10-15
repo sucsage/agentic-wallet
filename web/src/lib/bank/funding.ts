@@ -4,6 +4,7 @@ import {
   type Address,
   type Hex,
   decodeEventLog,
+  formatUnits,
   encodeFunctionData,
   getAddress,
   hashTypedData,
@@ -68,7 +69,7 @@ const MANDATE_TYPES = {
   ],
 } as const;
 
-function typedMandate(wallet: Address, m: Mandate) {
+export function typedMandate(wallet: Address, m: Mandate) {
   return {
     domain: { name: "AgentWallet", version: "1", chainId: config.chain.id, verifyingContract: wallet },
     types: MANDATE_TYPES,
@@ -181,6 +182,12 @@ export async function fundJustInTime(walletInput: Address, m: Mandate, signature
   // Used but not run as a lock means an earlier attempt revoked it and was refunding.
   if (await mandateUsed()) return compensate();
 
+  // The token's mint caps bound what one deal can lock: refuse before debiting anything.
+  if (!(await debitRow())) {
+    const capError = await mintCapError(token, m.amount, bankAccount.currency);
+    if (capError) return result("REJECTED", { error: capError });
+  }
+
   // 2. Debit. The transfer row is the funding record, written before anything happens on-chain.
   const alreadyDebited = (await debitRow()) !== null;
   try {
@@ -279,8 +286,25 @@ export async function fundJustInTime(walletInput: Address, m: Mandate, signature
 }
 
 /** Mined and reverted, or refused by the contract before sending: it did not and will not happen. */
+/**
+ * Why the bank token would refuse to mint `amount` now (per-mint or daily cap), or null. Checked
+ * before any money moves, so nothing is debited or charged for a deal that cannot be locked.
+ */
+export async function mintCapError(token: Address, amount: bigint, currency: string): Promise<string | null> {
+  const [maxPerTx, dailyCap, usedToday] = await Promise.all([
+    fresh({ address: token, abi: mockTHBAbi, functionName: "maxMintPerTx" }),
+    fresh({ address: token, abi: mockTHBAbi, functionName: "dailyMintCap" }),
+    fresh({ address: token, abi: mockTHBAbi, functionName: "mintedOnDay", args: [BigInt(Math.floor(Date.now() / 86_400_000))] }),
+  ]);
+  if (amount > maxPerTx) return `A deal can lock at most ${formatUnits(maxPerTx, 2)} ${currency} (the bank's per-mint limit)`;
+  if (usedToday + amount > dailyCap) return "The bank's daily limit for new deals is reached; try again tomorrow";
+  return null;
+}
+
 function isCertainFailure(outcome: TxOutcome): boolean {
-  return outcome.status === "reverted" || (outcome.status === "rejected" && outcome.definite === true);
+  if (outcome.status === "reverted" || (outcome.status === "rejected" && outcome.definite === true)) return true;
+  // The token's own refusals: nothing was sent, and the same mint will be refused every time.
+  return outcome.status === "rejected" && /ExceedsMintPerTx|ExceedsDailyMintCap|IdAlreadyUsed|InvalidAmount/.test(outcome.error);
 }
 
 /**
