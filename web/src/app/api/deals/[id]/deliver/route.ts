@@ -2,13 +2,15 @@ import { after } from "next/server";
 
 import { DealError, MAX_FILE_BYTES, deliver, syncDeal } from "@/lib/bank/deals";
 import { HttpError, errorResponse, rateLimit, requireBankWallet } from "@/lib/guard";
+import { CARRIERS, type Carrier } from "@/lib/post";
 
 export const maxDuration = 120;
 
 /**
  * The seller delivers a milestone: multipart form with `index`, `note` (the evidence: what was
  * delivered and how it meets the acceptance criteria) and optionally `file` (max 4 MB). The file is
- * encrypted and stored; only its sha256 goes on-chain.
+ * encrypted and stored; only its sha256 goes on-chain. A parcel milestone sends `carrier` and
+ * `tracking` instead (MOCK_POST without a tracking number books the parcel).
  */
 export async function POST(req: Request, ctx: RouteContext<"/api/deals/[id]/deliver">) {
   try {
@@ -25,7 +27,10 @@ export async function POST(req: Request, ctx: RouteContext<"/api/deals/[id]/deli
       if (f.size > MAX_FILE_BYTES) throw new HttpError(413, "The file is larger than 4 MB");
       file = { name: f.name.slice(0, 200), mime: f.type || "application/octet-stream", bytes: Buffer.from(await f.arrayBuffer()) };
     }
-    const result = await deliver(user.id, wallet, id, index, { note, file }).catch((e) => {
+    const carrier = String(form.get("carrier") ?? "");
+    if (carrier && !CARRIERS.includes(carrier as Carrier)) throw new HttpError(400, "Unknown carrier");
+    const parcel = carrier ? { carrier: carrier as Carrier, tracking: String(form.get("tracking") ?? "").slice(0, 40) || undefined } : null;
+    const result = await deliver(user.id, wallet, id, index, { note, file, parcel }).catch((e) => {
       throw e instanceof DealError ? new HttpError(400, e.message) : e;
     });
     after(() => syncDeal(wallet, id).catch((e) => console.error("syncDeal", id, e)));

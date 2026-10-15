@@ -9,6 +9,8 @@ import { type TxOutcome, atFreshBlock, publicClient, roleAddresses, send } from 
 import { config } from "../config";
 import { db } from "../db";
 import { type FileDealView, readFileDeals, walletUnits } from "../state";
+import { CARRIER_LABEL, type Carrier, bookParcel, checkTracking, trackParcel } from "../post";
+import { type DraftMilestone, deliveryOf } from "./drafts";
 import { type Mandate, ownerSignMandate } from "./funding";
 import { arbitrate } from "./arbiter";
 import { sweepInvite } from "./invites";
@@ -255,18 +257,40 @@ export async function deliver(
   wallet: Address,
   dealId: number,
   index: number,
-  input: { note: string; file: { name: string; mime: string; bytes: Buffer } | null },
-): Promise<{ outcome: TxOutcome; sha256: string }> {
+  input: {
+    note: string;
+    file: { name: string; mime: string; bytes: Buffer } | null;
+    /** Parcel milestones: book with Mock Post (no tracking given) or record another carrier's number. */
+    parcel?: { carrier: Carrier; tracking?: string } | null;
+  },
+): Promise<{ outcome: TxOutcome; sha256: string; tracking?: string }> {
   const deal = await dealForWallet(wallet, dealId);
   if (deal.role !== "seller") throw new DealError("Only the seller delivers");
   const m = deal.milestones[index];
   if (!m) throw new DealError("No such milestone");
   if (m.status !== "Pending" && m.status !== "Delivered") throw new DealError(`This milestone is already ${m.status}`);
+  const terms = await dealTerms(dealId, getAddress(deal.counterparty), wallet);
+  const parcelMilestone = deliveryOf((terms?.milestones as DraftMilestone[] | undefined)?.[index]) === "parcel";
+  if (parcelMilestone && !input.parcel) throw new DealError("This milestone ships a parcel: book it with Mock Post or enter the tracking number");
   if (m.hasFile && !input.file) throw new DealError("This milestone needs a file");
-  if (!input.file && !input.note.trim()) throw new DealError("Describe what you delivered");
+  if (!input.file && !input.parcel && !input.note.trim()) throw new DealError("Describe what you delivered");
   if (input.file && input.file.bytes.length > MAX_FILE_BYTES) throw new DealError("The file is larger than 4 MB");
 
-  const plain = input.file?.bytes ?? Buffer.from(input.note, "utf8");
+  // A parcel: the tracking record is the evidence, and its hash the work hash on-chain.
+  let parcel: { carrier: Carrier; tracking: string; shippedAt: Date } | null = null;
+  if (input.parcel) {
+    const carrier = input.parcel.carrier;
+    const tracking = carrier === "MOCK_POST" && !input.parcel.tracking ? bookParcel() : (input.parcel.tracking ?? "").trim().toUpperCase();
+    const bad = checkTracking(carrier, tracking);
+    if (bad) throw new DealError(bad);
+    const prior = await db.dealDelivery.findUnique({ where: { escrow_dealId_index: { escrow: escrow(), dealId, index } } });
+    parcel = { carrier, tracking, shippedAt: prior?.tracking === tracking && prior.shippedAt ? prior.shippedAt : new Date() };
+    if (!input.note.trim()) input = { ...input, note: `Shipped with ${CARRIER_LABEL[carrier]}, tracking number ${tracking}.` };
+  }
+
+  const plain =
+    input.file?.bytes ??
+    Buffer.from(parcel ? JSON.stringify({ carrier: parcel.carrier, tracking: parcel.tracking, note: input.note }) : input.note, "utf8");
   const sha256 = createHash("sha256").update(plain).digest("hex");
   let enc: { ciphertext: Buffer; iv: Buffer; tag: Buffer; key: Buffer } | null = null;
   if (input.file) {
@@ -288,6 +312,9 @@ export async function deliver(
       iv: enc?.iv.toString("hex") ?? null,
       tag: enc?.tag.toString("hex") ?? null,
       fileKey: enc?.key.toString("hex") ?? null,
+      carrier: parcel?.carrier ?? null,
+      tracking: parcel?.tracking ?? null,
+      shippedAt: parcel?.shippedAt ?? null,
       sha256,
     },
     create: {
@@ -303,6 +330,9 @@ export async function deliver(
       iv: enc?.iv.toString("hex") ?? null,
       tag: enc?.tag.toString("hex") ?? null,
       fileKey: enc?.key.toString("hex") ?? null,
+      carrier: parcel?.carrier ?? null,
+      tracking: parcel?.tracking ?? null,
+      shippedAt: parcel?.shippedAt ?? null,
       sha256,
     },
   });
@@ -311,13 +341,18 @@ export async function deliver(
     functionName: "deliver",
     args: [BigInt(dealId), BigInt(index), `0x${sha256}`, `app-delivery:${row.id}`],
   });
-  return { outcome: await viaMandate(wallet, data, `deliver deal ${dealId} milestone ${index}`), sha256 };
+  return { outcome: await viaMandate(wallet, data, `deliver deal ${dealId} milestone ${index}`), sha256, tracking: parcel?.tracking };
 }
 
 /** What either party may see about a delivery before the file itself. */
 export async function deliveryInfo(dealId: number, index: number) {
   const d = await db.dealDelivery.findUnique({ where: { escrow_dealId_index: { escrow: escrow(), dealId, index } } });
-  return d ? { note: d.note, fileName: d.fileName, mime: d.mime, size: d.size, sha256: d.sha256, deliveredAt: d.updatedAt } : null;
+  if (!d) return null;
+  const parcel =
+    d.tracking && d.carrier && d.shippedAt
+      ? { carrier: d.carrier, carrierLabel: CARRIER_LABEL[d.carrier as Carrier] ?? d.carrier, tracking: d.tracking, ...trackParcel(d.carrier as Carrier, d.shippedAt) }
+      : null;
+  return { note: d.note, fileName: d.fileName, mime: d.mime, size: d.size, sha256: d.sha256, deliveredAt: d.updatedAt, parcel };
 }
 
 /** The decrypted file: always for the seller, for the buyer only once the escrow released the key. */
@@ -333,6 +368,55 @@ export async function deliveryFile(wallet: Address, dealId: number, index: numbe
   dec.setAuthTag(Buffer.from(d.tag, "hex"));
   const bytes = Buffer.concat([dec.update(Buffer.from(d.ciphertext)), dec.final()]);
   return { bytes, name: d.fileName ?? "delivery", mime: d.mime ?? "application/octet-stream", sha256: d.sha256 };
+}
+
+/** Stroke glyphs for the watermark: drawn as paths, so it needs no fonts on the server. */
+const GLYPH: Record<string, string> = {
+  P: "M0 14V0H7L10 3V5L7 8H0",
+  R: "M0 14V0H7L10 3V5L7 8H0M5 8L10 14",
+  E: "M10 0H0V14H10M0 7H7",
+  V: "M0 0L5 14L10 0",
+  I: "M5 0V14M2 0H8M2 14H8",
+  W: "M0 0L2.5 14L5 5L7.5 14L10 0",
+};
+
+function watermarkSvg(width: number, height: number): string {
+  const word = "PREVIEW";
+  const path = [...word].map((ch, i) => `<path transform="translate(${i * 14} 0)" d="${GLYPH[ch]}"/>`).join("");
+  const scale = Math.max(1.2, Math.min(width, height) / 160);
+  const tileW = 130 * scale;
+  const tileH = 60 * scale;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+<defs><pattern id="w" width="${tileW}" height="${tileH}" patternUnits="userSpaceOnUse" patternTransform="rotate(-28)">
+<g transform="translate(${8 * scale} ${20 * scale}) scale(${scale})" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<g stroke="#000" stroke-opacity="0.35" stroke-width="3.2">${path}</g>
+<g stroke="#fff" stroke-opacity="0.7" stroke-width="1.6">${path}</g>
+</g></pattern></defs>
+<rect width="100%" height="100%" fill="url(#w)"/></svg>`;
+}
+
+/**
+ * A watermarked, downscaled copy of a delivered image, for the buyer to check before approving.
+ * The original stays encrypted until the key is released; the preview is too small and too
+ * marked to stand in for it.
+ */
+export async function deliveryPreview(wallet: Address, dealId: number, index: number): Promise<Buffer> {
+  await dealForWallet(wallet, dealId);
+  const d = await db.dealDelivery.findUnique({ where: { escrow_dealId_index: { escrow: escrow(), dealId, index } } });
+  if (!d?.ciphertext || !d.fileKey || !d.iv || !d.tag) throw new DealError("No file for this milestone");
+  if (!d.mime?.startsWith("image/")) throw new DealError("Previews are made for images only");
+  const dec = createDecipheriv("aes-256-gcm", Buffer.from(d.fileKey, "hex"), Buffer.from(d.iv, "hex"));
+  dec.setAuthTag(Buffer.from(d.tag, "hex"));
+  const bytes = Buffer.concat([dec.update(Buffer.from(d.ciphertext)), dec.final()]);
+  const sharp = (await import("sharp")).default;
+  const { data, info } = await sharp(bytes)
+    .rotate()
+    .resize({ width: 720, height: 720, fit: "inside", withoutEnlargement: true })
+    .toBuffer({ resolveWithObject: true });
+  return sharp(data)
+    .composite([{ input: Buffer.from(watermarkSvg(info.width, info.height)) }])
+    .jpeg({ quality: 55 })
+    .toBuffer();
 }
 
 // ------------------------------------------------------------------------------------------

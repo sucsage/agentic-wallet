@@ -9,7 +9,7 @@ import { localizeMockupNode, useLang } from "@/lib/i18n";
 
 import { api, download, tokenMoney, useAppData } from "./app-data";
 import { BalanceBar } from "./mockup-live";
-import { Button, Card, PageTitle } from "./mockup-ui";
+import { Button, Card, Loading, PageTitle } from "./mockup-ui";
 
 /**
  * Second batch of mockup screens wired to the backend: approvals, policy, friends, groups,
@@ -72,7 +72,9 @@ function useAction() {
       setBusy(null);
     }
   };
-  const note: ReactNode = message ? (
+  const note: ReactNode = busy ? (
+    <Loading text="Working… signing and waiting for the chain (a few seconds)" />
+  ) : message ? (
     <p className={message.ok ? "aw-live-ok" : "aw-bank-error"}>
       {message.ok ? "✓ " : "! "}
       {message.text}
@@ -129,6 +131,7 @@ export function LiveApprovals() {
           <p>The agent proposes, you decide. Nothing is debited until you approve.</p>
         </header>
         {error && <p className="aw-bank-error">{error}</p>}
+        {!data && !error && <Loading block text="Loading your approvals…" />}
         {note}
         <small className="aw-approvals-section-label">YOUR ACCOUNT</small>
         <div className="aw-approval-list">
@@ -138,7 +141,8 @@ export function LiveApprovals() {
               <span className="aw-approval-tier">T1</span>
               <div className="aw-approval-copy">
                 <b>
-                  {d.side === "SELL" ? "Offer to sell" : "Lock"} “{d.title}” · {tokenMoney(d.total, currency)}
+                  <span className="aw-id-chip">DR-{d.id.slice(-6).toUpperCase()}</span> {d.side === "SELL" ? "Offer to sell" : "Lock"} “{d.title}” ·{" "}
+                  {tokenMoney(d.total, currency)}
                 </b>
                 <p>
                   {d.side === "SELL"
@@ -148,6 +152,13 @@ export function LiveApprovals() {
                 {d.side !== "SELL" && <small>Debited from your default passbook only when you press approve</small>}
               </div>
               <div className="aw-approval-buttons">
+                <Button
+                  variant="outline"
+                  disabled={!!busy || !address}
+                  onClick={() => run(`x${d.id}`, () => send(`/api/workspace/${address}/drafts/${d.id}`, "DELETE"), after)}
+                >
+                  {busy === `x${d.id}` ? "…" : "Discard"}
+                </Button>
                 <Button
                   disabled={!!busy || !address}
                   onClick={() => run(d.id, () => send(`/api/workspace/${address}/drafts/${d.id}/approve`, "POST"), after)}
@@ -162,7 +173,7 @@ export function LiveApprovals() {
               <span className="aw-approval-tier">T1</span>
               <div className="aw-approval-copy">
                 <b>
-                  Offer from {o.sellerLabel || o.seller} · {o.title} · {tokenMoney(o.amount, currency)}
+                  <span className="aw-id-chip">D-{o.dealId}</span> Offer from {o.sellerLabel || o.seller} · {o.title} · {tokenMoney(o.amount, currency)}
                 </b>
                 <p>Accepting debits the total from your bank and locks it in escrow until you approve each delivery.</p>
                 <small>The seller must be one of your payees</small>
@@ -170,6 +181,9 @@ export function LiveApprovals() {
               <div className="aw-approval-buttons">
                 <Button variant="outline" onClick={() => (window.location.href = `/deal/D-${o.dealId}`)}>
                   Details
+                </Button>
+                <Button variant="outline" disabled={!!busy} onClick={() => run(`n${o.dealId}`, () => send(`/api/deals/${o.dealId}/decline`, "POST"), after)}>
+                  {busy === `n${o.dealId}` ? "…" : "Decline"}
                 </Button>
                 <Button
                   disabled={!!busy}
@@ -185,7 +199,10 @@ export function LiveApprovals() {
               <span className="aw-approval-tier">T{r.tier}</span>
               <div className="aw-approval-copy">
                 <b>
-                  Review delivery · {r.title} · milestone {r.index + 1} · {tokenMoney(r.amount, currency)}
+                  <span className="aw-id-chip">
+                    D-{r.dealId} · M{r.index + 1}
+                  </span>{" "}
+                  Review delivery · {r.title} · {tokenMoney(r.amount, currency)}
                 </b>
                 <p>
                   {r.tier === 2 ? "Within the agent's limits: approving runs on the agent's own authority." : "Above the agent's limits: your signature is needed."}
@@ -218,11 +235,16 @@ export function LiveApprovals() {
               <span className="aw-approval-tier">{t.step === "accept" ? "Offer" : `M${(t.index ?? 0) + 1}`}</span>
               <div className="aw-approval-copy">
                 <b>
-                  {t.step === "accept" ? "Accept offer" : "Deliver"} · {t.title} · {tokenMoney(t.amount, currency)}
+                  <span className="aw-id-chip">D-{t.dealId}</span> {t.step === "accept" ? "Accept offer" : "Deliver"} · {t.title} · {tokenMoney(t.amount, currency)}
                 </b>
                 <p>{t.step === "accept" ? "The buyer already locked the money in escrow." : "Upload the work and your evidence on the deal page."}</p>
               </div>
               <div className="aw-approval-buttons">
+                {t.step === "accept" && (
+                  <Button variant="outline" disabled={!!busy} onClick={() => run(`s${t.dealId}`, () => send(`/api/deals/${t.dealId}/decline`, "POST"), after)}>
+                    {busy === `s${t.dealId}` ? "…" : "Decline"}
+                  </Button>
+                )}
                 <Button onClick={() => (window.location.href = `/deal/D-${t.dealId}`)}>Open deal</Button>
               </div>
             </article>
@@ -294,6 +316,7 @@ export function LivePolicy() {
       <main className="aw-policy-content">
         <PageTitle title="Policy & Allowlist" description="The policy engine and the smart contract enforce the same rules" />
         {error && <p className="aw-bank-error">{error}</p>}
+        {!data && !error && <Loading block text="Reading your policy from the chain…" />}
         {note}
         <section className="aw-policy-tiers">
           {[
@@ -476,12 +499,59 @@ const initials = (name: string) =>
     .slice(0, 2)
     .toUpperCase();
 
+/** What the user calls their contacts: the AI learns these in chat; the user can remove them here. */
+function Nicknames() {
+  const { data, reload } = useApi<{ nicknames: { id: string; nickname: string; contact: string }[] }>("/api/friends/nicknames");
+  const { busy, run, note } = useAction();
+  return (
+    <section className="aw-friends-panel">
+      <header>
+        <h2>Nicknames the AI remembers · {data?.nicknames.length ?? "…"}</h2>
+      </header>
+      <small>Call a friend by a nickname in the AI chat (e.g. &quot;my designer&quot;); once you tell it who you mean, it remembers in every chat.</small>
+      {!data && <Loading text="Loading nicknames…" />}
+      {data?.nicknames.length === 0 && <small>None yet.</small>}
+      {data?.nicknames.map((n) => (
+        <div className="aw-request-row" key={n.id}>
+          <span className="aw-friend-name">
+            <b>&quot;{n.nickname}&quot;</b>
+            <small>means {n.contact}</small>
+          </span>
+          <Button variant="outline" disabled={!!busy} onClick={() => run(`n${n.id}`, () => send(`/api/friends/nicknames?id=${encodeURIComponent(n.id)}`, "DELETE"), reload)}>
+            Forget
+          </Button>
+        </div>
+      ))}
+      {note}
+    </section>
+  );
+}
+
 export function LiveFriends() {
   const lang = useLang();
   const { data, error, reload } = useApi<{ friends: Friend[] }>("/api/friends");
   const { busy, run, note } = useAction();
   const [username, setUsername] = useState("");
+  const [found, setFound] = useState<{ username: string; name: string }[]>([]);
   const friends = data?.friends ?? [];
+  // Search as the user types: part of a username or a display name is enough.
+  useEffect(() => {
+    const q = username.trim();
+    if (q.length < 2) return;
+    const t = setTimeout(() => {
+      api<{ results: { username: string; name: string }[] }>(`/api/friends/search?q=${encodeURIComponent(q)}`)
+        .then((r) => setFound(r.results))
+        .catch(() => setFound([]));
+    }, 250);
+    return () => clearTimeout(t);
+  }, [username]);
+  const known = new Set(friends.map((f) => f.username));
+  const add = (u: string) =>
+    run(`add${u}`, () => send("/api/friends", "POST", { username: u }), async () => {
+      setUsername("");
+      setFound([]);
+      await reload();
+    });
   const incoming = friends.filter((f) => f.direction === "incoming");
   const outgoing = friends.filter((f) => f.direction === "outgoing");
   const mutual = friends.filter((f) => f.status === "ACCEPTED");
@@ -497,28 +567,46 @@ export function LiveFriends() {
           </div>
         </header>
         {error && <p className="aw-bank-error">{error}</p>}
+        {!data && !error && <Loading block text="Loading friends and payees…" />}
         {note}
         <div className="aw-friends-top">
           <section className="aw-friends-panel aw-find-friends">
             <h2>Add a friend</h2>
-            <p>Use their Mock Bank username. Only customers of your bank are found.</p>
+            <p>Type part of their name or Mock Bank username. Only customers of your bank are found.</p>
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                void run("add", () => send("/api/friends", "POST", { username }), async () => {
+                // One match: add that person. Otherwise treat the text as an exact username.
+                const target = found.length === 1 ? found[0].username : username.trim().toLowerCase();
+                void run("add", () => send("/api/friends", "POST", { username: target }), async () => {
                   setUsername("");
+                  setFound([]);
                   await reload();
                 });
               }}
             >
               <label className="aw-friends-search">
-                <input value={username} onChange={(e) => setUsername(e.target.value.toLowerCase())} placeholder="bank username" />
+                <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="name or bank username" />
               </label>
               <Button type="submit" disabled={!username || busy === "add"}>
                 {busy === "add" ? "…" : "Send request"}
               </Button>
             </form>
             <div className="aw-friend-search-results">
+              {username.trim().length >= 2 &&
+                found.map((r) => (
+                  <div className="aw-friend-result" key={`found-${r.username}`}>
+                    <span className="aw-friend-avatar violet">{initials(r.name)}</span>
+                    <span className="aw-friend-name">
+                      <b>{r.name}</b>
+                      <small>@{r.username}</small>
+                    </span>
+                    <Button variant="outline" disabled={!!busy || known.has(r.username)} onClick={() => void add(r.username)}>
+                      {known.has(r.username) ? "Already added" : busy === `add${r.username}` ? "…" : "Send request"}
+                    </Button>
+                  </div>
+                ))}
+              {username.trim().length >= 2 && found.length === 0 && <small>No one at your bank matches “{username.trim()}”.</small>}
               {outgoing.map((f) => (
                 <div className="aw-friend-result" key={f.friendshipId}>
                   <span className="aw-friend-avatar blue">{initials(f.name)}</span>
@@ -535,6 +623,7 @@ export function LiveFriends() {
           </section>
         </div>
         <InviteByLink />
+        <Nicknames />
         <section className="aw-friends-panel aw-friend-requests">
           <header>
             <h2>Friend requests</h2>
@@ -581,7 +670,7 @@ export function LiveFriends() {
                     disabled={!!busy || !f.wallet}
                     onClick={() => run(`p${f.friendshipId}`, () => send(`/api/friends/${f.friendshipId}/payee`, "PUT", { allowed: !f.allowlisted }), reload)}
                   >
-                    {busy === `p${f.friendshipId}` ? "…" : f.allowlisted ? "Allowlisted ✓ · remove" : f.wallet ? "Add to allowlist" : "No wallet yet"}
+                    {busy === `p${f.friendshipId}` ? "Updating the allowlist on-chain…" : f.allowlisted ? "Allowlisted ✓ · remove" : f.wallet ? "Add to allowlist" : "No wallet yet"}
                   </Button>
                   <Button variant="outline" disabled={!!busy} onClick={() => run(`u${f.friendshipId}`, () => send(`/api/friends/${f.friendshipId}`, "DELETE"), reload)}>
                     Unfriend
@@ -732,6 +821,7 @@ export function LiveGroups({ initialCreateOpen = false }: { initialCreateOpen?: 
           <Button onClick={() => setCreating((v) => !v)}>{creating ? "Close" : "＋ Create group"}</Button>
         </header>
         {error && <p className="aw-bank-error">{error}</p>}
+        {!data && !error && <Loading block text="Loading groups…" />}
         {note}
         {creating && (
           <Card className="aw-group-panel">
@@ -911,6 +1001,7 @@ export function LiveSummary() {
           </div>
         </header>
         {error && <p className="aw-bank-error">{error}</p>}
+        {!data && !error && <Loading block text="Adding up your money…" />}
         <div className="aw-summary-metrics">
           {(
             [
@@ -1043,6 +1134,8 @@ type DealDetail = {
   id: number;
   title: string;
   summary: string | null;
+  kind: "HIRE" | "GOODS";
+  shipTo: string | null;
   role: "buyer" | "seller";
   counterpartyLabel: string;
   counterparty: string;
@@ -1052,6 +1145,7 @@ type DealDetail = {
   demoSeller: boolean;
   canCancel: boolean;
   canAccept: boolean;
+  declined: "me" | "them" | null;
   escrow: string | null;
   milestones: {
     index: number;
@@ -1061,7 +1155,24 @@ type DealDetail = {
     status: string;
     deadline: number;
     moves: string[];
-    delivery: { note: string; fileName: string | null; size: number | null; sha256: string; deliveredAt: string } | null;
+    delivers: "file" | "parcel" | "note";
+    canPreview: boolean;
+    delivery: {
+      note: string;
+      fileName: string | null;
+      size: number | null;
+      sha256: string;
+      deliveredAt: string;
+      parcel: {
+        carrier: string;
+        carrierLabel: string;
+        tracking: string;
+        tracked: boolean;
+        delivered: boolean | null;
+        status: string;
+        events: { code: number; status: string; location: string; at: string }[];
+      } | null;
+    } | null;
     canDownload: boolean;
     deliverable: { text: string; sha256: string } | null;
     dispute: DisputeInfo | null;
@@ -1166,9 +1277,11 @@ function DisputeForm({ dealId, index, onDone, onCancel }: { dealId: number; inde
 }
 
 /** The seller's delivery form for one milestone: evidence note plus an optional file (max 4 MB). */
-function DeliverForm({ dealId, index, onDone }: { dealId: number; index: number; onDone: () => Promise<void> }) {
+function DeliverForm({ dealId, index, parcel, onDone }: { dealId: number; index: number; parcel: boolean; onDone: () => Promise<void> }) {
   const [note, setNote] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [carrier, setCarrier] = useState("MOCK_POST");
+  const [tracking, setTracking] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   async function submit(e: React.FormEvent) {
@@ -1181,10 +1294,20 @@ function DeliverForm({ dealId, index, onDone }: { dealId: number; index: number;
       form.set("index", String(index));
       form.set("note", note);
       if (file) form.set("file", file);
-      const r = await api<{ outcome: Outcome; sha256: string }>(`/api/deals/${dealId}/deliver`, { method: "POST", body: form });
+      if (parcel) {
+        form.set("carrier", carrier);
+        if (tracking.trim()) form.set("tracking", tracking.trim());
+      }
+      const r = await api<{ outcome: Outcome; sha256: string; tracking?: string }>(`/api/deals/${dealId}/deliver`, { method: "POST", body: form });
       if (r.outcome.status !== "success") setMsg({ ok: false, text: r.outcome.error ?? r.outcome.status });
       else {
-        setMsg({ ok: true, text: `Delivered · sha256 ${r.sha256.slice(0, 12)}… anchored on-chain` });
+        setMsg({
+          ok: true,
+          text: r.tracking
+            ? `Shipped · tracking ${r.tracking} · the record's sha256 ${r.sha256.slice(0, 12)}… is anchored on-chain`
+            : `Delivered · sha256 ${r.sha256.slice(0, 12)}… anchored on-chain`,
+        });
+        setTracking("");
         setNote("");
         setFile(null);
       }
@@ -1194,6 +1317,35 @@ function DeliverForm({ dealId, index, onDone }: { dealId: number; index: number;
     } finally {
       setBusy(false);
     }
+  }
+  const booking = parcel && carrier === "MOCK_POST" && !tracking.trim();
+  if (parcel) {
+    return (
+      <form className="aw-deliver-form" onSubmit={submit}>
+        <label>
+          <span>Carrier</span>
+          <select value={carrier} onChange={(e) => setCarrier(e.target.value)}>
+            <option value="MOCK_POST">Mock Post (Thailand Post sandbox) · tracked live</option>
+            <option value="THAILAND_POST">Thailand Post</option>
+            <option value="KERRY">Kerry Express</option>
+            <option value="FLASH">Flash Express</option>
+            <option value="OTHER">Other carrier</option>
+          </select>
+        </label>
+        <label>
+          <span>{carrier === "MOCK_POST" ? "Tracking number (leave empty to book a pickup and get one)" : "Tracking number"}</span>
+          <input value={tracking} onChange={(e) => setTracking(e.target.value.toUpperCase())} placeholder="EF123456785TH" maxLength={30} required={carrier !== "MOCK_POST"} />
+        </label>
+        <label>
+          <span>Note for the buyer (optional)</span>
+          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} maxLength={4000} />
+        </label>
+        <Button type="submit" disabled={busy || (carrier !== "MOCK_POST" && !tracking.trim())}>
+          {busy ? (booking ? "Booking with Mock Post…" : "Recording the shipment…") : booking ? "Book pickup & ship" : "Mark as shipped"}
+        </Button>
+        {msg && <p className={msg.ok ? "aw-live-ok" : "aw-bank-error"}>{msg.text}</p>}
+      </form>
+    );
   }
   return (
     <form className="aw-deliver-form" onSubmit={submit}>
@@ -1210,6 +1362,39 @@ function DeliverForm({ dealId, index, onDone }: { dealId: number; index: number;
       </Button>
       {msg && <p className={msg.ok ? "aw-live-ok" : "aw-bank-error"}>{msg.text}</p>}
     </form>
+  );
+}
+
+type Parcel = NonNullable<NonNullable<DealDetail["milestones"][number]["delivery"]>["parcel"]>;
+
+/** Where the parcel is: the carrier's tracking events, newest first. */
+function ParcelPanel({ p, shipTo, role, reviewing }: { p: Parcel; shipTo: string | null; role: "buyer" | "seller"; reviewing: boolean }) {
+  const t = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return (
+    <div className="aw-parcel">
+      <p>
+        📦 <b>{p.carrierLabel}</b> · <code>{p.tracking}</code>
+      </p>
+      {shipTo && <p>To: {shipTo}</p>}
+      {p.tracked ? (
+        <ol>
+          {p.events.map((e) => (
+            <li key={e.code}>
+              <time>{t(e.at)}</time>
+              <span>
+                {e.status} · {e.location}
+              </span>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p>{p.status}</p>
+      )}
+      {p.delivered === true && (
+        <p className="aw-parcel-ok">{role === "buyer" && reviewing ? "✓ Delivered. Check the item, then approve to pay the seller (or dispute)." : "✓ Delivered."}</p>
+      )}
+      {p.delivered === false && role === "buyer" && reviewing && <p>Not delivered yet. Approve only once you have the item.</p>}
+    </div>
   );
 }
 
@@ -1254,13 +1439,18 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
         <header className="aw-d012-heading">
           <div>
             <small>
-              DEAL D-{id} · {data ? `${tokenMoney(data.total, c)} · ${data.role === "buyer" ? "BUYING" : "SELLING"}` : "…"}
+              DEAL D-{id} ·{" "}
+              {data
+                ? `${tokenMoney(data.total, c)} · ${
+                    data.kind === "HIRE" ? (data.role === "buyer" ? "HIRING (service)" : "HIRED (service)") : data.role === "buyer" ? "BUYING (goods)" : "SELLING (goods)"
+                  }`
+                : "…"}
             </small>
             <h1>
               {data?.title ?? "…"} <span>{data?.status}</span>
             </h1>
             <p>
-              {data?.role === "buyer" ? "Seller" : "Buyer"}: {data?.counterpartyLabel || data?.counterparty}
+              {data?.kind === "HIRE" ? (data.role === "buyer" ? "Contractor" : "Client") : data?.role === "buyer" ? "Seller" : "Buyer"}: {data?.counterpartyLabel || data?.counterparty}
               {data?.demoSeller ? " (acts automatically for the demo)" : ""} · review window {data?.reviewHours ?? "…"} h
             </p>
           </div>
@@ -1269,6 +1459,7 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
           </Button>
         </header>
         {error && <p className="aw-bank-error">{error}</p>}
+        {!data && !error && <Loading block text="Reading the deal from the chain…" />}
         {note}
         {data?.summary && <p>{data.summary}</p>}
         <div className="aw-d012-columns">
@@ -1292,6 +1483,13 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
                       File: {m.delivery.fileName} ({Math.ceil((m.delivery.size ?? 0) / 1024)} KB) · sha256 {m.delivery.sha256.slice(0, 12)}… (the work hash on-chain)
                     </>
                   )}
+                  {m.canPreview && !m.canDownload && (
+                    <div className="aw-preview">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={`/api/deals/${id}/preview/${m.index}`} alt={`Watermarked preview of ${m.delivery.fileName ?? "the delivery"}`} loading="lazy" />
+                      <small>Watermarked, reduced preview. The original unlocks once you approve and the key is released.</small>
+                    </div>
+                  )}
                   {m.canDownload ? (
                     <>
                       <br />
@@ -1300,11 +1498,13 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
                       </Button>
                     </>
                   ) : (
-                    m.delivery.fileName && data.role === "buyer" && <small> · unlocks after you approve and the key is released</small>
+                    m.delivery.fileName && data.role === "buyer" && !m.canPreview && <small> · unlocks after you approve and the key is released</small>
                   )}
                 </div>
               )}
-              {m.moves.includes("deliver") && <DeliverForm dealId={id} index={m.index} onDone={after} />}
+              {m.delivery?.parcel && <ParcelPanel p={m.delivery.parcel} shipTo={data.shipTo} role={data.role} reviewing={m.status === "Delivered"} />}
+              {!m.delivery?.parcel && m.delivers === "parcel" && data.shipTo && data.role === "seller" && <p>📦 Ship to: {data.shipTo}</p>}
+              {m.moves.includes("deliver") && <DeliverForm dealId={id} index={m.index} parcel={m.delivers === "parcel"} onDone={after} />}
               {disputing === m.index && m.moves.includes("dispute") && (
                 <DisputeForm
                   dealId={id}
@@ -1326,7 +1526,7 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
                 <div className="aw-d012-actions">
                   {m.moves.includes("approve") && (
                     <Button disabled={!!busy} onClick={() => act("approve", m.index)}>
-                      {busy === `approve${m.index}` ? "…" : "Approve work"}
+                      {busy === `approve${m.index}` ? "…" : m.delivers === "parcel" ? "I received it · pay the seller" : data.kind === "GOODS" ? "Approve & unlock file" : "Approve work"}
                     </Button>
                   )}
                   {m.moves.includes("dispute") && disputing !== m.index && (
@@ -1349,6 +1549,19 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
             </section>
           ))}
         </div>
+        {data?.declined === "them" && (
+          <p className="aw-bank-error">
+            {data.role === "buyer" ? "The seller" : "The buyer"} declined this offer.{data.canCancel ? " Withdraw it to close the deal." : ""}
+          </p>
+        )}
+        {data?.declined === "me" && <p className="aw-live-ok">You declined this offer. It stays open until the other side withdraws it; you can still accept it.</p>}
+        {data?.canAccept && !data.declined && (
+          <div className="aw-d012-actions">
+            <Button variant="outline" disabled={!!busy} onClick={() => run("decline", () => send(`/api/deals/${id}/decline`, "POST"), after)}>
+              Decline
+            </Button>
+          </div>
+        )}
         {data?.canAccept && (
           <div className="aw-d012-actions">
             <Button disabled={!!busy} onClick={() => act("accept", 0)}>

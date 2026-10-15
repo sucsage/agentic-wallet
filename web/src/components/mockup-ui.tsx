@@ -57,6 +57,16 @@ export function Card({ children, className = "", ...props }: { children: ReactNo
   return <section className={`aw-card ${className}`} {...props}>{children}</section>;
 }
 
+/** A page or panel still loading: a spinner and what is happening, so a slow chain read never looks frozen. */
+export function Loading({ text = "Loading…", block = false }: { text?: string; block?: boolean }) {
+  return (
+    <div className={`aw-loading${block ? " aw-loading-block" : ""}`} role="status" aria-live="polite">
+      <i aria-hidden="true" />
+      <span>{text}</span>
+    </div>
+  );
+}
+
 export function Status({ children, tone = "blue" }: { children: ReactNode; tone?: "blue" | "green" | "yellow" | "red" }) {
   return <span className={`aw-status aw-${tone}`}>{children}</span>;
 }
