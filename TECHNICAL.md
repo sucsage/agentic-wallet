@@ -306,6 +306,20 @@ Approve & lock (or Accept & pay)
 - **Limits.** The same KYC limits as top-ups apply.
 - **Unlinking** detaches the card at Stripe.
 
+### 3.10 Onboarding: sign-up, KYC, then the wallet opens
+
+The app is an e-money wallet (like a mobile wallet), not a bank login:
+
+1. **Sign up** with email and password (Better Auth; passwords hashed with scrypt).
+2. **KYC** (`src/lib/onboarding.ts`):
+   - the user picks a country, which sets the wallet currency (TH → THB, CN → CNY);
+   - they verify with the national digital ID (3.7), or type their ID details (Thai ID / Chinese resident ID with check digits, or a passport) plus date of birth (18+);
+   - one identity can open one wallet.
+3. **Decision.** The demo approves at once (`KYC_AUTO_APPROVE`, on by default). With it set to `false`, applications wait at `/admin/kyc`, where a reviewer approves, or rejects with a reason the applicant sees.
+4. **The wallet opens** on approval: a THB or CNY e-money account with balance 0 (wallet number `868-xxx-xxxx`), then the agent wallet on-chain. The user tops up (3.8) before locking deals.
+
+Internally the e-money account is a ledger account. The funding saga, the reserve and the mTHB / mCNY tokens (a stablecoin backed one to one by the reserve) are unchanged. The older Mock Bank sign-in remains only for the team's earlier test accounts.
+
 ---
 
 ## 4. The AI agent

@@ -73,7 +73,6 @@ export function BalanceBar() {
   const { me, wallet, status } = useAppData();
   const account = defaultAccount(me?.accounts);
   const currency = me?.bank.currency ?? "THB";
-  const bank = currency === "THB" ? "Thai bank" : "Chinese bank";
   return (
     <>
     {status === "creating-wallet" && <Loading text="Creating your agent wallet and its keys on-chain (about 10 s)…" />}
@@ -84,7 +83,7 @@ export function BalanceBar() {
         </span>
         <span>
           <small>
-            {bank} · passbook {account?.accountNo ?? "…"}
+            {currency} wallet · {account?.accountNo ?? "…"}
           </small>
           <b>
             {account ? money(account.balance, currency) : "…"} <i>Available</i>
@@ -101,7 +100,7 @@ export function BalanceBar() {
       </div>
       <div className="aw-ai-balance-actions">
         <TopUp currency={currency} />
-        <span className="aw-demo-bank-pill">Demo bank</span>
+        <span className="aw-demo-bank-pill">Test money</span>
       </div>
     </div>
     </>
@@ -471,8 +470,8 @@ function DraftCard({
       <div className="aw-draft-notice">
         ⓘ &nbsp;
         {sell
-          ? "Sending puts the offer on-chain and locks nothing. The buyer pays the total from their bank when they accept; you are paid as each delivery is approved."
-          : "Approving debits the total from your bank and locks it in escrow. Each milestone is paid only after you approve its delivery."}
+          ? "Sending puts the offer on-chain and locks nothing. The buyer pays the total from their wallet when they accept; you are paid as each delivery is approved."
+          : "Approving takes the total from your wallet balance and locks it in escrow. Each milestone is paid only after you approve its delivery."}
       </div>
       {!funded && (
         <div className="aw-draft-actions">
@@ -733,7 +732,7 @@ export function LiveChat() {
             <div className="aw-ai-message-meta">Agent</div>
             <article className="aw-ai-agent-message">
               <p>
-                Hi {name}. Tell me what you want to hire. I will draft the deal and check your limits; nothing leaves your bank until you approve.
+                Hi {name}. Tell me what you want to hire. I will draft the deal and check your limits; nothing leaves your wallet until you approve.
               </p>
               <div className="aw-ai-suggestions">
                 {suggestions.map((p) => (
@@ -812,7 +811,7 @@ export function LiveChat() {
             <button type="submit" aria-label="Send message" disabled={!address || busy}>
               ↑
             </button>
-            <small>AI checks bank balance and policy before any debit.</small>
+            <small>AI checks your balance and policy before any payment.</small>
           </form>
         </section>
         <aside className="aw-ai-agent-panel">
@@ -869,7 +868,7 @@ export function LiveChat() {
               <section className="aw-debit-dialog" role="dialog" aria-modal="true" aria-labelledby="aw-debit-title">
                 <header>
                   <div>
-                    <h2 id="aw-debit-title">{debitResult?.status === "FUNDED" ? "Locked in escrow" : "Confirm bank debit"}</h2>
+                    <h2 id="aw-debit-title">{debitResult?.status === "FUNDED" ? "Locked in escrow" : "Confirm payment"}</h2>
                     <small>{confirm.title}</small>
                   </div>
                   <button
@@ -908,7 +907,7 @@ export function LiveChat() {
                     <b>{balanceAfter !== null ? tokenMoney(card && balanceAfter < 0 ? 0 : balanceAfter, currency) : "…"}</b>
                   </p>
                   {balanceAfter !== null && balanceAfter < 0 && !card && !debitResult && (
-                    <p className="aw-bank-error">Not enough money in your bank. Top up, or link a card on the Profile page.</p>
+                    <p className="aw-bank-error">Not enough money in your wallet. Top up first, or link a card on the Profile page.</p>
                   )}
                 </div>
                 {debitResult ? (
@@ -937,7 +936,7 @@ export function LiveChat() {
                 ) : (
                   <div className="aw-debit-refund-note">
                     <i>ⓘ</i>
-                    <span>If anything fails after the debit, the money is refunded to your bank automatically.</span>
+                    <span>If anything fails after the debit, the money is refunded to your wallet automatically.</span>
                   </div>
                 )}
                 <footer>
@@ -1228,7 +1227,7 @@ function StripeLinkCard() {
     }
   }
   async function remove() {
-    if (!window.confirm("Unlink this card? Deals will then be paid from your bank balance only.")) return;
+    if (!window.confirm("Unlink this card? Deals will then be paid from your wallet balance only.")) return;
     setBusy(true);
     try {
       await api("/api/bank/stripe-link", { method: "DELETE" });
@@ -1254,7 +1253,7 @@ function StripeLinkCard() {
             <b>
               {view.link.brand.toUpperCase()} ••{view.link.last4}
             </b>{" "}
-            · expires {view.link.exp} · test mode. When your bank balance is short at &quot;Approve &amp; lock&quot;, the missing amount is charged here
+            · expires {view.link.exp} · test mode. When your wallet balance is short at &quot;Approve &amp; lock&quot;, the missing amount is charged here
             and paid into your account first.
           </p>
           <Button variant="outline" disabled={busy} onClick={() => void remove()}>
@@ -1264,7 +1263,7 @@ function StripeLinkCard() {
       ) : (
         view && (
           <>
-            <p>Link a card once, like linking a bank: deals you approve are then never stopped by a short balance. Stripe test mode, test card 4242 4242 4242 4242.</p>
+            <p>Link a card once: deals you approve are then never stopped by a short balance. Stripe test mode, test card 4242 4242 4242 4242.</p>
             <Button disabled={busy || !view.enabled} onClick={() => void link()}>
               {busy ? "Opening Stripe…" : "Link a card with Stripe"}
             </Button>
@@ -1306,7 +1305,7 @@ export function LivePrivacy() {
     <div className="aw-profile-page">
       <BalanceBar />
       <main className="aw-profile-content">
-        <PageTitle title="Profile & Privacy" description="Your passbooks and what happens to your data (PDPA)" />
+        <PageTitle title="Profile & Privacy" description="Your wallet, identity and what happens to your data (PDPA)" />
         <div className="aw-profile-top">
           <Card className="aw-profile-person">
             <div className="aw-profile-identity">
@@ -1334,7 +1333,7 @@ export function LivePrivacy() {
           <Card className="aw-profile-passbooks">
             <header>
               <div>
-                <h2>Linked passbooks</h2>
+                <h2>Wallet account</h2>
                 <small>
                   {me?.bank.name} · {currency}
                 </small>
@@ -1354,7 +1353,7 @@ export function LivePrivacy() {
                 <strong>{money(a.balance, a.currency)}</strong>
               </article>
             ))}
-            <p className="aw-profile-passbook-note">To link other passbooks, log in to the bank again and tick them on the consent screen.</p>
+            <p className="aw-profile-passbook-note">E-money (test money) held by Agentic Wallet. Top up with the button above; deals lock money from here and pay out back here.</p>
           </Card>
         </div>
         <section className="aw-profile-bottom">

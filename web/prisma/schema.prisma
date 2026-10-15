@@ -32,6 +32,7 @@ model User {
   aliases         ContactAlias[]
   agentChats      AgentChat[]
   kyc             KycVerification?
+  kycApplication  KycApplication?
   stripeLink      StripeLink?
 }
 
@@ -679,4 +680,36 @@ model StripeLink {
   expMonth        Int
   expYear         Int
   createdAt       DateTime @default(now())
+}
+
+enum KycStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+/// A sign-up's identity check. Opening the wallet account (THB or CNY e-money) waits for APPROVED.
+/// The demo approves at once (KYC_AUTO_APPROVE); with it off, a reviewer decides at /admin/kyc.
+/// PDPA / PIPL: only a masked id and an HMAC of it are kept, never the number itself.
+model KycApplication {
+  id          String    @id @default(cuid())
+  userId      String    @unique
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// TH or CN: decides the wallet's currency (THB or CNY).
+  country     String
+  /// THAID, CN_NETID (digital ID) or DOCUMENT (typed in, checked by a reviewer).
+  method      String
+  legalName   String
+  idType      String
+  maskedId    String
+  subjectHash String
+  birthDate   String?
+  status      KycStatus @default(PENDING)
+  reviewer    String?
+  reviewNote  String?
+  decidedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status])
 }

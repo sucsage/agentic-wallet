@@ -2,7 +2,8 @@ import { cookies } from "next/headers";
 
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth";
-import { CLIENT_ID, KYC_COOKIE, clientSecret, hmac, maskThaiId, readFlow, sameName, verifyIdToken } from "@/lib/kyc";
+import { CLIENT_ID, KYC_COOKIE, clientSecret, readFlow, verifyIdToken } from "@/lib/kyc";
+import { type KycInput, KycError, submitKyc } from "@/lib/onboarding";
 
 /**
  * The ID provider sends the browser back here with a code. The app exchanges it at the provider's
@@ -12,7 +13,7 @@ import { CLIENT_ID, KYC_COOKIE, clientSecret, hmac, maskThaiId, readFlow, sameNa
  */
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const back = (result: string) => Response.redirect(new URL(`/profile?kyc=${encodeURIComponent(result)}`, url.origin), 303);
+  const back = (result: string) => Response.redirect(new URL(`/chat?kyc=${encodeURIComponent(result)}`, url.origin), 303);
   const jar = await cookies();
   const raw = jar.get(KYC_COOKIE)?.value;
   jar.delete({ name: KYC_COOKIE, path: "/api/kyc" });
@@ -43,31 +44,22 @@ export async function GET(req: Request) {
     if (!res.ok || !token.id_token) return back(token.error_description ?? "The ID provider refused the code");
     const claims = await verifyIdToken(flow.provider, token.id_token, flow.nonce);
 
-    const customer = await db.bankCustomer.findFirst({ where: { userId: flow.uid } });
-    if (!customer) return back("No bank customer for this account");
-    let subject: string;
-    let masked: string;
+    // The digital ID's identity becomes the KYC application (approved at once in the demo).
+    const user = await db.user.findUniqueOrThrow({ where: { id: flow.uid } });
+    let input: KycInput;
     if (flow.provider === "THAID") {
-      const pid = String(claims.pid ?? "");
-      const nameEn = `${claims.given_name ?? ""} ${claims.family_name ?? ""}`;
-      if (!sameName(nameEn, customer.displayName) && !sameName(String(claims.name_th ?? ""), customer.displayName)) {
-        return back(`The ThaID holder (${nameEn.trim()}) is not the bank account holder (${customer.displayName}).`);
-      }
-      subject = hmac("kyc:THAID", pid);
-      masked = maskThaiId(pid);
+      const name = `${claims.given_name ?? ""} ${claims.family_name ?? ""}`.trim();
+      input = { method: "THAID", legalName: name || String(claims.name_th ?? user.name), pid: String(claims.pid ?? ""), birthDate: claims.birthdate ? String(claims.birthdate) : undefined };
     } else {
-      if (claims.name_match !== true) return back("The National Network Identity holder is not the bank account holder.");
-      const wh = String(claims.wh ?? "");
-      subject = hmac("kyc:CN_NETID", wh);
-      masked = `${wh.slice(0, 2)}••••${wh.slice(-4)}`;
+      if (claims.name_match !== true) return back("The National Network Identity holder is not the person who signed up (check the name).");
+      input = { method: "CN_NETID", legalName: user.name, wh: String(claims.wh ?? "") };
     }
-    const taken = await db.kycVerification.findUnique({ where: { subjectHash: subject } });
-    if (taken && taken.userId !== flow.uid) return back("This identity already verified another account.");
-    await db.kycVerification.upsert({
-      where: { userId: flow.uid },
-      update: {},
-      create: { userId: flow.uid, provider: flow.provider, subjectHash: subject, maskedId: masked, verifiedName: customer.displayName },
+    const r = await submitKyc(flow.uid, input).catch((e) => {
+      if (e instanceof KycError) return e.message;
+      throw e;
     });
+    if (typeof r === "string") return back(r);
+    if (!r.customer) return back("pending");
     return back("ok");
   } catch (err) {
     console.error("kyc callback", err);

@@ -26,9 +26,11 @@ export type Me = {
   bank: { name: string; currency: "THB" | "CNY"; token: string; customerType: "PERSONAL" | "COMPANY"; consentedAt: string | null };
   accounts: AccountView[];
   wallets: { address: string; role: string; label: string | null; openProposals: number; createdAt: string }[];
+  /** Present until the wallet account is open: the KYC application's status. */
+  onboarding?: { status: "NOT_STARTED" | "PENDING" | "APPROVED" | "REJECTED"; note: string | null };
 };
 
-type Status = "loading" | "creating-wallet" | "ready" | "signed-out" | "error";
+type Status = "loading" | "onboarding" | "creating-wallet" | "ready" | "signed-out" | "error";
 
 type AppData = {
   status: Status;
@@ -66,6 +68,12 @@ export function AppDataProvider({ enabled, children }: { enabled: boolean; child
   const refresh = useCallback(async () => {
     try {
       let current = await api<Me>("/api/me");
+      // No wallet account yet: the onboarding (KYC) screen takes over until it is approved.
+      if (current.onboarding) {
+        setMe(current);
+        setStatus("onboarding");
+        return;
+      }
       if (current.wallets.length === 0 && !creating.current) {
         creating.current = true;
         setMe(current);

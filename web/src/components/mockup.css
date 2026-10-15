@@ -1575,3 +1575,24 @@
 .aw-topup-history p b{color:#89ef82}
 .aw-topup-slip .aw-button-primary{background:#111;color:#fff;border-color:#111}
 .aw-topup-slip .aw-button-outline{background:#fff;color:#111;border-color:#bbb}
+.aw-wallet-auth{display:flex;flex-direction:column;gap:14px}
+.aw-wallet-auth-tabs{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;border:1px solid #2e2e2e;border-radius:12px;background:#0f0f0f}
+.aw-wallet-auth-tabs button{min-height:36px;border:0;border-radius:9px;background:transparent;color:#aaa;font-weight:600;cursor:pointer}
+.aw-wallet-auth-tabs button.active{background:#262626;color:#fff}
+.aw-wallet-auth-form{display:flex;flex-direction:column;gap:12px}
+.aw-wallet-auth-form label{display:flex;flex-direction:column;gap:5px;font-size:13px;color:#bbb}
+.aw-wallet-auth-form label small{color:#777}
+.aw-wallet-auth-form input,.aw-wallet-auth-form select{min-height:42px;padding:8px 12px;border:1px solid #333;border-radius:10px;background:#0c0c0c;color:#fff;font-size:15px}
+.aw-wallet-auth-form .aw-bank-consent{flex-direction:row;align-items:flex-start;gap:8px}
+.aw-wallet-auth-form .aw-bank-consent input{min-height:auto;margin-top:3px}
+.aw-wallet-legacy{align-self:center;color:#777;font-size:11px;text-decoration:underline}
+.aw-onboarding{display:flex;justify-content:center;padding:40px 16px}
+.aw-onboarding>section{width:min(520px,100%);display:flex;flex-direction:column;gap:14px}
+.aw-onboarding h1{margin:0;font-size:26px}
+.aw-onboarding p{margin:0;color:#bbb;line-height:1.55}
+.aw-onboarding-step{color:#9b83ff;font-size:11px;font-weight:800;letter-spacing:.07em}
+.aw-onboarding-country{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.aw-onboarding-country button{display:flex;flex-direction:column;gap:4px;padding:14px;border:1px solid #2e2e2e;border-radius:14px;background:#171717;color:#eee;text-align:left;cursor:pointer}
+.aw-onboarding-country button.active{border-color:#559bff;background:#141c29}
+.aw-onboarding-country small{color:#999;font-size:12px}
+.aw-onboarding-alt{align-self:center;border:0;background:transparent;color:#9fc2ff;font-size:13px;text-decoration:underline;cursor:pointer}

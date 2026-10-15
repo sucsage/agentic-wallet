@@ -12,7 +12,7 @@ Topic F: Agent Wallet.
 
 | | |
 |---|---|
-| Live app | https://agentic-wallet-inky.vercel.app (Mock Bank sign-up, test money only) |
+| Live app | https://agentic-wallet-inky.vercel.app (sign up with email, demo KYC approves at once, test money only) |
 | Public chain explorer (no sign-in) | https://agentic-wallet-inky.vercel.app/explorer |
 | Read-only JSON-RPC (chain id 20261020) | `https://agentic-wallet-inky.vercel.app/api/rpc` |
 | Transaction hashes, grouped by what they prove | [EVIDENCE.md](EVIDENCE.md) |

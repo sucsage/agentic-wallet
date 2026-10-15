@@ -10,7 +10,9 @@ import { mockBank } from "./mock-bank-auth";
 
 export const auth = betterAuth({
   database: prismaAdapter(db, { provider: "postgresql" }),
-  // No Google / Apple: everyone signs in through the Mock Bank (src/lib/mock-bank-auth.ts).
+  // Standard sign-up with email and password; the wallet account opens after KYC (src/lib/onboarding.ts).
+  // The Mock Bank sign-in (src/lib/mock-bank-auth.ts) stays only for the team's older test accounts.
+  emailAndPassword: { enabled: true, minPasswordLength: 8, maxPasswordLength: 128, autoSignIn: true },
   databaseHooks: {
     user: {
       create: {

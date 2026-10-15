@@ -63,7 +63,7 @@ function useAction() {
       if (o && o.status !== "success") setMessage({ ok: false, text: o.error ?? o.status, url: o.url });
       // Accepting a seller's offer reports a funding status instead of one transaction.
       else if (r?.status && !["FUNDED", "success"].includes(r.status))
-        setMessage({ ok: false, text: r.status === "REFUNDED" ? `Not accepted · money refunded to your bank${r.error ? ` (${r.error})` : ""}` : `Still processing (${r.status}) · try again in a moment` });
+        setMessage({ ok: false, text: r.status === "REFUNDED" ? `Not accepted · money refunded to your wallet${r.error ? ` (${r.error})` : ""}` : `Still processing (${r.status}) · try again in a moment` });
       else setMessage({ ok: true, text: "Done", url: o?.url });
       await done?.();
     } catch (e) {
@@ -175,7 +175,7 @@ export function LiveApprovals() {
                 <b>
                   <span className="aw-id-chip">D-{o.dealId}</span> Offer from {o.sellerLabel || o.seller} · {o.title} · {tokenMoney(o.amount, currency)}
                 </b>
-                <p>Accepting debits the total from your bank and locks it in escrow until you approve each delivery.</p>
+                <p>Accepting takes the total from your wallet and locks it in escrow until you approve each delivery.</p>
                 <small>The seller must be one of your payees</small>
               </div>
               <div className="aw-approval-buttons">
@@ -563,7 +563,7 @@ export function LiveFriends() {
         <header className="aw-friends-heading">
           <div>
             <h1>Friends</h1>
-            <p>Add friends from your bank to invite them to groups and make them payees</p>
+            <p>Add friends who use Agentic Wallet to invite them to groups and make them payees</p>
           </div>
         </header>
         {error && <p className="aw-bank-error">{error}</p>}
@@ -572,7 +572,7 @@ export function LiveFriends() {
         <div className="aw-friends-top">
           <section className="aw-friends-panel aw-find-friends">
             <h2>Add a friend</h2>
-            <p>Type part of their name or Mock Bank username. Only customers of your bank are found.</p>
+            <p>Type part of their name or username. Only wallets in your currency are found.</p>
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -606,7 +606,7 @@ export function LiveFriends() {
                     </Button>
                   </div>
                 ))}
-              {username.trim().length >= 2 && found.length === 0 && <small>No one at your bank matches “{username.trim()}”.</small>}
+              {username.trim().length >= 2 && found.length === 0 && <small>No one matches “{username.trim()}”.</small>}
               {outgoing.map((f) => (
                 <div className="aw-friend-result" key={f.friendshipId}>
                   <span className="aw-friend-avatar blue">{initials(f.name)}</span>
@@ -966,7 +966,7 @@ export function LiveGroups({ initialCreateOpen = false }: { initialCreateOpen?: 
               <h3>Put a draft to the vote</h3>
               <p>
                 Ask the AI in the chat to draft a purchase first. It stays on hold while the group votes (you cannot approve it alone), and it is paid from
-                your bank once {detail.threshold} members say yes.
+                your wallet once {detail.threshold} members say yes.
               </p>
               {openDrafts.length === 0 && <small>No purchase drafts yet.</small>}
               <select value={draftId} onChange={(e) => setDraftId(e.target.value)}>
@@ -1079,7 +1079,7 @@ export function LiveSummary() {
         <header className="aw-summary-heading">
           <div>
             <h1>Summary</h1>
-            <p>Money in and out of your bank accounts this year, explained by AI</p>
+            <p>Money in and out of your wallet this year, explained by AI</p>
           </div>
           <div className="aw-summary-controls">
             <Button onClick={() => download("/api/summary/export")}>⇩ Export CSV</Button>
@@ -1091,9 +1091,9 @@ export function LiveSummary() {
           {(
             [
               ["Received", data?.totals.income, "Paid to you as a seller", "green"],
-              ["Spent", data?.totals.spent, "Locked into deals from your bank", "red"],
+              ["Spent", data?.totals.spent, "Locked into deals from your wallet", "red"],
               ["Locked now", locked, "Still in escrow", "yellow"],
-              ["Refunded", data?.totals.refunds, "Came back to your bank", "blue"],
+              ["Refunded", data?.totals.refunds, "Came back to your wallet", "blue"],
             ] as const
           ).map(([label, amount, detail, tone]) => (
             <article className="aw-summary-metric" key={label}>
@@ -1487,8 +1487,8 @@ const SELLER_STEP: Record<string, string> = {
   Pending: "Your turn: deliver the work",
   Delivered: "Delivered · waiting for the buyer's review",
   Approved: "Approved · the agent releases your key",
-  KeyReleased: "Key released · payment on its way to your bank",
-  Released: "Paid to your bank",
+  KeyReleased: "Key released · payment on its way to your wallet",
+  Released: "Paid to your wallet",
   Disputed: "Disputed · the neutral arbiter is deciding",
   Refunded: "Refunded to the buyer",
 };
@@ -1500,7 +1500,7 @@ const STEP: Record<string, string> = {
   KeyReleased: "File unlocked · confirming the key and paying the seller",
   Released: "Paid to the seller",
   Disputed: "Disputed · the neutral arbiter is deciding",
-  Refunded: "Refunded to your bank",
+  Refunded: "Refunded to your wallet",
 };
 
 export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: string) => void }) {
@@ -1653,7 +1653,7 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
               {busy === "accept0"
                 ? "…"
                 : data.role === "buyer"
-                  ? `Accept & pay ${tokenMoney(data.total, c)} from your bank`
+                  ? `Accept & pay ${tokenMoney(data.total, c)} from your wallet`
                   : `Accept offer · ${tokenMoney(data.total, c)} is already locked by the buyer`}
             </Button>
           </div>

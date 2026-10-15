@@ -25,7 +25,7 @@ const COPY = {
     name: "国家网络身份认证 · Mock National Network Identity",
     sub: "China · 网号 / 网证 · 演示 DEMO",
     scan: "使用国家网络身份认证 App 扫码授权 · Scan with the app to approve",
-    asks: ["网号 (your network ID number, no ID number inside)", "姓名核验 (yes/no: is the bank account holder you?)"],
+    asks: ["网号 (your network ID number, no ID number inside)", "姓名核验 (yes/no: is the person opening the wallet you?)"],
     note: "Privacy by design: Agentic Wallet never receives your resident ID number or your name, only the 网号 and a name-match result.",
     accent: "#c8102e",
   },
@@ -110,7 +110,7 @@ export function MockIdPage({ provider, request }: { provider: "thaid" | "netid";
           </div>
         </header>
         <p className="text-sm">
-          <b>Agentic Wallet</b> asks to verify your identity{request.login_hint ? <> as the holder of the bank account <b>{request.login_hint}</b></> : null}. It will receive:
+          <b>Agentic Wallet</b> asks to verify your identity{request.login_hint ? <> as <b>{request.login_hint}</b>, who is opening a wallet</> : null}. It will receive:
         </p>
         <ul className="my-3 list-disc pl-5 text-sm text-[#cfcfcf]">
           {c.asks.map((a) => (

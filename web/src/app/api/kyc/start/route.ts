@@ -1,7 +1,10 @@
 import { cookies } from "next/headers";
 
 import { CLIENT_ID, KYC_COOKIE, kycOf, pkceChallenge, randomToken, signFlow } from "@/lib/kyc";
-import { HttpError, errorResponse, rateLimit, requireCustomer } from "@/lib/guard";
+import { z } from "zod";
+
+import { db } from "@/lib/db";
+import { HttpError, errorResponse, rateLimit, requireUser } from "@/lib/guard";
 
 /**
  * Starts identity verification (OpenID Connect, authorization code + PKCE): remembers state,
@@ -11,9 +14,13 @@ import { HttpError, errorResponse, rateLimit, requireCustomer } from "@/lib/guar
 export async function POST(req: Request) {
   try {
     rateLimit(req, "kyc-start", 20, 60 * 60 * 1000);
-    const { user, customer } = await requireCustomer();
+    const user = await requireUser();
     if (await kycOf(user.id)) throw new HttpError(409, "Your identity is already verified");
-    const provider = customer.currency === "THB" ? "THAID" : "CN_NETID";
+    // The country chosen at onboarding (or the wallet's currency) picks the digital ID.
+    const customer = await db.bankCustomer.findUnique({ where: { userId: user.id } });
+    const body = z.object({ country: z.enum(["TH", "CN"]).optional() }).safeParse(await req.json().catch(() => ({})));
+    const country = customer ? (customer.currency === "CNY" ? "CN" : "TH") : (body.success && body.data.country) || "TH";
+    const provider = country === "TH" ? "THAID" : "CN_NETID";
     const flow = { provider, state: randomToken(), nonce: randomToken(), verifier: randomToken(32), uid: user.id } as const;
     (await cookies()).set(KYC_COOKIE, await signFlow(flow), { httpOnly: true, secure: true, sameSite: "lax", path: "/api/kyc", maxAge: 600 });
     const origin = new URL(req.url).origin;
@@ -26,8 +33,8 @@ export async function POST(req: Request) {
       nonce: flow.nonce,
       code_challenge: pkceChallenge(flow.verifier),
       code_challenge_method: "S256",
-      // The name on the bank account: the ID provider checks it belongs to the same person.
-      login_hint: customer.displayName,
+      // The name the user signed up with: the ID provider checks it belongs to the ID holder.
+      login_hint: customer?.displayName ?? user.name,
     });
     return Response.json({ url: `/mock-id/${provider === "THAID" ? "thaid" : "netid"}/authorize?${q}` });
   } catch (err) {

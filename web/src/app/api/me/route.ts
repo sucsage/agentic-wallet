@@ -1,17 +1,28 @@
-import { BANK_NAME, accountView, customerAccounts } from "@/lib/bank/customers";
+import { accountView, customerAccounts, customerOfUser } from "@/lib/bank/customers";
 import { db } from "@/lib/db";
-import { errorResponse, requireCustomer } from "@/lib/guard";
+import { errorResponse, requireCustomer, requireUser } from "@/lib/guard";
 import { listUserWallets } from "@/lib/user-wallets";
 
 /** Who is signed in: their bank, linked accounts and wallets. The app's first call after sign-in. */
 export async function GET() {
   try {
-    const { user, customer } = await requireCustomer();
+    const user = await requireUser();
+    const customer = await customerOfUser(user.id);
+    // Signed up but no wallet account yet: identity verification comes first.
+    if (!customer) {
+      const application = await db.kycApplication.findUnique({ where: { userId: user.id } });
+      return Response.json({
+        user: { id: user.id, name: user.name },
+        onboarding: { status: application?.status ?? "NOT_STARTED", note: application?.reviewNote ?? null },
+        accounts: [],
+        wallets: [],
+      });
+    }
     const [accounts, wallets] = await Promise.all([customerAccounts(customer.id), listUserWallets(user.id)]);
     return Response.json({
       user: { id: user.id, name: user.name },
       bank: {
-        name: BANK_NAME[customer.currency],
+        name: customer.currency === "THB" ? "Agentic Wallet · THB e-money" : "Agentic Wallet · CNY e-money",
         currency: customer.currency,
         token: customer.currency === "THB" ? "mTHB" : "mCNY",
         customerType: customer.type,
