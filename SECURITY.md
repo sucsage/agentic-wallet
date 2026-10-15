@@ -101,6 +101,11 @@ key (`ArbiterNotNeutral`), so the buyer's side can never judge its own dispute.
 - **Prompt injection.** Documents, invoices and evidence are passed to the model as untrusted data. A
   heuristic scanner flags overrides, urgency, changed bank details and unknown addresses. The real
   defence is on-chain: an address that is not on the allowlist reverts, whatever the model says.
+- **The agent never shows addresses or internal data.** The model is given people's names only,
+  never wallet addresses. Its tools turn a name back into an address on the server, and only for the
+  user's own contacts, so an address in a document cannot become a payee. Every reply and tool result
+  is filtered for 40-hex addresses, and streamed text holds back anything that could still grow into
+  one. Database ids, keys and other users' data are never in what the tools return.
 - **Chain access.** Besu runs **account permissioning**, so only the app's own keys can send
   transactions. Its RPC needs a signed JWT (RS256) that only the server holds. The public `/api/rpc`
   passes **read-only methods** only (no `eth_sendRawTransaction`), with bounded `eth_getLogs` ranges.
