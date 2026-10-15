@@ -9,6 +9,9 @@ import { db } from "@/lib/db";
 import { HttpError, errorResponse, requireBankWallet } from "@/lib/guard";
 import { friendLabels } from "@/lib/social";
 
+
+// The arbiter may run after the response (three to five models for a dispute).
+export const maxDuration = 300;
 /** What the user can do with a milestone now (the contract has the last word). */
 function moves(role: "buyer" | "seller", dealStatus: string, status: string, deadline: number): string[] {
   if (dealStatus !== "Active") return [];
@@ -40,7 +43,7 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/deals/[id]">) {
     const draft = await dealTerms(id, buyer, deal.role === "seller" ? wallet : deal.counterparty);
     const terms = draft ? await draftView(draft) : null;
     const demoSeller = deal.role === "buyer" && deal.counterparty === roleAddresses().contractor;
-    const declines = deal.status === "Proposed" ? await db.declinedOffer.findMany({ where: { escrow: config.bankContracts.fileEscrow, dealId: id } }) : [];
+    const declines = deal.status === "Proposed" ? await db.declinedOffer.findMany({ where: { escrow: config.fileEscrowOf(id), dealId: id } }) : [];
     const [deliveries, friends, disputes] = await Promise.all([
       Promise.all(deal.milestones.map((m) => deliveryInfo(id, m.index))),
       friendLabels(user.id),
@@ -53,7 +56,7 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/deals/[id]">) {
       summary: terms?.summary ?? null,
       kind: terms?.kind ?? "HIRE",
       shipTo: terms?.shipTo ?? null,
-      escrow: explorerAddress(config.bankContracts.fileEscrow),
+      escrow: explorerAddress(config.fileEscrowOf(id)),
       demoSeller,
       // The side that made the offer may withdraw it; the other side accepts it (a buyer pays in then).
       canCancel: deal.status === "Proposed" && deal.offeredBy === "me",
@@ -72,9 +75,9 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/deals/[id]">) {
         dispute: disputeView(disputes[i]),
         // A file can be downloaded by the seller any time, by the buyer once the key is released.
         canDownload:
-          Boolean(deliveries[i]?.fileName) && (deal.role === "seller" || m.status === "KeyReleased" || m.status === "Released"),
+          Boolean(deliveries[i]?.fileName) && (deal.role === "seller" || m.status === "KeyReleased" || m.status === "Released" || m.status === "Split"),
         // Demo contractor deals have no real file: a sample text stands in once the key is out.
-        deliverable: ["KeyReleased", "Released"].includes(m.status) && demoSeller ? demoDeliverable(id, i) : null,
+        deliverable: ["KeyReleased", "Released", "Split"].includes(m.status) && demoSeller ? demoDeliverable(id, i) : null,
       })),
     });
   } catch (err) {

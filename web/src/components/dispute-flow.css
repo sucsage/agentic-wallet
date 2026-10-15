@@ -1,0 +1,37 @@
+/* The staged dispute (mediator → panel → appeal). Dark, matches v0.8 and the invite page. */
+.dsp{display:flex;flex-direction:column;gap:12px;margin-top:10px;padding:16px;border:1px solid #4a2a2d;border-radius:14px;background:#120b0c;color:#eee;font-size:13px;line-height:1.55}
+.dsp-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.dsp-head>small{color:#ff8a8f;font-size:11px;letter-spacing:.04em;font-weight:600}
+.dsp-pill{padding:3px 10px;border-radius:16px;font-size:11px;white-space:nowrap}
+.dsp-pill.live{background:#36290b;color:#ffb000}.dsp-pill.ok{background:#0b3020;color:#16c76c}.dsp-pill.warn{background:#351619;color:#ff6b70}
+.dsp-sides p{margin:0 0 4px;color:#bbb}.dsp-sides b{color:#eee}
+.dsp-step{display:flex;flex-direction:column;gap:8px;padding:14px;border:1px solid #333;border-radius:12px;background:#111}
+.dsp-step.done{border-color:#24382c}
+.dsp-step h3{margin:0;font-size:14px;font-weight:600}
+.dsp-step p{margin:0}
+.dsp-wait{color:#ffb000}
+.dsp-wait::before{content:"";display:inline-block;width:10px;height:10px;margin-right:8px;border:2px solid #555;border-top-color:#ffb000;border-radius:50%;animation:dsp-spin 1s linear infinite;vertical-align:-1px}
+.dsp-note{color:#888;font-size:12px}
+.dsp-note a{color:#a493ff}
+.dsp-split{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.dsp-split>div{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border-radius:10px;background:#0a0a0a;border:1px solid #2a2a2a}
+.dsp-split small{color:#888;font-size:11px}
+.dsp-split b{font-size:15px}.dsp-split b.buyer{color:#5aa2ff}.dsp-split b.seller{color:#16c76c}
+.dsp-replies{color:#aaa;font-size:12px}
+.dsp-verdict{font-weight:600}
+.dsp-verdict span{margin-left:8px;padding:2px 8px;border-radius:12px;background:#242033;color:#b2a2ff;font-size:11px;font-weight:500}
+.dsp-votes{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.dsp-votes li{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 12px;padding:9px 11px;border-radius:10px;background:#0a0a0a;border:1px solid #2a2a2a}
+.dsp-votes li.agree{border-color:#235539}.dsp-votes li.differ{opacity:.8}.dsp-votes li.failed{opacity:.5}
+.dsp-votes li>span:first-child{display:flex;gap:8px;align-items:baseline}
+.dsp-votes small{color:#777;font-family:var(--font-geist-mono),monospace;font-size:10px}
+.dsp-votes p{flex-basis:100%;color:#999;font-size:12px}
+.dsp-actions{display:flex;flex-wrap:wrap;gap:8px}
+.dsp-btn{padding:8px 14px;border-radius:9px;border:1px solid #eee;background:#eee;color:#000;font-size:13px;font-weight:600;cursor:pointer}
+.dsp-btn.outline{background:transparent;color:#ff8a8f;border-color:#7a3a3e}
+.dsp-btn:disabled{opacity:.5;cursor:not-allowed}
+.dsp-input{width:100%;min-height:64px;box-sizing:border-box;padding:9px 11px;border-radius:9px;border:1px solid #333;background:#1a1a1a;color:#eee;font:inherit;font-size:12px}
+.dsp-error{color:#ff6b70}
+@keyframes dsp-spin{to{transform:rotate(360deg)}}
+@media(max-width:520px){.dsp-split{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:reduce){.dsp-wait::before{animation:none}}

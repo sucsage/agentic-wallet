@@ -81,12 +81,14 @@ key (`ArbiterNotNeutral`), so the buyer's side can never judge its own dispute.
   the server decrypts the delivery and compares its sha256 with the work hash anchored at delivery.
 - **Work disputes** go to the AI arbiter (`web/src/lib/bank/arbiter.ts`). Its inputs are:
   - the agreed terms and acceptance criteria
-  - the seller's evidence and, when the file is text, its content
+  - the seller's evidence and reply and, when the file is text, its content
   - the buyer's reason
 
-  It returns a ruling, a confidence, a rationale and per-criterion findings. At **≥ 75% confidence** it
-  calls `FileEscrow.resolve` with the arbiter's own key. Otherwise a human arbiter (an admin) rules at
-  `/admin/disputes` with the AI's findings in front of them.
+  On FileEscrow v2 a mediator model first proposes a split; both sides must accept it. Otherwise
+  three models from different providers rule independently, each signing its ruling with its own
+  derived key; 2 of 3 must agree (within 10 points). Either side can appeal to five models (3 of 5).
+  Only then does the arbiter key call `FileEscrow.resolveSplit`. No agreement goes to a human arbiter
+  at `/admin/disputes`. Deals on the first escrow keep the single ruling at **≥ 75% confidence**.
 - The resolve transaction is on-chain. Settlement to the bank then runs as for any payout or refund.
 
 ## 5. Application security
@@ -170,10 +172,10 @@ key (`ArbiterNotNeutral`), so the buyer's side can never judge its own dispute.
 | R3 | **An invite link is a bearer credential**: anyone holding it acts as the invited seller | A leaked link lets someone accept or deliver in the seller's name | Only the link's hash is stored; 30-day expiry; the buyer can rotate it; `no-referrer`, `noindex`; the **payout destination is set once and locked**, so a leaked link cannot redirect money; name check on Mock Bank accounts; strict rate limit on payout attempts | One-time code by SMS or email before the first action; device binding |
 | R4 | **The chain has one validator**, on a home PC reached through Tailscale Funnel | If the PC is off, the app cannot transact; one operator could rewrite history | QBFT, account permissioning, JWT-protected RPC; contracts and the Base Sepolia deployment kept as a fallback | Four or more validators run by different parties (BFT), monitoring, backups |
 | R5 | **Payouts to people without an account** | A wrong account or a fraudulent payee gets the money | Bank-account payouts are real transfers through **Opn Payments** (test mode): the seller becomes an Opn recipient, which must be verified and then **activated by the operator in Opn's dashboard** before any money can go to it (new-payee review); each paid milestone is one Opn transfer, claimed in our database before it is sent, so it is sent once. The payout destination is set once and locked. PromptPay payouts are still simulated | Live Opn keys (or a licensed bank's PromptPay / ITMX payout API, or Stripe Connect where available) with name inquiry before the first transfer and sanctions screening |
-| R6 | **An AI arbiter decides disputes about the work** | A wrong ruling pays the wrong side | The arbiter is neutral by contract (`ArbiterNotNeutral`) and is a separate model call with its own instructions, not the buyer's agent. It judges only against the written acceptance criteria and treats both parties' text as untrusted. It settles alone only at ≥ 75% confidence; below that a human arbiter decides at `/admin/disputes`. Key disputes are checked mechanically (hash), not by AI. Findings and rationale are shown to both sides | An appeal window before `resolve`, a panel of human arbiters for large amounts, and an evaluation set of past disputes |
+| R6 | **An AI arbiter decides disputes about the work** | A wrong ruling pays the wrong side | The arbiter is neutral by contract (`ArbiterNotNeutral`) and is a separate model call with its own instructions, not the buyer's agent. It judges only against the written acceptance criteria and treats both parties' text as untrusted. No single model decides: a mediator only proposes, both sides may reject, then 2 of 3 models from different providers must agree, with an appeal to 3 of 5. Each ruling is signed by its model's key and shown to both sides. Disagreement goes to a human arbiter. Key disputes are checked mechanically (hash), not by AI | A panel of human arbiters for large amounts, and an evaluation set of past disputes |
 | R7 | **Prompt injection or a hallucinating model** | The agent proposes the wrong thing | Allowlist, caps and neutral-arbiter checks are on-chain; Tier 1 needs the user's click; injection scanner; the tools validate every input | Already the main control; add per-counterparty limits and anomaly alerts |
 | R8 | **Agent session key leak** | Spending up to the caps to allowlisted payees | Caps, allowlist, expiry, instant `revokeSession`, `pause()` | Short-lived keys from a KMS/HSM; alerts on unusual spending |
-| R9 | **Smart contract bugs** | Locked or lost test funds | OpenZeppelin 5 primitives, `ReentrancyGuard`, `SafeERC20`, 97 tests, internal audit (`docs/security/`) | External audit, Slither/Echidna in CI, formal checks of the escrow state machine |
+| R9 | **Smart contract bugs** | Locked or lost test funds | OpenZeppelin 5 primitives, `ReentrancyGuard`, `SafeERC20`, 101 tests, internal audit (`docs/security/`) | External audit, Slither/Echidna in CI, formal checks of the escrow state machine |
 | R10 | **Public explorer and RPC load** | Heavy scraping could slow the node | Read-only methods, bounded log ranges, rate limits on `/api/rpc` | Caching indexer and a separate read replica |
 | R11 | **Shared demo database** (Neon, one schema per deployment) | Test data of several testers sits together | Users see only their own wallets; names never on-chain; export and delete in the profile | Per-tenant isolation, encryption of personal fields, retention policy |
 

@@ -8,6 +8,7 @@ import remarkGfm from "remark-gfm";
 import { localizeMockupNode, useLang } from "@/lib/i18n";
 
 import { api, download, tokenMoney, useAppData } from "./app-data";
+import { DisputeFlow, type DisputeFlowData, isStagedDispute } from "./dispute-flow";
 import { BalanceBar } from "./mockup-live";
 import { Button, Card, Loading, PageTitle } from "./mockup-ui";
 
@@ -1083,7 +1084,7 @@ export function LiveSummary() {
     ? wallet.fileDeals
         .filter((d) => d.role === "buyer" && d.status !== "Cancelled")
         .flatMap((d) => d.milestones)
-        .filter((m) => !["Released", "Refunded"].includes(m.status))
+        .filter((m) => !["Released", "Refunded", "Split"].includes(m.status))
         .reduce((t, m) => t + Number(m.amount), 0)
     : 0;
   const max = Math.max(1, ...(data?.months ?? []).flatMap((m) => [m.income, m.spent]));
@@ -1289,15 +1290,15 @@ type DealDetail = {
     } | null;
     canDownload: boolean;
     deliverable: { text: string; sha256: string } | null;
-    dispute: DisputeInfo | null;
+    dispute: (DisputeInfo & Partial<DisputeFlowData>) | null;
   }[];
 };
 
 type DisputeInfo = {
   phase: "work" | "key";
   reason: string;
-  status: "OPEN" | "DECIDING" | "NEEDS_REVIEW" | "RESOLVED";
-  decision: "seller" | "buyer" | null;
+  status: "OPEN" | "DECIDING" | "AWAITING" | "NEEDS_REVIEW" | "RESOLVED";
+  decision: "seller" | "buyer" | "split" | null;
   confidence: number | null;
   rationale: string | null;
   findings: { criterion: string; met: boolean; evidence: string }[] | null;
@@ -1549,6 +1550,7 @@ const SELLER_STEP: Record<string, string> = {
   Released: "Paid to your wallet",
   Disputed: "Disputed · the neutral arbiter is deciding",
   Refunded: "Refunded to the buyer",
+  Split: "Split by the arbiter · your share paid",
 };
 
 const STEP: Record<string, string> = {
@@ -1559,6 +1561,7 @@ const STEP: Record<string, string> = {
   Released: "Paid to the seller",
   Disputed: "Disputed · the neutral arbiter is deciding",
   Refunded: "Refunded to your wallet",
+  Split: "Split by the arbiter · your share refunded",
 };
 
 export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: string) => void }) {
@@ -1659,7 +1662,22 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
                   }}
                 />
               )}
-              {m.dispute && <ArbiterPanel d={m.dispute} role={data.role} />}
+              {m.dispute &&
+                (isStagedDispute(m.dispute) ? (
+                  <DisputeFlow
+                    d={m.dispute as DisputeFlowData}
+                    role={data.role}
+                    amount={m.amount}
+                    money={(n) => tokenMoney(String(n), c)}
+                    explorerTx={(h) => `/explorer/tx/${h}`}
+                    onReply={async (reply, statement) => {
+                      await send(`/api/deals/${id}/dispute`, "POST", { index: m.index, reply, statement });
+                      await after();
+                    }}
+                  />
+                ) : (
+                  <ArbiterPanel d={m.dispute} role={data.role} />
+                ))}
               {m.deliverable && (
                 <div className="aw-d012-success">
                   ✓ &nbsp;File: “{m.deliverable.text}” · sha256 {m.deliverable.sha256.slice(0, 12)}… matches the hash anchored on-chain

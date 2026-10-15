@@ -34,7 +34,7 @@ const usdc = await viem.deployContract("MockUSDC");
 const escrow = await viem.deployContract("MilestoneEscrow");
 const factory = await viem.deployContract("AgentWalletFactory");
 const mthb = await viem.deployContract("MockTHB", [deployer.account.address, bank, MAX_MINT_PER_TX, DAILY_MINT_CAP]);
-const fileEscrow = await viem.deployContract("FileEscrow");
+const fileEscrow = await viem.deployContract("FileEscrow", [0n]);
 // Fen, like satang: the same caps in minor units.
 const mcny = await viem.deployContract("MockCNY", [deployer.account.address, bank, MAX_MINT_PER_TX, DAILY_MINT_CAP]);
 console.log({

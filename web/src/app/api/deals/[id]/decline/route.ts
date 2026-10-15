@@ -17,7 +17,7 @@ export async function POST(_req: Request, ctx: RouteContext<"/api/deals/[id]/dec
       throw e instanceof DealError ? new HttpError(404, e.message) : e;
     });
     if (deal.status !== "Proposed" || deal.offeredBy !== "them") throw new HttpError(400, "Only an open offer from the other side can be declined");
-    const escrow = config.bankContracts.fileEscrow;
+    const escrow = config.fileEscrowOf(id);
     await db.declinedOffer.upsert({
       where: { userId_escrow_dealId: { userId: user.id, escrow, dealId: id } },
       update: {},

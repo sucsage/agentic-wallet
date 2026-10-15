@@ -29,9 +29,14 @@ export async function POST(req: Request) {
   try {
     rateLimit(req, "arbiter", 30, 60 * 60 * 1000);
     const { user } = await requireAdmin();
-    const body = z.object({ id: z.string(), toSeller: z.boolean(), note: z.string().min(10).max(1000) }).safeParse(await req.json().catch(() => null));
-    if (!body.success) throw new HttpError(400, "Send { id, toSeller, note } (note: at least 10 characters)");
-    const outcome = await humanResolve(body.data.id, user.id, body.data.toSeller, body.data.note).catch((e) => {
+    // sellerBps: the seller's share (0-10,000). toSeller is the older all-or-nothing form.
+    const body = z
+      .object({ id: z.string(), sellerBps: z.number().int().min(0).max(10_000).optional(), toSeller: z.boolean().optional(), note: z.string().min(10).max(1000) })
+      .refine((b) => b.sellerBps !== undefined || b.toSeller !== undefined)
+      .safeParse(await req.json().catch(() => null));
+    if (!body.success) throw new HttpError(400, "Send { id, sellerBps (0-10000), note } (note: at least 10 characters)");
+    const bps = body.data.sellerBps ?? (body.data.toSeller ? 10_000 : 0);
+    const outcome = await humanResolve(body.data.id, user.id, bps, body.data.note).catch((e) => {
       throw e instanceof ArbiterError ? new HttpError(400, e.message) : e;
     });
     return Response.json({ outcome });

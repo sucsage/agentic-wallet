@@ -126,7 +126,7 @@ describe("FileEscrow properties", async function () {
   for (const seed of SEEDS) {
     it(`seed ${seed}: tokens are conserved and the escrow always holds exactly the unsettled milestones`, async () => {
       const usdc = await viem.deployContract("MockUSDC");
-      const escrow = await viem.deployContract("FileEscrow");
+      const escrow = await viem.deployContract("FileEscrow", [0n]);
       await usdc.write.mint([buyer.account.address, START]);
       const asBuyerToken = await viem.getContractAt("MockUSDC", usdc.address, { client: { wallet: buyer } });
       await asBuyerToken.write.approve([escrow.address, maxUint256]);

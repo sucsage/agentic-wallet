@@ -29,7 +29,8 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 ///           Delivered, buyer silent         -> seller may releaseKey (file) or claim (no file)
 ///           Approved, seller withholds key  -> buyer may reclaim the payment
 ///           KeyReleased, no challenge       -> seller may claim the payment
-///         Inside a review or challenge window the buyer may dispute; a neutral arbiter settles it.
+///         Inside a review or challenge window the buyer may dispute; a neutral arbiter settles it,
+///         to one side (resolve) or split by share of the work delivered (resolveSplit).
 contract FileEscrow is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
@@ -46,7 +47,9 @@ contract FileEscrow is ReentrancyGuard {
         KeyReleased,
         Released,
         Disputed,
-        Refunded
+        Refunded,
+        /// @dev Settled by the arbiter in two parts: see splitOf.
+        Split
     }
 
     /// @notice One milestone as written in an offer.
@@ -88,11 +91,17 @@ contract FileEscrow is ReentrancyGuard {
 
     /// @notice Shortest review window an offer may set, so a window cannot lapse before anyone can react.
     uint64 public constant MIN_REVIEW_PERIOD = 1 hours;
+    /// @notice A split is written in basis points of the milestone paid to the seller.
+    uint16 public constant BPS = 10_000;
 
+    /// @notice The first deal number of this escrow; lower numbers belong to the one it replaced.
+    uint256 public immutable FIRST_DEAL_ID;
     uint256 public dealCount;
     mapping(uint256 => Deal) private _deals;
     mapping(uint256 => mapping(uint256 => Milestone)) private _milestones;
     mapping(address => uint256[]) private _dealsOf;
+    /// @dev What the seller received from a Split milestone; the buyer got the rest.
+    mapping(uint256 => mapping(uint256 => uint256)) private _splitToSeller;
 
     event OfferCreated(
         uint256 indexed dealId, address indexed buyer, address indexed seller, address creator, uint256 total, string termsURI
@@ -105,6 +114,7 @@ contract FileEscrow is ReentrancyGuard {
     event Disputed(uint256 indexed dealId, uint256 indexed index);
     event Released(uint256 indexed dealId, uint256 indexed index, uint256 amount);
     event Refunded(uint256 indexed dealId, uint256 indexed index, uint256 amount);
+    event SplitResolved(uint256 indexed dealId, uint256 indexed index, uint256 toSeller, uint256 toBuyer);
 
     error InvalidOffer();
     error ArbiterNotNeutral();
@@ -117,6 +127,14 @@ contract FileEscrow is ReentrancyGuard {
     error NoFile();
     error WindowOpen();
     error WindowClosed();
+    error InvalidSplit();
+
+    /// @param firstDealId Where deal numbers start. A replacement escrow continues the old one's
+    ///        numbering, so a deal id names one deal across both contracts.
+    constructor(uint256 firstDealId) {
+        FIRST_DEAL_ID = firstDealId;
+        dealCount = firstDealId;
+    }
 
     // ----------------------------------------------------------------------------------------
     // Offers
@@ -292,9 +310,38 @@ contract FileEscrow is ReentrancyGuard {
         else _payBack(dealId, index, d, m);
     }
 
+    /// @notice Settles a disputed milestone by sharing it: `sellerBps` / 10,000 of the amount to the
+    ///         seller (for the part of the work delivered), the rest back to the buyer. 10,000 and 0
+    ///         are the same as resolve(true) and resolve(false).
+    function resolveSplit(uint256 dealId, uint256 index, uint16 sellerBps) external nonReentrant {
+        (Deal storage d, Milestone storage m) = _active(dealId, index);
+        if (msg.sender != d.arbiter) revert NotAllowed();
+        if (m.status != Status.Disputed) revert WrongStatus(m.status);
+        if (sellerBps > BPS) revert InvalidSplit();
+
+        if (sellerBps == BPS) return _payOut(dealId, index, d, m);
+        if (sellerBps == 0) return _payBack(dealId, index, d, m);
+
+        uint256 toSeller = (m.amount * sellerBps) / BPS;
+        uint256 toBuyer = m.amount - toSeller;
+        m.status = Status.Split;
+        _splitToSeller[dealId][index] = toSeller;
+        d.token.safeTransfer(d.seller, toSeller);
+        d.token.safeTransfer(d.buyer, toBuyer);
+        emit SplitResolved(dealId, index, toSeller, toBuyer);
+    }
+
     // ----------------------------------------------------------------------------------------
     // Views
     // ----------------------------------------------------------------------------------------
+
+    /// @notice How a Split milestone was paid out; (0, 0) for any other status.
+    function splitOf(uint256 dealId, uint256 index) external view returns (uint256 toSeller, uint256 toBuyer) {
+        Milestone storage m = _milestones[dealId][index];
+        if (m.status != Status.Split) return (0, 0);
+        toSeller = _splitToSeller[dealId][index];
+        toBuyer = m.amount - toSeller;
+    }
 
     function getDeal(uint256 dealId) external view returns (Deal memory) {
         return _deal(dealId);
@@ -359,7 +406,7 @@ contract FileEscrow is ReentrancyGuard {
     }
 
     function _deal(uint256 dealId) private view returns (Deal storage) {
-        if (dealId >= dealCount) revert InvalidIndex();
+        if (dealId < FIRST_DEAL_ID || dealId >= dealCount) revert InvalidIndex();
         return _deals[dealId];
     }
 

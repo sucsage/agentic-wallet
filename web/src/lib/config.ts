@@ -66,6 +66,26 @@ export const config = {
       fileEscrow: addr("FILE_ESCROW_ADDRESS"),
     };
   },
+  /**
+   * Every FileEscrow deals live on, newest first. A replacement escrow (FileEscrow v2: split
+   * rulings) continues the old one's numbering from FILE_ESCROW_FIRST_ID, so a deal id alone says
+   * which contract holds it.
+   */
+  get fileEscrows(): { address: Address; firstId: number; splits: boolean }[] {
+    const current = { address: addr("FILE_ESCROW_ADDRESS"), firstId: Number(process.env.FILE_ESCROW_FIRST_ID ?? 0), splits: Boolean(process.env.FILE_ESCROW_FIRST_ID) };
+    const legacy = process.env.LEGACY_FILE_ESCROW_ADDRESS;
+    return legacy ? [current, { address: getAddress(legacy), firstId: 0, splits: false }] : [current];
+  },
+  /** The escrow that holds deal `dealId`. New deals always go to bankContracts.fileEscrow. */
+  fileEscrowOf(dealId: number | bigint): Address {
+    const id = Number(dealId);
+    return (this.fileEscrows.find((e) => id >= e.firstId) ?? this.fileEscrows[this.fileEscrows.length - 1]).address;
+  },
+  /** Whether deal `dealId`'s escrow can split a disputed milestone (FileEscrow v2). */
+  fileEscrowSplits(dealId: number | bigint): boolean {
+    const id = Number(dealId);
+    return (this.fileEscrows.find((e) => id >= e.firstId) ?? { splits: false }).splits;
+  },
   /** The on-chain token that mirrors `currency`, or null while it is not deployed (mCNY is optional). */
   bankToken(currency: "THB" | "CNY"): Address | null {
     const v = process.env[currency === "THB" ? "MTHB_ADDRESS" : "MCNY_ADDRESS"];

@@ -1054,7 +1054,7 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
         tone: STATUS_TONE[d.status],
       })),
     ...(wallet?.fileDeals ?? []).map((d) => {
-      const done = d.milestones.filter((m) => m.status === "Released").length;
+      const done = d.milestones.filter((m) => m.status === "Released" || m.status === "Split").length;
       const disputed = d.milestones.some((m) => m.status === "Disputed");
       const draft = drafts.find((x) => x.dealId === d.id);
       return {

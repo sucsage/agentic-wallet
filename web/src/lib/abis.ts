@@ -3606,6 +3606,17 @@ export const mockTHBAbi = [
 
 export const fileEscrowAbi = [
   {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "firstDealId",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "constructor"
+  },
+  {
     "inputs": [],
     "name": "ArbiterNotNeutral",
     "type": "error"
@@ -3623,6 +3634,11 @@ export const fileEscrowAbi = [
   {
     "inputs": [],
     "name": "InvalidOffer",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "InvalidSplit",
     "type": "error"
   },
   {
@@ -3900,6 +3916,63 @@ export const fileEscrowAbi = [
     ],
     "name": "Released",
     "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "dealId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "index",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "toSeller",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "toBuyer",
+        "type": "uint256"
+      }
+    ],
+    "name": "SplitResolved",
+    "type": "event"
+  },
+  {
+    "inputs": [],
+    "name": "BPS",
+    "outputs": [
+      {
+        "internalType": "uint16",
+        "name": "",
+        "type": "uint16"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "FIRST_DEAL_ID",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
   },
   {
     "inputs": [],
@@ -4393,6 +4466,58 @@ export const fileEscrowAbi = [
     "name": "resolve",
     "outputs": [],
     "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "dealId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "index",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint16",
+        "name": "sellerBps",
+        "type": "uint16"
+      }
+    ],
+    "name": "resolveSplit",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "dealId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "index",
+        "type": "uint256"
+      }
+    ],
+    "name": "splitOf",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "toSeller",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "toBuyer",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
     "type": "function"
   }
 ] as const;

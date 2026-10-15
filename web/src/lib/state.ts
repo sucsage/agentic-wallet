@@ -106,7 +106,7 @@ export type AuditEntry = {
 export type WalletState = Awaited<ReturnType<typeof readWallet>>;
 
 export const FILE_DEAL_STATUS = ["Proposed", "Active", "Cancelled"] as const;
-export const FILE_MILESTONE_STATUS = ["Pending", "Delivered", "Approved", "KeyReleased", "Released", "Disputed", "Refunded"] as const;
+export const FILE_MILESTONE_STATUS = ["Pending", "Delivered", "Approved", "KeyReleased", "Released", "Disputed", "Refunded", "Split"] as const;
 
 /** A FileEscrow deal this wallet is party to (bank-paid deals: buyer offers locked just in time). */
 export type FileDealView = {
@@ -120,30 +120,50 @@ export type FileDealView = {
   status: (typeof FILE_DEAL_STATUS)[number];
   reviewHours: number;
   termsURI: string;
-  milestones: { index: number; amount: string; hasFile: boolean; status: (typeof FILE_MILESTONE_STATUS)[number]; deadline: number }[];
+  milestones: {
+    index: number;
+    amount: string;
+    hasFile: boolean;
+    status: (typeof FILE_MILESTONE_STATUS)[number];
+    deadline: number;
+    /** For a Split milestone: what each side received. */
+    split?: { toSeller: string; toBuyer: string };
+  }[];
 };
 
 /** FileEscrow deals for wallets that have one configured; empty otherwise (older mUSDC setups). */
 export async function readFileDeals(wallet: Address, u?: Units): Promise<FileDealView[]> {
   if (!process.env.FILE_ESCROW_ADDRESS) return [];
-  const escrow = config.bankContracts.fileEscrow;
   const units = u ?? (await walletUnits(wallet));
   const pc = publicClient();
-  const ids = await pc.readContract({ address: escrow, abi: fileEscrowAbi, functionName: "dealsOf", args: [wallet] });
+  // A replacement escrow continues the old numbering, so deals from both list without clashes.
+  const perEscrow = await Promise.all(
+    config.fileEscrows.map(async ({ address: escrow }) => {
+      const ids = await pc.readContract({ address: escrow, abi: fileEscrowAbi, functionName: "dealsOf", args: [wallet] });
+      return ids.map((id) => ({ escrow, id }));
+    }),
+  );
   return Promise.all(
-    ids.map(async (id) => {
+    perEscrow.flat().map(async ({ escrow, id }) => {
       const d = await pc.readContract({ address: escrow, abi: fileEscrowAbi, functionName: "getDeal", args: [id] });
       const buyer = getAddress(d.buyer) === wallet;
       const counterparty = getAddress(buyer ? d.seller : d.buyer);
       const milestones = await Promise.all(
         Array.from({ length: Number(d.milestoneCount) }, async (_, i) => {
           const m = await pc.readContract({ address: escrow, abi: fileEscrowAbi, functionName: "getMilestone", args: [id, BigInt(i)] });
+          const status = FILE_MILESTONE_STATUS[m.status];
+          let split: { toSeller: string; toBuyer: string } | undefined;
+          if (status === "Split") {
+            const [toSeller, toBuyer] = await pc.readContract({ address: escrow, abi: fileEscrowAbi, functionName: "splitOf", args: [id, BigInt(i)] });
+            split = { toSeller: amountOf(toSeller, units), toBuyer: amountOf(toBuyer, units) };
+          }
           return {
             index: i,
             amount: amountOf(m.amount, units),
             hasFile: m.hasFile,
-            status: FILE_MILESTONE_STATUS[m.status],
+            status,
             deadline: Number(m.deadline),
+            ...(split ? { split } : {}),
           };
         }),
       );

@@ -7,7 +7,7 @@ import { type Hex, keccak256, maxUint256, toHex, zeroHash } from "viem";
 const usd = (n: number) => BigInt(Math.round(n * 1e6));
 const REVIEW = 3n * 24n * 60n * 60n; // 3 days, agreed in every offer below
 const DEAL = { Proposed: 0, Active: 1, Cancelled: 2 } as const;
-const STATUS = { Pending: 0, Delivered: 1, Approved: 2, KeyReleased: 3, Released: 4, Disputed: 5, Refunded: 6 } as const;
+const STATUS = { Pending: 0, Delivered: 1, Approved: 2, KeyReleased: 3, Released: 4, Disputed: 5, Refunded: 6, Split: 7 } as const;
 
 const FILE_HASH = keccak256(toHex("final-logo.svg"));
 const OTHER_HASH = keccak256(toHex("something-else.svg"));
@@ -24,7 +24,7 @@ describe("FileEscrow", async function () {
 
   async function deploy() {
     const usdc = await viem.deployContract("MockUSDC");
-    const escrow = await viem.deployContract("FileEscrow");
+    const escrow = await viem.deployContract("FileEscrow", [0n]);
     await usdc.write.mint([buyer.account.address, usd(10_000)]);
     const usdcAsBuyer = await viem.getContractAt("MockUSDC", usdc.address, { client: { wallet: buyer } });
     await usdcAsBuyer.write.approve([escrow.address, maxUint256]);
@@ -232,6 +232,44 @@ describe("FileEscrow", async function () {
       assert.equal(await balance(ctx, seller), usd(1_000));
     });
 
+    it("the arbiter can split a milestone by the share of work delivered", async () => {
+      const ctx = await activeFileDeal();
+      const { escrow, asBuyer, asSeller, asArbiter } = ctx;
+      await asSeller.write.deliver([0n, 0n, FILE_HASH, DELIVERY]);
+      await asBuyer.write.dispute([0n, 0n]);
+
+      await viem.assertions.revertWithCustomError(asBuyer.write.resolveSplit([0n, 0n, 3_000]), escrow, "NotAllowed");
+      await viem.assertions.revertWithCustomError(asSeller.write.resolveSplit([0n, 0n, 3_000]), escrow, "NotAllowed");
+      await viem.assertions.revertWithCustomError(asArbiter.write.resolveSplit([0n, 0n, 10_001]), escrow, "InvalidSplit");
+
+      await asArbiter.write.resolveSplit([0n, 0n, 3_000]); // seller 30%, buyer 70%
+      assert.equal(await balance(ctx, seller), usd(300));
+      assert.equal(await balance(ctx, buyer), usd(9_000) + usd(700));
+      assert.equal(await ctx.usdc.read.balanceOf([escrow.address]), 0n);
+      assert.equal((await escrow.read.getMilestone([0n, 0n])).status, STATUS.Split);
+      assert.deepEqual(await escrow.read.splitOf([0n, 0n]), [usd(300), usd(700)]);
+      // Settled once: neither a second split nor a plain resolve can move it again.
+      await viem.assertions.revertWithCustomErrorWithArgs(asArbiter.write.resolveSplit([0n, 0n, 5_000]), escrow, "WrongStatus", [STATUS.Split]);
+      await viem.assertions.revertWithCustomErrorWithArgs(asArbiter.write.resolve([0n, 0n, true]), escrow, "WrongStatus", [STATUS.Split]);
+    });
+
+    it("a split of 100% or 0% is a plain payout or refund", async () => {
+      const ctx = await activeFileDeal();
+      const { escrow, asBuyer, asSeller, asArbiter } = ctx;
+      await asSeller.write.deliver([0n, 0n, FILE_HASH, DELIVERY]);
+      await asBuyer.write.dispute([0n, 0n]);
+      await asArbiter.write.resolveSplit([0n, 0n, 10_000]);
+      assert.equal((await escrow.read.getMilestone([0n, 0n])).status, STATUS.Released);
+      assert.equal(await balance(ctx, seller), usd(1_000));
+      assert.deepEqual(await escrow.read.splitOf([0n, 0n]), [0n, 0n]);
+    });
+
+    it("only a disputed milestone can be split", async () => {
+      const { escrow, asSeller, asArbiter } = await activeFileDeal();
+      await asSeller.write.deliver([0n, 0n, FILE_HASH, DELIVERY]);
+      await viem.assertions.revertWithCustomErrorWithArgs(asArbiter.write.resolveSplit([0n, 0n, 5_000]), escrow, "WrongStatus", [STATUS.Delivered]);
+    });
+
     it("objections close with the window", async () => {
       const { escrow, asBuyer, asSeller } = await activeFileDeal();
       await asSeller.write.deliver([0n, 0n, FILE_HASH, DELIVERY]);
@@ -247,6 +285,20 @@ describe("FileEscrow", async function () {
     await asSeller.write.refund([0n, 0n]);
     assert.equal(await balance(ctx, buyer), usd(10_000));
     await viem.assertions.revertWithCustomErrorWithArgs(asSeller.write.refund([0n, 0n]), escrow, "WrongStatus", [STATUS.Refunded]);
+  });
+
+  it("a replacement escrow continues the old numbering and knows no deal below it", async () => {
+    const usdc = await viem.deployContract("MockUSDC");
+    const next = await viem.deployContract("FileEscrow", [18n]);
+    await usdc.write.mint([buyer.account.address, usd(1_000)]);
+    const usdcAsBuyer = await viem.getContractAt("MockUSDC", usdc.address, { client: { wallet: buyer } });
+    await usdcAsBuyer.write.approve([next.address, maxUint256]);
+    const asBuyer = await viem.getContractAt("FileEscrow", next.address, { client: { wallet: buyer } });
+    const asSeller = await viem.getContractAt("FileEscrow", next.address, { client: { wallet: seller } });
+    await asBuyer.write.offerToBuy([seller.account.address, arbiter.account.address, usdc.address, [file(100)], REVIEW, "terms"]);
+    assert.equal((await next.read.getDeal([18n])).buyer.toLowerCase(), buyer.account.address.toLowerCase());
+    await viem.assertions.revertWithCustomError(next.read.getDeal([17n]), next, "InvalidIndex");
+    await viem.assertions.revertWithCustomError(asSeller.write.accept([0n]), next, "InvalidIndex");
   });
 
   it("lists each deal under both parties", async () => {

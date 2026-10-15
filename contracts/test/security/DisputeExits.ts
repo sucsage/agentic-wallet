@@ -21,7 +21,7 @@ describe("Disputed funds: who can move them, and what happens when nobody rules"
 
   async function deploy() {
     const usdc = await viem.deployContract("MockUSDC");
-    const fileEscrow = await viem.deployContract("FileEscrow");
+    const fileEscrow = await viem.deployContract("FileEscrow", [0n]);
     const milestone = await viem.deployContract("MilestoneEscrow");
     await usdc.write.mint([buyer.account.address, usd(10_000)]);
     const asBuyerToken = await viem.getContractAt("MockUSDC", usdc.address, { client: { wallet: buyer } });

@@ -50,7 +50,9 @@ export async function addressLabels(): Promise<Map<string, string>> {
   m.set("0xa94536942adcea3ed96c30875dd9c96b6ff458db", "AgentWalletFactory (v1)");
   if (process.env.MTHB_ADDRESS) m.set(config.bankContracts.mthb.toLowerCase(), "MockTHB (mTHB)");
   if (process.env.MCNY_ADDRESS) m.set(getAddress(process.env.MCNY_ADDRESS).toLowerCase(), "MockCNY (mCNY)");
-  if (process.env.FILE_ESCROW_ADDRESS) m.set(config.bankContracts.fileEscrow.toLowerCase(), "FileEscrow");
+  if (process.env.FILE_ESCROW_ADDRESS) {
+    for (const e of config.fileEscrows) m.set(e.address.toLowerCase(), e.splits ? "FileEscrow v2 (split rulings)" : "FileEscrow");
+  }
   if (process.env.BANK_PRIVATE_KEY) {
     const { account } = await import("./chain");
     m.set(account("bank").address.toLowerCase(), "Mock Bank key");

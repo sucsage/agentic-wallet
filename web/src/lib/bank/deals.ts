@@ -45,18 +45,20 @@ export const MAX_FILE_BYTES = 4 * 1024 * 1024;
 
 export class DealError extends Error {}
 
-const escrow = () => config.bankContracts.fileEscrow;
+/** The escrow holding deal `dealId`; new deals are always made on the current one. */
+const escrow = (dealId: number) => config.fileEscrowOf(dealId);
+const currentEscrow = () => config.bankContracts.fileEscrow;
 
 async function getDeal(dealId: number) {
   return atFreshBlock((blockNumber) =>
-    publicClient().readContract({ address: escrow(), abi: fileEscrowAbi, functionName: "getDeal", args: [BigInt(dealId)], blockNumber }),
+    publicClient().readContract({ address: escrow(dealId), abi: fileEscrowAbi, functionName: "getDeal", args: [BigInt(dealId)], blockNumber }),
   );
 }
 
 async function getMilestone(dealId: number, index: number) {
   return atFreshBlock((blockNumber) =>
     publicClient().readContract({
-      address: escrow(),
+      address: escrow(dealId),
       abi: fileEscrowAbi,
       functionName: "getMilestone",
       args: [BigInt(dealId), BigInt(index)],
@@ -74,7 +76,7 @@ export async function dealForWallet(wallet: Address, dealId: number): Promise<Fi
 
 /** Sends one call from the wallet (to FileEscrow unless `target` says otherwise), approved by the
  *  owner's signature (the user's click). The wallet checks it against its policy either way. */
-async function viaMandate(wallet: Address, data: Hex, reason: string, target: Address = escrow()): Promise<TxOutcome> {
+async function viaMandate(wallet: Address, data: Hex, reason: string, target: Address): Promise<TxOutcome> {
   const random = crypto.getRandomValues(new Uint32Array(2));
   const mandate: Mandate = {
     kind: KIND_CALL,
@@ -122,14 +124,14 @@ export async function buyerAction(
       address: wallet,
       abi: agentWalletAbi,
       functionName: "agentApproveFile",
-      args: [escrow(), BigInt(dealId), BigInt(index)],
+      args: [escrow(dealId), BigInt(dealId), BigInt(index)],
     });
     if (agent.status === "success") return { tier: 2, outcome: agent };
     // Only a definite refusal (e.g. over the caps) falls back; a network error is reported as is.
     if (!(agent.status === "rejected" && agent.definite)) return { tier: 2, outcome: agent };
   }
   const data = action === "cancel" ? dealCall("cancel", dealId) : milestoneCall(action, dealId, index);
-  return { tier: 1, outcome: await viaMandate(wallet, data, `${action} deal ${dealId} milestone ${index}`) };
+  return { tier: 1, outcome: await viaMandate(wallet, data, `${action} deal ${dealId} milestone ${index}`, escrow(dealId)) };
 }
 
 // ------------------------------------------------------------------------------------------
@@ -142,7 +144,7 @@ export async function sellerAction(wallet: Address, dealId: number, action: Sell
   const deal = await dealForWallet(wallet, dealId);
   if (deal.role !== "seller") throw new DealError("Only the seller can do this");
   const data = action === "accept" || action === "cancel" ? dealCall(action, dealId) : milestoneCall(action, dealId, index);
-  return { tier: 1, outcome: await viaMandate(wallet, data, `${action} deal ${dealId} milestone ${index}`) };
+  return { tier: 1, outcome: await viaMandate(wallet, data, `${action} deal ${dealId} milestone ${index}`, escrow(dealId)) };
 }
 
 /** The seller's offer goes on-chain. It locks nothing; the deal id comes from the receipt. */
@@ -157,11 +159,11 @@ export async function offerToSell(
     functionName: "offerToSell",
     args: [offer.buyer, config.arbiter, token, terms, offer.reviewPeriod, offer.termsURI],
   });
-  const outcome = await viaMandate(wallet, data, offer.reason);
+  const outcome = await viaMandate(wallet, data, offer.reason, currentEscrow());
   if (outcome.status !== "success") return { outcome };
   const receipt = await publicClient().getTransactionReceipt({ hash: outcome.hash });
   for (const log of receipt.logs) {
-    if (getAddress(log.address) !== escrow()) continue;
+    if (getAddress(log.address) !== currentEscrow()) continue;
     try {
       const event = decodeEventLog({ abi: fileEscrowAbi, data: log.data, topics: log.topics });
       if (event.eventName === "OfferCreated") return { outcome, dealId: Number(event.args.dealId) };
@@ -242,12 +244,12 @@ export async function acceptAndPay(wallet: Address, dealId: number): Promise<Acc
   // 3. Approve and accept: the wallet checks the seller is a payee, the token and the arbiter.
   const approve = await viaMandate(
     wallet,
-    encodeFunctionData({ abi: mockTHBAbi, functionName: "approve", args: [escrow(), d.total] }),
+    encodeFunctionData({ abi: mockTHBAbi, functionName: "approve", args: [escrow(dealId), d.total] }),
     `approve deal ${dealId}`,
     token,
   );
   steps.push({ step: "approve", outcome: approve });
-  const accept = await viaMandate(wallet, dealCall("accept", dealId), `accept deal ${dealId}`);
+  const accept = await viaMandate(wallet, dealCall("accept", dealId), `accept deal ${dealId}`, escrow(dealId));
   steps.push({ step: "accept", outcome: accept });
   if ((await getDeal(dealId)).status === 1) return done("FUNDED");
   const failed = certainFailure(accept) ? accept : certainFailure(approve) ? approve : null;
@@ -295,7 +297,7 @@ export async function deliver(
     const tracking = carrier === "MOCK_POST" && !input.parcel.tracking ? bookParcel() : (input.parcel.tracking ?? "").trim().toUpperCase();
     const bad = checkTracking(carrier, tracking);
     if (bad) throw new DealError(bad);
-    const prior = await db.dealDelivery.findUnique({ where: { escrow_dealId_index: { escrow: escrow(), dealId, index } } });
+    const prior = await db.dealDelivery.findUnique({ where: { escrow_dealId_index: { escrow: escrow(dealId), dealId, index } } });
     parcel = { carrier, tracking, shippedAt: prior?.tracking === tracking && prior.shippedAt ? prior.shippedAt : new Date() };
     if (!input.note.trim()) input = { ...input, note: `Shipped with ${CARRIER_LABEL[carrier]}, tracking number ${tracking}.` };
   }
@@ -313,7 +315,7 @@ export async function deliver(
     enc = { ciphertext, iv, tag: c.getAuthTag(), key };
   }
   const row = await db.dealDelivery.upsert({
-    where: { escrow_dealId_index: { escrow: escrow(), dealId, index } },
+    where: { escrow_dealId_index: { escrow: escrow(dealId), dealId, index } },
     update: {
       sellerUserId: userId,
       note: input.note,
@@ -330,7 +332,7 @@ export async function deliver(
       sha256,
     },
     create: {
-      escrow: escrow(),
+      escrow: escrow(dealId),
       dealId,
       index,
       sellerUserId: userId,
@@ -353,12 +355,12 @@ export async function deliver(
     functionName: "deliver",
     args: [BigInt(dealId), BigInt(index), `0x${sha256}`, `app-delivery:${row.id}`],
   });
-  return { outcome: await viaMandate(wallet, data, `deliver deal ${dealId} milestone ${index}`), sha256, tracking: parcel?.tracking };
+  return { outcome: await viaMandate(wallet, data, `deliver deal ${dealId} milestone ${index}`, escrow(dealId)), sha256, tracking: parcel?.tracking };
 }
 
 /** What either party may see about a delivery before the file itself. */
 export async function deliveryInfo(dealId: number, index: number) {
-  const d = await db.dealDelivery.findUnique({ where: { escrow_dealId_index: { escrow: escrow(), dealId, index } } });
+  const d = await db.dealDelivery.findUnique({ where: { escrow_dealId_index: { escrow: escrow(dealId), dealId, index } } });
   if (!d) return null;
   const parcel =
     d.tracking && d.carrier && d.shippedAt
@@ -371,10 +373,10 @@ export async function deliveryInfo(dealId: number, index: number) {
 export async function deliveryFile(wallet: Address, dealId: number, index: number) {
   const deal = await dealForWallet(wallet, dealId);
   const status = deal.milestones[index]?.status;
-  if (deal.role === "buyer" && status !== "KeyReleased" && status !== "Released") {
+  if (deal.role === "buyer" && status !== "KeyReleased" && status !== "Released" && status !== "Split") {
     throw new DealError("The file unlocks after you approve the work and the seller releases the key");
   }
-  const d = await db.dealDelivery.findUnique({ where: { escrow_dealId_index: { escrow: escrow(), dealId, index } } });
+  const d = await db.dealDelivery.findUnique({ where: { escrow_dealId_index: { escrow: escrow(dealId), dealId, index } } });
   if (!d?.ciphertext || !d.fileKey || !d.iv || !d.tag) throw new DealError("No file for this milestone");
   const dec = createDecipheriv("aes-256-gcm", Buffer.from(d.fileKey, "hex"), Buffer.from(d.iv, "hex"));
   dec.setAuthTag(Buffer.from(d.tag, "hex"));
@@ -414,7 +416,7 @@ function watermarkSvg(width: number, height: number): string {
  */
 export async function deliveryPreview(wallet: Address, dealId: number, index: number): Promise<Buffer> {
   await dealForWallet(wallet, dealId);
-  const d = await db.dealDelivery.findUnique({ where: { escrow_dealId_index: { escrow: escrow(), dealId, index } } });
+  const d = await db.dealDelivery.findUnique({ where: { escrow_dealId_index: { escrow: escrow(dealId), dealId, index } } });
   if (!d?.ciphertext || !d.fileKey || !d.iv || !d.tag) throw new DealError("No file for this milestone");
   if (!d.mime?.startsWith("image/")) throw new DealError("Previews are made for images only");
   const dec = createDecipheriv("aes-256-gcm", Buffer.from(d.fileKey, "hex"), Buffer.from(d.iv, "hex"));
@@ -446,7 +448,7 @@ export function demoDeliverable(dealId: number, index: number) {
 }
 
 const redeemId = (kind: "payout" | "refund" | "cancel" | "accept", dealId: number, index = 0): Hex =>
-  keccak256(toHex(`${kind}:${config.chain.id}:${escrow()}:${dealId}:${index}`));
+  keccak256(toHex(`${kind}:${config.chain.id}:${escrow(dealId)}:${dealId}:${index}`));
 
 async function redeemed(token: Address, holder: Address, id: Hex): Promise<boolean> {
   return atFreshBlock((blockNumber) =>
@@ -523,7 +525,7 @@ async function doSync(dealId: number): Promise<void> {
     return;
   }
   if (d.status === 0) {
-    if (demoSeller) await send("contractor", { address: escrow(), abi: fileEscrowAbi, functionName: "accept", args: [BigInt(dealId)] });
+    if (demoSeller) await send("contractor", { address: escrow(dealId), abi: fileEscrowAbi, functionName: "accept", args: [BigInt(dealId)] });
     return;
   }
 
@@ -535,7 +537,7 @@ async function doSync(dealId: number): Promise<void> {
         if (demoSeller) {
           const workHash = `0x${createHash("sha256").update(demoFile(dealId, i)).digest("hex")}` as Hex;
           await send("contractor", {
-            address: escrow(),
+            address: escrow(dealId),
             abi: fileEscrowAbi,
             functionName: "deliver",
             args: [BigInt(dealId), BigInt(i), workHash, `demo-delivery:${dealId}:${i}`],
@@ -546,16 +548,16 @@ async function doSync(dealId: number): Promise<void> {
         if (!open) {
           if (demoSeller) {
             await (m.hasFile
-              ? send("contractor", { address: escrow(), abi: fileEscrowAbi, functionName: "releaseKey", args: [BigInt(dealId), BigInt(i), toHex(randomBytes(32))] })
-              : send("contractor", { address: escrow(), abi: fileEscrowAbi, functionName: "claim", args: [BigInt(dealId), BigInt(i)] }));
+              ? send("contractor", { address: escrow(dealId), abi: fileEscrowAbi, functionName: "releaseKey", args: [BigInt(dealId), BigInt(i), toHex(randomBytes(32))] })
+              : send("contractor", { address: escrow(dealId), abi: fileEscrowAbi, functionName: "claim", args: [BigInt(dealId), BigInt(i)] }));
           } else if (sellerIsUser) {
-            await (m.hasFile ? releaseKeyFor(seller, dealId, i) : viaMandate(seller, milestoneCall("claim", dealId, i), `claim ${dealId}/${i}`));
+            await (m.hasFile ? releaseKeyFor(seller, dealId, i) : viaMandate(seller, milestoneCall("claim", dealId, i), `claim ${dealId}/${i}`, escrow(dealId)));
           }
         }
         return;
       case 2: // Approved: hand over the key, then confirm it for the buyer
         if (demoSeller) {
-          await send("contractor", { address: escrow(), abi: fileEscrowAbi, functionName: "releaseKey", args: [BigInt(dealId), BigInt(i), toHex(randomBytes(32))] });
+          await send("contractor", { address: escrow(dealId), abi: fileEscrowAbi, functionName: "releaseKey", args: [BigInt(dealId), BigInt(i), toHex(randomBytes(32))] });
         } else if (sellerIsUser) {
           const out = await releaseKeyFor(seller, dealId, i);
           if (out.status === "success" && buyerIsUser && (await confirmKeyFor(buyer, dealId, i))) {
@@ -572,9 +574,9 @@ async function doSync(dealId: number): Promise<void> {
           }
         } else if (!open) {
           if (demoSeller) {
-            await send("contractor", { address: escrow(), abi: fileEscrowAbi, functionName: "claim", args: [BigInt(dealId), BigInt(i)] });
+            await send("contractor", { address: escrow(dealId), abi: fileEscrowAbi, functionName: "claim", args: [BigInt(dealId), BigInt(i)] });
           } else if (sellerIsUser) {
-            await viaMandate(seller, milestoneCall("claim", dealId, i), `claim ${dealId}/${i}`);
+            await viaMandate(seller, milestoneCall("claim", dealId, i), `claim ${dealId}/${i}`, escrow(dealId));
           }
         }
         return;
@@ -594,6 +596,22 @@ async function doSync(dealId: number): Promise<void> {
       case 6: // Refunded: back to the buyer's bank
         if (buyerIsUser) await settleToWalletBank(buyer, token, currency, redeemId("refund", dealId, i), m.amount, "REFUND");
         continue;
+      case 7: {
+        // Split by the arbiter: the seller's share is paid out, the rest goes back to the buyer.
+        const [toSeller, toBuyer] = await publicClient().readContract({
+          address: escrow(dealId),
+          abi: fileEscrowAbi,
+          functionName: "splitOf",
+          args: [BigInt(dealId), BigInt(i)],
+        });
+        if (demoSeller) await payoutContractor(token, currency, dealId, i, toSeller);
+        else if (sellerIsUser) {
+          await settleToWalletBank(seller, token, currency, redeemId("payout", dealId, i), toSeller, "PAYOUT");
+          await sweepInvite(seller);
+        }
+        if (buyerIsUser) await settleToWalletBank(buyer, token, currency, redeemId("refund", dealId, i), toBuyer, "REFUND");
+        continue;
+      }
     }
   }
 }
@@ -603,14 +621,14 @@ async function doSync(dealId: number): Promise<void> {
  * the server, which holds the key, serves the decrypted file to the buyer once this is on-chain.
  */
 async function releaseKeyFor(seller: Address, dealId: number, index: number): Promise<TxOutcome> {
-  const d = await db.dealDelivery.findUnique({ where: { escrow_dealId_index: { escrow: escrow(), dealId, index } } });
+  const d = await db.dealDelivery.findUnique({ where: { escrow_dealId_index: { escrow: escrow(dealId), dealId, index } } });
   const commitment = d?.fileKey ? keccak256(`0x${d.fileKey}`) : keccak256(toHex(`no-file:${dealId}:${index}`));
   const data = encodeFunctionData({
     abi: fileEscrowAbi,
     functionName: "releaseKey",
     args: [BigInt(dealId), BigInt(index), commitment],
   });
-  return viaMandate(seller, data, `releaseKey ${dealId}/${index}`);
+  return viaMandate(seller, data, `releaseKey ${dealId}/${index}`, escrow(dealId));
 }
 
 /**
@@ -622,7 +640,7 @@ async function releaseKeyFor(seller: Address, dealId: number, index: number): Pr
 async function confirmKeyFor(buyer: Address, dealId: number, index: number): Promise<boolean> {
   const m = await getMilestone(dealId, index);
   if (m.status !== 3) return false;
-  const d = await db.dealDelivery.findUnique({ where: { escrow_dealId_index: { escrow: escrow(), dealId, index } } });
+  const d = await db.dealDelivery.findUnique({ where: { escrow_dealId_index: { escrow: escrow(dealId), dealId, index } } });
   if (!d?.ciphertext || !d.fileKey || !d.iv || !d.tag) return false;
   try {
     const dec = createDecipheriv("aes-256-gcm", Buffer.from(d.fileKey, "hex"), Buffer.from(d.iv, "hex"));
@@ -632,7 +650,7 @@ async function confirmKeyFor(buyer: Address, dealId: number, index: number): Pro
   } catch {
     return false;
   }
-  const out = await viaMandate(buyer, milestoneCall("approve", dealId, index), `confirm key ${dealId}/${index}`);
+  const out = await viaMandate(buyer, milestoneCall("approve", dealId, index), `confirm key ${dealId}/${index}`, escrow(dealId));
   return out.status === "success";
 }
 

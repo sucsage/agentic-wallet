@@ -14,13 +14,37 @@ type Row = {
   confidence: number | null;
   rationale: string | null;
   findings: { criterion: string; met: boolean; evidence: string }[] | null;
+  stage?: string;
+  sellerStatement?: string | null;
+  proposal?: Vote | null;
+  panel?: Vote[] | null;
+  appeal?: Vote[] | null;
 };
+type Vote = { model: string; sellerBps?: number; rationale?: string; failed?: true };
+
+/** Each model's ruling: the seller's share and why (or that it gave no valid answer). */
+function Votes({ title, votes }: { title: string; votes: Vote[] }) {
+  return (
+    <div className="text-xs">
+      <b>{title}</b>
+      <ul className="list-disc pl-5">
+        {votes.map((v, i) => (
+          <li key={i}>
+            {v.model}: {v.failed ? "no valid ruling" : `seller ${(v.sellerBps ?? 0) / 100}% · ${v.rationale}`}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 export function DisputeReview() {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
+  // The seller's share the arbiter will rule, per dispute (percent).
+  const [share, setShare] = useState<Record<string, number>>({});
 
   const load = useCallback(async () => {
     const res = await fetch("/api/admin/disputes", { cache: "no-store" });
@@ -36,12 +60,12 @@ export function DisputeReview() {
     void load();
   }, [load]);
 
-  async function rule(id: string, toSeller: boolean) {
+  async function rule(id: string, sellerPercent: number) {
     setBusy(id);
     const res = await fetch("/api/admin/disputes", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id, toSeller, note: notes[id] ?? "" }),
+      body: JSON.stringify({ id, sellerBps: Math.round(sellerPercent * 100), note: notes[id] ?? "" }),
     });
     const body = await res.json().catch(() => null);
     if (!res.ok || body?.outcome?.status !== "success") setError(body?.error ?? body?.outcome?.error ?? "Resolve failed");
@@ -64,7 +88,7 @@ export function DisputeReview() {
           </p>
           {r.decision && (
             <p>
-              <b>AI recommends:</b> {r.decision === "seller" ? "pay the seller" : "refund the buyer"}
+              <b>AI recommends:</b> {r.decision === "seller" ? "pay the seller" : r.decision === "split" ? "split" : "refund the buyer"}
               {r.confidence !== null && ` (${Math.round(r.confidence * 100)}% confident)`} · {r.rationale}
             </p>
           )}
@@ -78,6 +102,14 @@ export function DisputeReview() {
               ))}
             </ul>
           )}
+          {r.sellerStatement && (
+            <p>
+              <b>Seller&apos;s reply:</b> {r.sellerStatement}
+            </p>
+          )}
+          {r.proposal && <Votes title="Mediator's proposal" votes={[r.proposal]} />}
+          {r.panel && <Votes title="Panel · 3 models (2 of 3 must agree)" votes={r.panel} />}
+          {r.appeal && <Votes title="Appeal · 5 models (3 of 5 must agree)" votes={r.appeal} />}
           <a className="text-xs underline" href={`/deals/D-${r.dealId}`}>
             Open the deal (as a party) ↗
           </a>
@@ -87,11 +119,26 @@ export function DisputeReview() {
             value={notes[r.id] ?? ""}
             onChange={(e) => setNotes({ ...notes, [r.id]: e.target.value })}
           />
-          <div className="flex gap-2">
-            <button className="btn-primary" disabled={busy !== null || (notes[r.id] ?? "").trim().length < 10} onClick={() => rule(r.id, true)}>
+          <label className="flex items-center gap-2 text-xs">
+            Seller gets
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={5}
+              value={share[r.id] ?? 50}
+              onChange={(e) => setShare({ ...share, [r.id]: Number(e.target.value) })}
+            />
+            <b>{share[r.id] ?? 50}%</b> · buyer gets {100 - (share[r.id] ?? 50)}% back
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <button className="btn-primary" disabled={busy !== null || (notes[r.id] ?? "").trim().length < 10} onClick={() => rule(r.id, share[r.id] ?? 50)}>
+              Rule this split
+            </button>
+            <button className="btn-primary" disabled={busy !== null || (notes[r.id] ?? "").trim().length < 10} onClick={() => rule(r.id, 100)}>
               Pay the seller
             </button>
-            <button className="btn-primary" disabled={busy !== null || (notes[r.id] ?? "").trim().length < 10} onClick={() => rule(r.id, false)}>
+            <button className="btn-primary" disabled={busy !== null || (notes[r.id] ?? "").trim().length < 10} onClick={() => rule(r.id, 0)}>
               Refund the buyer
             </button>
           </div>

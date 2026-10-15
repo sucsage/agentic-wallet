@@ -6,6 +6,9 @@ import { dealTerms, deliveryInfo, syncDeal } from "@/lib/bank/deals";
 import { InviteError, inviteByToken, inviteView, sweepInvite } from "@/lib/bank/invites";
 import { HttpError, errorResponse, rateLimit } from "@/lib/guard";
 
+
+// The arbiter may run after the response (three to five models for a dispute).
+export const maxDuration = 300;
 /**
  * The invited seller's page data, for whoever holds the link (no sign-in): the buyer's offers,
  * each milestone's state and delivery, earnings and the payout destination (masked).

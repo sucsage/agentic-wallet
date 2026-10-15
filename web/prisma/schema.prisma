@@ -557,6 +557,8 @@ model SellerInvite {
 enum DisputeStatus {
   OPEN
   DECIDING
+  /// Waiting for the parties: to accept or reject the mediator's proposal, or to accept or appeal a verdict.
+  AWAITING
   NEEDS_REVIEW
   RESOLVED
 }
@@ -580,6 +582,26 @@ model DealDispute {
   /// "ai:<model>", "check:key" or "admin:<userId>".
   decidedBy      String?
   txHash         String?
+  /// Escrows that can split (FileEscrow v2): MEDIATION → PANEL (3 models) → APPEAL (5 models).
+  /// "CHECK" for a key dispute (decided mechanically) and "LEGACY" for the old one-model ruling.
+  stage          String        @default("MEDIATION")
+  /// The seller's side of the story, given when they reply.
+  sellerStatement String?
+  /// The mediator's proposal: { sellerBps, rationale, findings, model, signer, signature }.
+  proposal       Json?
+  /// "ACCEPT" or "REJECT" to the mediator's proposal; "ACCEPT" or "APPEAL" to the panel's verdict.
+  buyerReply     String?
+  sellerReply    String?
+  /// When the current wait ends: silence on a proposal moves to the panel; on a verdict, executes it.
+  replyBy        DateTime?
+  /// Votes: [{ model, sellerBps, rationale, findings, signer, signature }].
+  panel          Json?
+  panelBps       Int?
+  appealedBy     String?
+  appeal         Json?
+  appealBps      Int?
+  /// The seller's share actually paid out on-chain, in basis points.
+  sellerBps      Int?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 

@@ -3,6 +3,7 @@
 import jsQR from "jsqr";
 import { useCallback, useEffect, useState } from "react";
 
+import { DisputeFlow, type DisputeFlowData, isStagedDispute } from "./dispute-flow";
 import "./invite.css";
 
 /**
@@ -21,7 +22,7 @@ type Milestone = {
   deadline: number;
   canDeliver: boolean;
   delivery: { note: string; fileName: string | null; sha256: string } | null;
-  dispute: { reason: string; status: string; decision: string | null; confidence: number | null; rationale: string | null; txHash: string | null } | null;
+  dispute: ({ reason: string; status: string; decision: string | null; confidence: number | null; rationale: string | null; txHash: string | null } & Partial<DisputeFlowData>) | null;
 };
 
 type Deal = {
@@ -60,6 +61,7 @@ const STEP: Record<string, string> = {
   Released: "Paid",
   Disputed: "Disputed · a neutral arbiter decides",
   Refunded: "Refunded to the buyer",
+  Split: "Split by the arbiter · your share is paid",
 };
 
 async function call<T>(url: string, init?: RequestInit): Promise<T> {
@@ -201,7 +203,23 @@ function DealCard({ base, deal, money, onDone }: { base: string; deal: Deal; mon
               Delivered: {m.delivery.fileName ?? "evidence only"} · sha256 {m.delivery.sha256.slice(0, 12)}… on-chain
             </small>
           )}
-          {m.dispute && (
+          {m.dispute && isStagedDispute(m.dispute) && (
+            <DisputeFlow
+              d={m.dispute as DisputeFlowData}
+              role="seller"
+              amount={m.amount}
+              money={(n) => money(n.toFixed(2))}
+              onReply={async (reply, statement) => {
+                await call(`${base}/dispute`, {
+                  method: "POST",
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify({ dealId: deal.id, index: m.index, reply, statement }),
+                });
+                await onDone();
+              }}
+            />
+          )}
+          {m.dispute && !isStagedDispute(m.dispute) && (
             <div className="inv-dispute">
               <small className="inv-label">⚖ DISPUTE · NEUTRAL ARBITER</small>
               <small>Buyer&apos;s reason: {m.dispute.reason}</small>

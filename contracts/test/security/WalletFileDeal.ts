@@ -21,7 +21,7 @@ describe("AgentWallet and FileEscrow: agent approvals and the arbiter rule", asy
 
   async function deploy() {
     const usdc = await viem.deployContract("MockUSDC");
-    const fileEscrow = await viem.deployContract("FileEscrow");
+    const fileEscrow = await viem.deployContract("FileEscrow", [0n]);
     const factory = await viem.deployContract("AgentWalletFactory");
     const now = BigInt(await networkHelpers.time.latest());
     await factory.write.createWallet([

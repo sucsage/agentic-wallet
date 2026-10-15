@@ -21,7 +21,7 @@ export async function GET() {
     ]);
     // Offers this user turned down stay on-chain until their creator withdraws them; hide them here.
     const declined = new Set(
-      (await db.declinedOffer.findMany({ where: { userId: user.id, escrow: config.bankContracts.fileEscrow }, select: { dealId: true } })).map((d) => d.dealId),
+      (await db.declinedOffer.findMany({ where: { userId: user.id, escrow: { in: config.fileEscrows.map((e) => e.address) } }, select: { dealId: true } })).map((d) => d.dealId),
     );
     // Drafts up for a group vote are decided by the group, not approved here.
     const inVote = new Set(

@@ -120,6 +120,7 @@ nothing until the buyer accepts. Each milestone moves through a small state mach
 Pending ─deliver(workHash)─► Delivered ─approve─► Approved ─releaseKey─► KeyReleased ─approve/claim─► Released
                                 │  (no file: approve pays at once)                  │
                                 └─dispute─► Disputed ─resolve(arbiter)─► Released | Refunded
+                                                     └resolveSplit(arbiter, sellerBps)─► Split (v2: part to each side)
 Approved, key withheld past the window ─reclaim─► Refunded
 ```
 
@@ -218,15 +219,21 @@ A buyer may dispute a delivery inside the review window, giving a reason (at lea
 The arbiter has its own key, and the wallet contract refuses to let the buyer's side be the arbiter.
 
 - **Key disputes** are mechanical: does the released key open a file with the anchored hash? There is no AI in the loop, and the decision is recorded as `check:key`.
-- **Work disputes** go to an LLM that is not the buyer's agent. It gets a case file:
+- **Work disputes** are decided by AI instead of a person. Every judge gets the same case file:
   - the agreed terms and the acceptance criteria
-  - the seller's evidence (marked untrusted)
+  - the seller's evidence and reply (marked untrusted)
   - the delivered file's text, when it has any
   - tracking status, for parcels
   - the buyer's reason (marked untrusted)
 
-  It returns strict JSON: `{decision, confidence, rationale, findings[criterion, met, evidence]}`.
-- **Auto-resolution.** At `confidence ≥ 0.75` the arbiter calls `resolve` on-chain. Below that the case goes to a human arbiter (`/admin/disputes`) with the AI's findings attached. Text in the evidence that tries to steer the ruling counts against the party who wrote it.
+  On **FileEscrow v2** a ruling is a share: the percentage of the milestone the seller earns for the work delivered, and the buyer gets the rest back (`resolveSplit`). It goes in three steps:
+  1. **Mediator.** One model proposes a split. If both sides accept, it is paid out at once.
+  2. **Panel · 3 models**, from three providers (`ARBITER_PANEL_MODELS`, by default GPT, DeepSeek and Qwen). A rejection, or silence until `replyBy` (`DISPUTE_REPLY_HOURS`, 24 h), sends the case here. Each model rules on its own and signs its ruling (`keccak256` of the ruling) with a key derived for that model, so both sides can see who said what. Votes within 10 points of each other agree; at least 2 of 3 must, and the verdict is their average. Either side may appeal before `replyBy`, otherwise it executes.
+  3. **Appeal · 5 models** (adds GLM and PSU Gemma); 3 of 5 must agree. Final.
+
+  When the models do not agree, a human arbiter rules at `/admin/disputes` (any split), seeing every ruling. Text in the evidence that tries to steer the ruling counts against the party who wrote it.
+- **Deals on the first FileEscrow** (D-0 to D-17) cannot split: one model rules seller-or-buyer, and resolves on-chain only at `confidence ≥ 0.75`.
+- **Two escrows side by side.** FileEscrow v2 continues the old numbering (`FILE_ESCROW_FIRST_ID`, 18), so a deal id says which contract holds it (`config.fileEscrowOf`). New deals go to v2; old deals finish on the old one (`LEGACY_FILE_ESCROW_ADDRESS`). `web/scripts/allow-file-escrow.mts` let every existing wallet use v2.
 
 ### 3.6 Invited sellers without an account
 
@@ -404,7 +411,7 @@ or addresses. Deleting an account removes the user's drafts, chats and nicknames
 
 | Suite | Command | Covers |
 |---|---|---|
-| Contracts (97 tests) | `cd contracts && npm test` | tiers, caps, allowlists, mandates (replay, expiry, revoke), prompt-injection "send everything to 0xEvil" cases, file escrow windows and disputes, seller offers, mint and redeem idempotency |
+| Contracts (101 tests) | `cd contracts && npm test` | tiers, caps, allowlists, mandates (replay, expiry, revoke), prompt-injection "send everything to 0xEvil" cases, file escrow windows and disputes, seller offers, mint and redeem idempotency |
 | Backend end to end | `cd web && npm run e2e` | wallet creation, deal setup, release, proposals against a running chain |
 | Bank and funding | `npm run bank-check`, `npm run funding-check` | ledger invariant, saga retries, certain-failure refunds |
 | Agent evaluation | `npm run agent-eval` | the agent's decisions on the demo scenarios |

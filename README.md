@@ -132,7 +132,7 @@ add `DB_SCHEMA=besu`. Stop with `cd chain && docker compose down` (`down -v` wip
 ```bash
 cd contracts
 npm install
-npm test          # 97 tests, including the prompt-injection "send everything to 0xEvil" cases
+npm test          # 101 tests, including the prompt-injection "send everything to 0xEvil" cases
 ```
 
 Deploy to Base Sepolia (testnet keys only):

@@ -149,7 +149,7 @@ export function lockedInDeals(wallet: WalletState | null): number {
   return wallet.fileDeals
     .filter((d) => d.role === "buyer" && d.status !== "Cancelled")
     .flatMap((d) => d.milestones)
-    .filter((m) => !["Released", "Refunded"].includes(m.status))
+    .filter((m) => !["Released", "Refunded", "Split"].includes(m.status))
     .reduce((t, m) => t + Number(m.amount), 0);
 }
 

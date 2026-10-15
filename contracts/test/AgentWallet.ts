@@ -57,7 +57,7 @@ describe("AgentWallet", async function () {
       encodeFunctionData({ abi: escrow.abi, functionName: "fund", args: [0n] }),
     ]);
 
-    const fileEscrow = await viem.deployContract("FileEscrow");
+    const fileEscrow = await viem.deployContract("FileEscrow", [0n]);
     await wallet.write.setFileEscrow([fileEscrow.address, true]);
 
     const as = async <T extends "AgentWallet" | "MilestoneEscrow">(
@@ -356,7 +356,7 @@ describe("AgentWallet", async function () {
         const good = offer(contractor.account.address, arbiter.account.address, usdc.address);
 
         // Only allowlisted FileEscrows, and never a MilestoneEscrow in their place.
-        const rogue = await viem.deployContract("FileEscrow");
+        const rogue = await viem.deployContract("FileEscrow", [0n]);
         await viem.assertions.revertWithCustomErrorWithArgs(
           asAgent.write.propose([4, rogue.address, 0n, 0n, good, "x"]),
           wallet,
@@ -575,7 +575,7 @@ describe("AgentWallet", async function () {
           await viem.assertions.revertWithCustomError(asAgent.write.agentApproveFile([fileEscrow.address, 2n, 0n]), wallet, "NotPayerOfDeal");
 
           // A FileEscrow the owner never allowlisted, and a caller that is not the agent.
-          const rogue = await viem.deployContract("FileEscrow");
+          const rogue = await viem.deployContract("FileEscrow", [0n]);
           await viem.assertions.revertWithCustomErrorWithArgs(
             asAgent.write.agentApproveFile([rogue.address, 0n, 0n]),
             wallet,
