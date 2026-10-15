@@ -33,7 +33,7 @@ export function LandingScreen({ onStart }: { onStart: () => void }) {
   ];
   const faqs = [
     ["Do I need crypto or a wallet?", "No. You log in with your bank. Everything is shown in baht or yuan."],
-    ["Can I top up or withdraw?", "No. Money stays in your bank until a deal is locked, so there is nothing to top up or withdraw."],
+    ["Can I top up?", "Yes, like a mobile wallet: PromptPay QR, a card, a linked card in one tap, or a counter-service slip (all in test mode). Money is locked only when you approve a deal."],
     ["What if the bank is debited and something fails?", "The system rolls back automatically and refunds the debit. Every debit has an idempotency key, so retries never charge twice."],
     ["Who decides a dispute?", "AI models from different providers, each signing separately. No single party controls the verdict."],
   ];

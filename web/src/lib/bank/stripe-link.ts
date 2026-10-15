@@ -2,7 +2,7 @@ import "server-only";
 
 import { db } from "../db";
 import { accountOf, transfer } from "./ledger";
-import { TopupError, stripe, topupLimit } from "./topup";
+import { TopupError, checkTopup, stripe, topupLimit } from "./topup";
 
 /**
  * A card linked through Stripe (test mode) as a funding source, the way a bank account is linked:
@@ -109,4 +109,33 @@ export async function coverShortfall(wallet: string, amount: bigint, key: string
   if (pi.status !== "succeeded") throw new TopupError(`Your linked card needs your confirmation (${pi.status}); top up instead`);
   await transfer({ key: `stripe-auto:${key}`, kind: "TOPUP", fromId: null, toId: account.id, amount: BigInt(pi.amount_received) });
   return { charged: BigInt(pi.amount_received), card: `${link.brand} ••${link.last4}` };
+}
+
+/**
+ * One-tap top-up from the linked card, no redirect (like a wallet's saved card). `requestId` comes
+ * from the client per tap, so a double tap or a retry charges once.
+ */
+export async function topupFromLink(userId: string, amount: number, requestId: string) {
+  const link = await linkOf(userId);
+  if (!link) throw new TopupError("Link a card first (Profile page)");
+  const { account, currency, minor } = await checkTopup(userId, amount);
+  const pi = await stripe<{ id: string; status: string; amount_received: number }>(
+    "payment_intents",
+    new URLSearchParams({
+      amount: String(minor),
+      currency: currency.toLowerCase(),
+      customer: link.customerId,
+      payment_method: link.paymentMethodId,
+      off_session: "true",
+      confirm: "true",
+      description: "Agentic Wallet: top-up from the linked card (test mode)",
+      "metadata[accountId]": account.id,
+    }),
+    { idempotencyKey: `link-topup:${userId}:${requestId}` },
+  ).catch((e) => {
+    throw new TopupError(`Your linked card was declined: ${(e as Error).message}`);
+  });
+  if (pi.status !== "succeeded") throw new TopupError(`The card needs your confirmation (${pi.status}); use card top-up instead`);
+  await transfer({ key: `stripe-link:${pi.id}`, kind: "TOPUP", fromId: null, toId: account.id, amount: BigInt(pi.amount_received) });
+  return { amount: pi.amount_received / 100, currency, card: `${link.brand} ••${link.last4}` };
 }

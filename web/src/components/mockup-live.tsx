@@ -11,6 +11,7 @@ import { localizeMockupNode, useLang } from "@/lib/i18n";
 
 import { type AccountView, api, download, lockedInDeals, money, tokenMoney, useAppData } from "./app-data";
 import { Button, Card, Loading, PageTitle } from "./mockup-ui";
+import { TopUpSheet } from "./topup-sheet";
 import type { BankChoice } from "./mockup-screens";
 
 /**
@@ -34,9 +35,6 @@ function defaultAccount(accounts: AccountView[] | undefined) {
 function TopUp({ currency }: { currency: "THB" | "CNY" }) {
   const { refresh } = useAppData();
   const [open, setOpen] = useState(false);
-  const [amount, setAmount] = useState("");
-  const [limit, setLimit] = useState<number | null>(null);
-  const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   useEffect(() => {
     const session = new URLSearchParams(window.location.search).get("topup");
@@ -54,47 +52,19 @@ function TopUp({ currency }: { currency: "THB" | "CNY" }) {
       body: JSON.stringify({ session }),
     })
       .then((r) => {
-        setMsg(r.status === "paid" ? { ok: true, text: `✓ ${tokenMoney(r.amount, currency)} added by card (Stripe test)` } : { ok: false, text: `Payment ${r.status}` });
+        setMsg(r.status === "paid" ? { ok: true, text: `✓ ${tokenMoney(r.amount, currency)} added (Stripe test)` } : { ok: false, text: `Payment ${r.status}` });
         return refresh();
       })
       .catch((e) => setMsg({ ok: false, text: (e as Error).message }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  async function openBox() {
-    setOpen((o) => !o);
-    if (limit === null) api<{ limit: number }>("/api/bank/topup").then((r) => setLimit(r.limit)).catch(() => {});
-  }
-  async function pay() {
-    setBusy(true);
-    setMsg(null);
-    try {
-      const { url } = await api<{ url: string }>("/api/bank/topup", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ amount: Number(amount) }),
-      });
-      window.location.assign(url);
-    } catch (e) {
-      setMsg({ ok: false, text: (e as Error).message });
-      setBusy(false);
-    }
-  }
   return (
     <span className="aw-topup">
-      <button type="button" className="aw-topup-button" onClick={() => void openBox()}>
+      <button type="button" className="aw-topup-button" onClick={() => setOpen(true)}>
         ＋ Top up
       </button>
       {msg && <small className={msg.ok ? "aw-live-ok" : "aw-bank-error"}>{msg.text}</small>}
-      {open && (
-        <span className="aw-topup-box">
-          <small>Card or PromptPay · Stripe test mode · test card 4242 4242 4242 4242</small>
-          <input value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ""))} placeholder={currency === "THB" ? "500" : "100"} inputMode="decimal" aria-label="Amount" />
-          {limit !== null && <small>Up to {tokenMoney(limit, currency)} per top-up</small>}
-          <button type="button" disabled={busy || !Number(amount)} onClick={() => void pay()}>
-            {busy ? "Opening Stripe…" : `Pay ${amount ? tokenMoney(Number(amount), currency) : ""}`}
-          </button>
-        </span>
-      )}
+      {open && <TopUpSheet currency={currency} onClose={() => setOpen(false)} />}
     </span>
   );
 }

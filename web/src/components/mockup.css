@@ -1541,3 +1541,37 @@
 .aw-group-live .aw-gw-proposal>div:first-child{display:flex;flex-direction:column;gap:3px;min-width:0}
 .aw-group-live .aw-gw-proposal-meta{color:#999;font-size:12px;line-height:1.5}
 .aw-group-live .aw-gw-proposal .aw-gw-actions{display:flex;gap:8px}
+.aw-topup-sheet{width:min(440px,calc(100vw - 32px));max-height:calc(100vh - 32px);overflow:auto;display:flex;flex-direction:column;gap:12px;padding:20px;border:1px solid #2e2e2e;border-radius:20px;background:#141414;color:#eee;box-shadow:0 20px 60px #000a}
+.aw-topup-sheet header{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.aw-topup-sheet header h2{margin:0;font-size:20px}
+.aw-topup-sheet header small{color:#999;font-size:12px}
+.aw-topup-sheet header button{border:0;background:transparent;color:#999;font-size:22px;cursor:pointer}
+.aw-topup-amount{position:relative;display:flex;flex-direction:column;gap:4px}
+.aw-topup-amount span{font-size:12px;color:#999}
+.aw-topup-amount input{width:100%;min-height:56px;padding:8px 14px 8px 38px;border:1px solid #333;border-radius:14px;background:#0c0c0c;color:#fff;font-size:28px;font-weight:700}
+.aw-topup-amount i{position:absolute;left:14px;bottom:13px;font-style:normal;font-size:22px;color:#888}
+.aw-topup-chips{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.aw-topup-chips button{min-height:36px;border:1px solid #333;border-radius:12px;background:#1b1b1b;color:#ddd;font-size:13px;cursor:pointer}
+.aw-topup-chips button.active{border-color:#ff8a00;color:#ffb35c;background:#2a1c0c}
+.aw-topup-note{color:#888;font-size:11px}
+.aw-topup-methods{display:flex;flex-direction:column;gap:8px}
+.aw-topup-methods button{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid #2e2e2e;border-radius:14px;background:#191919;color:#eee;text-align:left;cursor:pointer}
+.aw-topup-methods button.active{border-color:#ff8a00;background:#22180c}
+.aw-topup-methods button:disabled{opacity:.45;cursor:not-allowed}
+.aw-topup-methods i{display:grid;place-items:center;width:36px;height:36px;flex:none;border-radius:10px;background:#262626;font-style:normal;font-size:18px}
+.aw-topup-methods span{display:flex;flex-direction:column;gap:2px;min-width:0}
+.aw-topup-methods b{font-size:14px}
+.aw-topup-methods small{font-size:12px;color:#999}
+.aw-topup-slip{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px;border:1px dashed #555;border-radius:14px;background:#fff;color:#111;text-align:center}
+.aw-topup-slip small{color:#555;font-size:11px}
+.aw-topup-slip b{font-size:26px}
+.aw-topup-slip code{font-size:16px;letter-spacing:.12em}
+.aw-topup-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.aw-topup-history{display:flex;flex-direction:column;gap:6px;border-top:1px solid #262626;padding-top:10px}
+.aw-topup-history>small{color:#999;font-size:11px}
+.aw-topup-history p{display:flex;justify-content:space-between;gap:8px;margin:0;font-size:13px}
+.aw-topup-history p span{display:flex;flex-direction:column}
+.aw-topup-history p i{font-style:normal;font-size:11px;color:#777}
+.aw-topup-history p b{color:#89ef82}
+.aw-topup-slip .aw-button-primary{background:#111;color:#fff;border-color:#111}
+.aw-topup-slip .aw-button-outline{background:#fff;color:#111;border-color:#bbb}

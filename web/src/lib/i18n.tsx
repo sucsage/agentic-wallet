@@ -259,7 +259,7 @@ Object.assign(mockupTh, {
   "Group wallets and team approvals pay from the company account.": "กระเป๋ากลุ่มและการอนุมัติของทีมจ่ายจากบัญชีบริษัท",
   "Questions": "คำถาม", "Do I need crypto or a wallet?": "ต้องมีคริปโตหรือกระเป๋าเงินไหม?",
   "No. You log in with your bank. Everything is shown in baht or yuan.": "ไม่ต้อง เข้าสู่ระบบด้วยธนาคาร ทุกยอดแสดงเป็นบาทหรือหยวน",
-  "Can I top up or withdraw?": "เติมเงินหรือถอนเงินได้ไหม?", "No. Money stays in your bank until a deal is locked, so there is nothing to top up or withdraw.": "ไม่ได้ เงินยังอยู่ในบัญชีธนาคารจนกว่าจะล็อกดีล จึงไม่มีการเติมหรือถอนเงิน",
+  "Can I top up?": "เติมเงินได้ไหม?", "Yes, like a mobile wallet: PromptPay QR, a card, a linked card in one tap, or a counter-service slip (all in test mode). Money is locked only when you approve a deal.": "ได้ เหมือนวอลเล็ตบนมือถือ: QR พร้อมเพย์ บัตร บัตรที่ผูกไว้ (กดครั้งเดียว) หรือสลิปจ่ายที่เคาน์เตอร์ (ทั้งหมดเป็นโหมดทดสอบ) เงินถูกล็อกเฉพาะตอนคุณอนุมัติดีล",
   "What if the bank is debited and something fails?": "ถ้าธนาคารหักเงินแล้วเกิดข้อผิดพลาดจะทำอย่างไร?",
   "The system rolls back automatically and refunds the debit. Every debit has an idempotency key, so retries never charge twice.": "ระบบจะย้อนรายการและคืนเงินโดยอัตโนมัติ ทุกรายการมี idempotency key จึงไม่ถูกหักซ้ำเมื่อทำรายการใหม่",
   "Who decides a dispute?": "ใครเป็นผู้ตัดสินข้อพิพาท?", "AI models from different providers, each signing separately. No single party controls the verdict.": "AI หลายโมเดลจากต่างผู้ให้บริการ เซ็นแยกกัน ไม่มีฝ่ายใดควบคุมผลตัดสิน",

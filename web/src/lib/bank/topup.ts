@@ -50,26 +50,35 @@ export async function topupLimit(userId: string, currency: "THB" | "CNY") {
 }
 
 /** Creates a Checkout Session for `amount` (major units) and returns Stripe's hosted page URL. */
-export async function startTopup(userId: string, amount: number, origin: string): Promise<string> {
+/** Checks the amount against the minimum and the KYC limit; returns the account and minor units. */
+export async function checkTopup(userId: string, amount: number) {
   const { customer, account } = await userAccount(userId);
   const currency = customer.currency;
   const limit = await topupLimit(userId, currency);
-  if (!Number.isFinite(amount) || amount < (currency === "THB" ? 20 : 5)) throw new TopupError("Amount too small");
+  if (!Number.isFinite(amount) || amount < (currency === "THB" ? 20 : 5)) throw new TopupError(`The minimum top-up is ${currency === "THB" ? "20 THB" : "5 CNY"}`);
   if (amount > limit) {
     throw new TopupError(`Top-ups are limited to ${limit.toLocaleString()} ${currency}${limit === LIMITS[currency].topupUnverified ? " until you verify your identity (Profile page)" : ""}`);
   }
-  const minor = Math.round(amount * 100);
+  return { customer, account, currency, minor: Math.round(amount * 100) };
+}
+
+export type TopupMethod = "card" | "promptpay";
+
+export async function startTopup(userId: string, amount: number, origin: string, method: TopupMethod = "card"): Promise<string> {
+  const { account, currency, minor } = await checkTopup(userId, amount);
+  if (method === "promptpay" && currency !== "THB") throw new TopupError("PromptPay is for baht accounts");
   const session = await stripe<{ url: string }>(
     "checkout/sessions",
     new URLSearchParams({
       mode: "payment",
+      "payment_method_types[0]": method,
       client_reference_id: userId,
       "metadata[accountId]": account.id,
       "metadata[app]": "agentic-wallet",
       "line_items[0][quantity]": "1",
       "line_items[0][price_data][currency]": currency.toLowerCase(),
       "line_items[0][price_data][unit_amount]": String(minor),
-      "line_items[0][price_data][product_data][name]": `Mock Bank top-up · account ··${(account.accountNo ?? "").slice(-4)}`,
+      "line_items[0][price_data][product_data][name]": `Mock Bank top-up · account ··${(account.accountNo ?? "").replace(/\D/g, "").slice(-4)}`,
       "line_items[0][price_data][product_data][description]": "Demo money for Agentic Wallet (Stripe test mode)",
       success_url: `${origin}/chat?topup={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/chat?topup=cancelled`,
@@ -102,4 +111,17 @@ export async function confirmTopup(userId: string, sessionId: string) {
   // Satang / fen: Stripe's minor units are the bank's minor units for THB and CNY.
   await transfer({ key: `stripe:${s.id}`, kind: "TOPUP", fromId: null, toId: target.id, amount: BigInt(s.amount_total) });
   return { status: "paid", amount: s.amount_total / 100, currency: target.currency };
+}
+
+/** The user's recent top-ups (any channel), newest first. */
+export async function topupHistory(userId: string) {
+  const rows = await db.bankTransfer.findMany({
+    where: { kind: "TOPUP", to: { customer: { userId } } },
+    orderBy: { createdAt: "desc" },
+    take: 10,
+    select: { idempotencyKey: true, amount: true, createdAt: true },
+  });
+  const channel = (k: string) =>
+    k.startsWith("stripe-auto:") ? "Linked card (for a deal)" : k.startsWith("stripe-link:") ? "Linked card" : k.startsWith("counter:") ? "Counter service (demo)" : "Card or PromptPay (Stripe)";
+  return rows.map((r) => ({ amount: Number(r.amount) / 100, at: r.createdAt, channel: channel(r.idempotencyKey) }));
 }

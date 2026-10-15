@@ -258,7 +258,20 @@ Profile ─POST /api/kyc/start─► cookie {state, nonce, PKCE verifier} ─►
 - **Limits.** Unverified customers can lock at most 2,000 THB / 400 CNY per deal and top up 1,000 THB / 200 CNY. The agent sees `identity_verified` and tells the user to verify before approving a larger deal.
 - **Discovery.** Both providers publish a discovery document at `/api/mock-id/{thaid|netid}/openid-configuration`. Switching to the real providers means changing endpoints and keys, not the flow.
 
-### 3.8 Card and PromptPay top-ups (Stripe, test mode)
+### 3.8 Wallet-style top-ups (Stripe test mode, plus a demo counter service)
+
+The balance bar's **Top up** opens a mobile-wallet style sheet: an amount (quick chips 100 / 300 /
+500 / 1,000), a channel, and the recent top-ups. Channels:
+
+| Channel | How | Credited when |
+|---|---|---|
+| PromptPay QR | Stripe Checkout with `promptpay` (baht only); Stripe shows the QR | the server finds the Checkout Session paid at Stripe |
+| Credit / debit card | Stripe Checkout with `card` | same |
+| Linked card | one tap, an off-session PaymentIntent on the card linked in Profile (3.9); the client sends a request id, used as Stripe's idempotency key | the PaymentIntent succeeds |
+| Counter service (demo) | a signed 24-hour payment slip (reference + QR); the cashier's scan is simulated | the slip is "scanned"; the reference is the ledger key, so a slip pays in once |
+
+Every channel respects the KYC limit and credits the ledger as `TOPUP`. The flow for the two
+Checkout channels:
 
 ```
 Top up ─► POST /api/bank/topup {amount ≤ KYC limit} ─► Stripe Checkout Session (thb / cny, client_reference_id = user)
