@@ -1,7 +1,7 @@
 import { maskAccountNo } from "@/lib/bank/customers";
 import { explorerTx } from "@/lib/config";
 import { db } from "@/lib/db";
-import { HttpError, errorResponse, requireCustomer } from "@/lib/guard";
+import { HttpError, errorResponse, requireActingCustomer } from "@/lib/guard";
 
 const KIND_LABEL = {
   DEPOSIT: "Opening deposit",
@@ -10,6 +10,7 @@ const KIND_LABEL = {
   PAYOUT: "Payment received",
   WITHDRAW: "Payment from a deal (invited seller)",
   TOPUP: "Card top-up (Stripe test)",
+  TRANSFER: "Moved between your accounts",
 } as const;
 
 /**
@@ -18,7 +19,7 @@ const KIND_LABEL = {
  */
 export async function GET(req: Request, ctx: RouteContext<"/api/bank/accounts/[id]/transactions">) {
   try {
-    const { customer } = await requireCustomer();
+    const { customer } = await requireActingCustomer();
     const { id } = await ctx.params;
     const account = await db.bankAccount.findFirst({ where: { id, customerId: customer.id, linkedAt: { not: null } } });
     // 404 for someone else's account too: don't confirm it exists.

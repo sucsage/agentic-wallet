@@ -57,12 +57,33 @@ export async function requireAdmin() {
   return { user, customer };
 }
 
+/**
+ * The company the user chose to act as ("Acting as"), from the aw_acting cookie, if they still
+ * belong to it. Everything about a wallet (deals, approvals, policy, summary) follows it; the
+ * user's own things (identity, contacts, groups, top-ups) do not.
+ */
+export async function actingAs(userId: string) {
+  const { cookies } = await import("next/headers");
+  const { ACTING_COOKIE, actingCompany } = await import("./company");
+  const id = (await cookies()).get(ACTING_COOKIE)?.value;
+  return actingCompany(userId, id);
+}
+
+/** The customer whose money the user is looking at: the company they act as, else their own. */
+export async function requireActingCustomer() {
+  const { user, customer } = await requireCustomer();
+  const company = await actingAs(user.id);
+  if (!company) return { user, customer, company: null };
+  return { user, customer: await db.bankCustomer.findUniqueOrThrow({ where: { id: company.customerId } }), company };
+}
+
 /** The signed-in customer's agent wallet (the one their bank account pays for). */
 export async function requireBankWallet() {
-  const { user, customer } = await requireCustomer();
+  const { user, customer, company } = await requireActingCustomer();
+  if (company) return { user, customer, wallet: await demoWallet(company.walletAddress), company };
   const primary = await primaryWalletAddress(user.id);
   if (!primary) throw new HttpError(409, "Create your agent wallet first");
-  return { user, customer, wallet: await demoWallet(primary) };
+  return { user, customer, wallet: await demoWallet(primary), company: null };
 }
 
 /** A sandbox wallet that belongs to the signed-in user (UserWallet row) and to this demo on-chain. */

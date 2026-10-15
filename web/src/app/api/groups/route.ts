@@ -13,8 +13,10 @@ export async function GET() {
         name: g.name,
         currency: g.currency,
         threshold: g.threshold,
-        members: g.members.map((m) => ({ userId: m.user.id, name: m.user.name, role: m.role })),
+        members: g.members.map((m) => ({ userId: m.user.id, name: m.user.name, role: m.role, canSign: m.canSign })),
         openProposals: g.proposals.length,
+        invited: g.invites.length,
+        company: g.company ? { id: g.company.id, name: g.company.name } : null,
       })),
     });
   } catch (err) {
@@ -24,11 +26,12 @@ export async function GET() {
 
 const Input = z.object({
   name: z.string().trim().min(1).max(80),
-  memberIds: z.array(z.string()).max(20),
+  memberIds: z.array(z.string()).max(20).optional(),
+  members: z.array(z.object({ userId: z.string(), canSign: z.boolean() })).max(20).optional(),
   threshold: z.number().int().min(1),
 });
 
-/** Creates a group of friends; `threshold` yes votes lock a group deal (N of M, creator included). */
+/** Creates a group and invites contacts; `threshold` signer votes lock a group deal (N of M signers). */
 export async function POST(req: Request) {
   try {
     const { user, customer } = await requireCustomer();

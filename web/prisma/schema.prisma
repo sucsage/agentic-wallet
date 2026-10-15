@@ -34,6 +34,8 @@ model User {
   kyc             KycVerification?
   kycApplication  KycApplication?
   stripeLink      StripeLink?
+  preference      UserPreference?
+  groupInvites    GroupInvite[]
 }
 
 model Session {
@@ -266,6 +268,8 @@ enum BankAccountKind {
 }
 
 enum BankTransferKind {
+  /// Between two of the app's own accounts: a member moving money into a company account.
+  TRANSFER
   /// Demo money entering the bank (a sandbox's seed). The only kind with no source account.
   DEPOSIT
   /// Buyer → reserve, right before mTHB / mCNY is minted for a deal.
@@ -420,12 +424,97 @@ model Group {
   name        String
   currency    Currency
   createdById String
-  /// Member votes a group deal needs before it is locked (N of M).
+  /// Signer votes a group deal (or a rule change) needs before it happens (N of M signers).
   threshold   Int
   createdAt   DateTime @default(now())
 
   members   GroupMember[]
   proposals GroupProposal[]
+  invites   GroupInvite[]
+  links     GroupLink[]
+  rules     GroupRuleProposal[]
+  /// Set when this group is a company's signers: its deals are paid from the company wallet.
+  company   Company?
+}
+
+/// A company account: its own e-money account and agent wallet, run by a group of signers.
+/// Members switch to it ("Acting as"); its deals lock only after N of M signers approve.
+model Company {
+  id            String   @id @default(cuid())
+  name          String
+  /// Masked registration id (Thai juristic id / Chinese unified social credit code) and its HMAC.
+  maskedTaxId   String
+  taxIdHash     String   @unique
+  currency      Currency
+  customerId    String   @unique
+  walletAddress String   @unique
+  groupId       String   @unique
+  group         Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  createdById   String
+  createdAt     DateTime @default(now())
+}
+
+/// Someone asked to join a group; they become a member only by accepting.
+model GroupInvite {
+  id          String   @id @default(cuid())
+  groupId     String
+  group       Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  invitedById String
+  /// Whether they join as a signer (votes on payments) or a member (proposes only).
+  canSign     Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  @@unique([groupId, userId])
+  @@index([userId])
+}
+
+/// A join link (shown as a QR) a member shares; whoever opens it joins as a member, until it expires.
+model GroupLink {
+  token       String   @id
+  groupId     String
+  group       Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  createdById String
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+
+  @@index([groupId])
+}
+
+enum GroupRuleKind {
+  ADD_SIGNER
+  REMOVE_SIGNER
+  REMOVE_MEMBER
+  SET_THRESHOLD
+}
+
+/// A change to the group's rules, decided by the same N of M signers as a payment.
+model GroupRuleProposal {
+  id           String              @id @default(cuid())
+  groupId      String
+  group        Group               @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  proposerId   String
+  kind         GroupRuleKind
+  targetUserId String?
+  threshold    Int?
+  status       GroupProposalStatus @default(OPEN)
+  createdAt    DateTime            @default(now())
+  decidedAt    DateTime?
+
+  votes GroupRuleVote[]
+
+  @@index([groupId])
+}
+
+model GroupRuleVote {
+  proposalId String
+  userId     String
+  proposal   GroupRuleProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  approve    Boolean
+  createdAt  DateTime          @default(now())
+
+  @@id([proposalId, userId])
 }
 
 model GroupMember {
@@ -434,6 +523,8 @@ model GroupMember {
   group    Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   role     GroupRole @default(MEMBER)
+  /// Signers vote on payments and rule changes; other members propose only.
+  canSign  Boolean   @default(true)
   joinedAt DateTime  @default(now())
 
   @@id([groupId, userId])
@@ -564,46 +655,46 @@ enum DisputeStatus {
 }
 
 model DealDispute {
-  id             String        @id @default(cuid())
-  escrow         String
-  dealId         Int
-  index          Int
+  id              String        @id @default(cuid())
+  escrow          String
+  dealId          Int
+  index           Int
   /// "work": the buyer objects to the delivery; "key": the released key does not open the file.
-  phase          String
-  reason         String
-  raisedByUserId String?
-  status         DisputeStatus @default(OPEN)
+  phase           String
+  reason          String
+  raisedByUserId  String?
+  status          DisputeStatus @default(OPEN)
   /// "seller" (pay out) or "buyer" (refund).
-  decision       String?
-  confidence     Float?
-  rationale      String?
+  decision        String?
+  confidence      Float?
+  rationale       String?
   /// [{ criterion, met, evidence }] from the arbiter.
-  findings       Json?
+  findings        Json?
   /// "ai:<model>", "check:key" or "admin:<userId>".
-  decidedBy      String?
-  txHash         String?
+  decidedBy       String?
+  txHash          String?
   /// Escrows that can split (FileEscrow v2): MEDIATION → PANEL (3 models) → APPEAL (5 models).
   /// "CHECK" for a key dispute (decided mechanically) and "LEGACY" for the old one-model ruling.
-  stage          String        @default("MEDIATION")
+  stage           String        @default("MEDIATION")
   /// The seller's side of the story, given when they reply.
   sellerStatement String?
   /// The mediator's proposal: { sellerBps, rationale, findings, model, signer, signature }.
-  proposal       Json?
+  proposal        Json?
   /// "ACCEPT" or "REJECT" to the mediator's proposal; "ACCEPT" or "APPEAL" to the panel's verdict.
-  buyerReply     String?
-  sellerReply    String?
+  buyerReply      String?
+  sellerReply     String?
   /// When the current wait ends: silence on a proposal moves to the panel; on a verdict, executes it.
-  replyBy        DateTime?
+  replyBy         DateTime?
   /// Votes: [{ model, sellerBps, rationale, findings, signer, signature }].
-  panel          Json?
-  panelBps       Int?
-  appealedBy     String?
-  appeal         Json?
-  appealBps      Int?
+  panel           Json?
+  panelBps        Int?
+  appealedBy      String?
+  appeal          Json?
+  appealBps       Int?
   /// The seller's share actually paid out on-chain, in basis points.
-  sellerBps      Int?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  sellerBps       Int?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
   @@unique([escrow, dealId, index])
 }
@@ -755,4 +846,34 @@ model OpnPayout {
   updatedAt     DateTime @updatedAt
 
   @@index([inviteId])
+}
+
+/// A note between the parties of a deal: the buyer asks for changes to a delivery, or for a
+/// revised offer. Off-chain: the review window on-chain keeps running.
+model DealNote {
+  id        String   @id @default(cuid())
+  escrow    String
+  dealId    Int
+  index     Int?
+  /// "CHANGES" (to a delivery) or "REVISION" (to an offer).
+  kind      String
+  author    String
+  text      String
+  createdAt DateTime @default(now())
+
+  @@index([escrow, dealId])
+}
+
+/// What the user chose on Profile & Privacy.
+model UserPreference {
+  userId       String   @id
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Show amounts also in the other currency at the fixed demo rate ("THB" | "CNY" | null = off).
+  showAlso     String?
+  /// Off: the AI chat is disabled for this user.
+  aiChat       Boolean  @default(true)
+  /// Keep deal terms, chats and evidence for disputes; off deletes chats after a deal settles.
+  keepDealDocs Boolean  @default(true)
+  emailNotify  Boolean  @default(false)
+  updatedAt    DateTime @updatedAt
 }

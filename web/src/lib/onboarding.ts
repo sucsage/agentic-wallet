@@ -32,7 +32,7 @@ export type KycInput =
   | { method: "CN_NETID"; legalName: string; wh: string };
 
 /** E-money wallet numbers, e.g. 868-123-4567 (a mobile-wallet style id, not a bank account). */
-function walletNumber() {
+export function walletNumber() {
   const d = `868${String(randomInt(0, 10_000_000)).padStart(7, "0")}`;
   return `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`;
 }

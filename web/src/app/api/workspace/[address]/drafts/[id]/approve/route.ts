@@ -1,4 +1,7 @@
 import { DraftError, approveDraft, draftView } from "@/lib/bank/drafts";
+import { companyOfWallet } from "@/lib/company";
+import { db } from "@/lib/db";
+import { SocialError, proposeToGroup } from "@/lib/social";
 import { HttpError, errorResponse, rateLimit, requireUser, userWallet } from "@/lib/guard";
 
 export const maxDuration = 120;
@@ -13,6 +16,20 @@ export async function POST(req: Request, ctx: RouteContext<"/api/workspace/[addr
     const { address, id } = await ctx.params;
     const wallet = await userWallet(address);
     const user = await requireUser();
+    // As a company: the click submits the draft to the company's signers (the user's yes counts).
+    const company = await companyOfWallet(wallet);
+    const pending = await db.dealDraft.findFirst({ where: { id, walletAddress: wallet, side: "BUY" } });
+    if (company && pending) {
+      const open = await db.groupProposal.findFirst({ where: { draftId: id, status: "OPEN" } });
+      const vote = open
+        ? { status: "OPEN" }
+        : await proposeToGroup(user.id, company.groupId, id).catch((e) => {
+            throw e instanceof SocialError ? new HttpError(400, e.message) : e;
+          });
+      const draft = await db.dealDraft.findUniqueOrThrow({ where: { id } });
+      const body = { draft: await draftView(draft), companyVote: { ...vote, threshold: company.group.threshold, company: company.name } };
+      return new Response(JSON.stringify(body, (_k, v) => (typeof v === "bigint" ? v.toString() : v)), { headers: { "content-type": "application/json" } });
+    }
     const { draft, funding } = await approveDraft(user.id, wallet, id).catch((e) => {
       throw e instanceof DraftError ? new HttpError(400, e.message) : e;
     });

@@ -21,11 +21,29 @@ export type AccountView = {
   isDefault: boolean;
 };
 
+export type CompanyView = {
+  id: string;
+  name: string;
+  maskedTaxId: string;
+  currency: "THB" | "CNY";
+  wallet: string;
+  groupId: string;
+  threshold: number;
+  signers: number;
+  members: number;
+  role: "Admin" | "Signer" | "Member";
+  accountNo: string | null;
+  balance: string;
+};
+
 export type Me = {
   user: { id: string; name: string };
   bank: { name: string; currency: "THB" | "CNY"; token: string; customerType: "PERSONAL" | "COMPANY"; consentedAt: string | null };
   accounts: AccountView[];
   wallets: { address: string; role: string; label: string | null; openProposals: number; createdAt: string }[];
+  /** The company the user acts as ("Acting as"); its account and wallet are the ones above. */
+  acting?: { companyId: string; name: string; groupId: string; threshold: number; maskedTaxId: string } | null;
+  companies?: CompanyView[];
   /** Present until the wallet account is open: the KYC application's status. */
   onboarding?: { status: "NOT_STARTED" | "PENDING" | "APPROVED" | "REJECTED"; note: string | null };
 };
@@ -39,7 +57,7 @@ type AppData = {
   wallet: WalletState | null;
   drafts: DraftView[];
   /** Sidebar counts: things waiting for the user's approval, incoming friend requests. */
-  badges: { approvals: number; friends: number };
+  badges: { approvals: number; friends: number; groups: number };
   refresh: () => Promise<void>;
 };
 
@@ -62,7 +80,7 @@ export function AppDataProvider({ enabled, children }: { enabled: boolean; child
   const [me, setMe] = useState<Me | null>(null);
   const [wallet, setWallet] = useState<WalletState | null>(null);
   const [drafts, setDrafts] = useState<DraftView[]>([]);
-  const [badges, setBadges] = useState({ approvals: 0, friends: 0 });
+  const [badges, setBadges] = useState({ approvals: 0, friends: 0, groups: 0 });
   const creating = useRef(false);
 
   const refresh = useCallback(async () => {
@@ -74,7 +92,7 @@ export function AppDataProvider({ enabled, children }: { enabled: boolean; child
         setStatus("onboarding");
         return;
       }
-      if (current.wallets.length === 0 && !creating.current) {
+      if (current.wallets.length === 0 && !current.acting && !creating.current) {
         creating.current = true;
         setMe(current);
         setStatus("creating-wallet");
@@ -95,11 +113,12 @@ export function AppDataProvider({ enabled, children }: { enabled: boolean; child
         ]);
         setWallet(state);
         setDrafts(d.drafts);
-        const [approvals, friends] = await Promise.all([
+        const [approvals, friends, invites] = await Promise.all([
           api<{ count: number }>("/api/approvals").catch(() => ({ count: 0 })),
           api<{ friends: { direction: string }[] }>("/api/friends").catch(() => ({ friends: [] })),
+          api<{ invites: unknown[] }>("/api/groups/invites").catch(() => ({ invites: [] })),
         ]);
-        setBadges({ approvals: approvals.count, friends: friends.friends.filter((f) => f.direction === "incoming").length });
+        setBadges({ approvals: approvals.count, friends: friends.friends.filter((f) => f.direction === "incoming").length, groups: invites.invites.length });
       }
       setError(null);
       setStatus("ready");
@@ -124,7 +143,7 @@ export function AppDataProvider({ enabled, children }: { enabled: boolean; child
 
 export function useAppData(): AppData {
   const v = useContext(Ctx);
-  if (!v) return { status: "signed-out", error: null, me: null, wallet: null, drafts: [], badges: { approvals: 0, friends: 0 }, refresh: async () => {} };
+  if (!v) return { status: "signed-out", error: null, me: null, wallet: null, drafts: [], badges: { approvals: 0, friends: 0, groups: 0 }, refresh: async () => {} };
   return v;
 }
 

@@ -11,6 +11,7 @@ import { localizeMockupNode, useLang } from "@/lib/i18n";
 
 import { type AccountView, api, download, lockedInDeals, money, tokenMoney, useAppData } from "./app-data";
 import { Button, Card, Loading, PageTitle } from "./mockup-ui";
+import { ActingSwitch, CompaniesPanel, FundCompany } from "./company";
 import { TopUpSheet } from "./topup-sheet";
 import type { BankChoice } from "./mockup-screens";
 
@@ -70,9 +71,11 @@ function TopUp({ currency }: { currency: "THB" | "CNY" }) {
 }
 
 export function BalanceBar() {
-  const { me, wallet, status } = useAppData();
+  const { me, wallet, status, refresh } = useAppData();
   const account = defaultAccount(me?.accounts);
   const currency = me?.bank.currency ?? "THB";
+  const [funding, setFunding] = useState(false);
+  const acting = me?.acting ?? null;
   return (
     <>
     {status === "creating-wallet" && <Loading text="Creating your agent wallet and its keys on-chain (about 10 s)…" />}
@@ -83,7 +86,7 @@ export function BalanceBar() {
         </span>
         <span>
           <small>
-            {currency} wallet · {account?.accountNo ?? "…"}
+            {acting ? `Company · ${acting.name}` : `${currency} wallet`} · {account?.accountNo ?? "…"}
           </small>
           <b>
             {account ? money(account.balance, currency) : "…"} <i>Available</i>
@@ -99,7 +102,16 @@ export function BalanceBar() {
         <b>{wallet ? tokenMoney(wallet.session.dailyLimit, wallet.token.currency) : "…"}</b>
       </div>
       <div className="aw-ai-balance-actions">
-        <TopUp currency={currency} />
+        {acting ? (
+          <span className="aw-topup">
+            <button type="button" className="aw-topup-button" onClick={() => setFunding(true)}>
+              ＋ Add from my wallet
+            </button>
+            {funding && <FundCompany company={{ id: acting.companyId, name: acting.name, currency }} onDone={() => void refresh()} onClose={() => setFunding(false)} />}
+          </span>
+        ) : (
+          <TopUp currency={currency} />
+        )}
         <span className="aw-demo-bank-pill">Test money</span>
       </div>
     </div>
@@ -395,11 +407,17 @@ function DraftCard({
   currency,
   onApprove,
   onDiscard,
+  balance = null,
+  company = null,
 }: {
   draft: DraftView;
   currency: "THB" | "CNY";
   onApprove: (d: DraftView) => void;
   onDiscard: (d: DraftView) => void;
+  /** The wallet balance (major units), for the "balance covers it" check. */
+  balance?: number | null;
+  /** Drafted as a company: approval goes to its signers. */
+  company?: { name: string; threshold: number } | null;
 }) {
   const funded = draft.status === "FUNDED";
   if (draft.status === "CANCELLED") {
@@ -431,7 +449,9 @@ function DraftCard({
               ? sell
                 ? "Failed · nothing was offered"
                 : "Failed · money refunded"
-              : "Needs your approval · Tier 1"}
+              : company && !sell
+                ? `Needs ${company.threshold} company signers`
+                : "Needs your approval · Tier 1"}
         </span>
       </div>
       <h2>
@@ -470,9 +490,31 @@ function DraftCard({
         <span>Total</span>
         <b>{tokenMoney(draft.total, currency)}</b>
       </div>
+      {!funded && !failed && !sell && (
+        <div className="aw-draft-checks">
+          {balance !== null &&
+            (balance >= Number(draft.total) ? (
+              <p>
+                ✓ <span>Balance covers it ({tokenMoney(balance, currency)} available)</span>
+              </p>
+            ) : (
+              <p className="warn">
+                ! <span>Balance is {tokenMoney(Number(draft.total) - balance, currency)} short: top up first, or a linked card covers the rest</span>
+              </p>
+            ))}
+          <p>
+            ✓ <span>Locked in escrow, not paid: each milestone is released only after its delivery is approved</span>
+          </p>
+          <p>
+            ✓ <span>Names only: the AI never saw wallet addresses, account numbers or ID numbers</span>
+          </p>
+        </div>
+      )}
       <div className="aw-draft-notice">
         ⓘ &nbsp;
-        {sell
+        {company && !sell
+          ? `Submitting counts your yes. The total is taken from the ${company.name} account only after ${company.threshold} signers approve.`
+          : sell
           ? "Sending puts the offer on-chain and locks nothing. The buyer pays the total from their wallet when they accept; you are paid as each delivery is approved."
           : "Approving takes the total from your wallet balance and locks it in escrow. Each milestone is paid only after you approve its delivery."}
       </div>
@@ -481,7 +523,15 @@ function DraftCard({
           <Button variant="outline" onClick={() => onDiscard(draft)}>
             Discard
           </Button>
-          <Button onClick={() => onApprove(draft)}>{failed ? "Try again" : sell ? `Send offer · ${tokenMoney(draft.total, currency)}` : `Approve & lock ${tokenMoney(draft.total, currency)}`}</Button>
+          <Button onClick={() => onApprove(draft)}>
+            {failed
+              ? "Try again"
+              : sell
+                ? `Send offer · ${tokenMoney(draft.total, currency)}`
+                : company
+                  ? `Submit to company signers · ${tokenMoney(draft.total, currency)}`
+                  : `Approve & lock ${tokenMoney(draft.total, currency)}`}
+          </Button>
         </div>
       )}
     </section>
@@ -676,10 +726,32 @@ export function LiveChat() {
     setDebiting(true);
     setDebitResult(null);
     try {
-      const res = await api<{ draft: DraftView; funding: FundingResult }>(`/api/workspace/${address}/drafts/${d.id}/approve`, { method: "POST" });
-      setDebitResult(res.funding);
-      if (d.side === "SELL" && res.funding.status !== "FUNDED") {
-        setItems((cur) => [...cur, { kind: "error", text: `The offer was not sent: ${res.funding.error ?? res.funding.status}` }]);
+      const res = await api<{ draft: DraftView; funding?: FundingResult; companyVote?: { status: string; yes: number; threshold: number; company: string } }>(
+        `/api/workspace/${address}/drafts/${d.id}/approve`,
+        { method: "POST" },
+      );
+      if (res.companyVote) {
+        const v = res.companyVote;
+        setItems((cur) => [
+          ...cur,
+          {
+            kind: "agent",
+            at: now(),
+            steps: [],
+            text:
+              v.status === "EXECUTED"
+                ? `${v.company}'s signers approved: the deal is locked from the company account.`
+                : `Submitted to ${v.company}'s signers: ${v.yes} of ${v.threshold} approvals so far. It locks from the company account when ${v.threshold} signers approve (Approvals → Group votes).`,
+          },
+        ]);
+        await refresh();
+        return;
+      }
+      const funding = res.funding;
+      if (!funding) throw new Error("No funding result");
+      setDebitResult(funding);
+      if (d.side === "SELL" && funding.status !== "FUNDED") {
+        setItems((cur) => [...cur, { kind: "error", text: `The offer was not sent: ${funding.error ?? funding.status}` }]);
       }
       await refresh();
     } catch (e) {
@@ -765,6 +837,7 @@ export function LiveChat() {
             </div>
             <span className="aw-policy-pill">Policy guard on</span>
           </header>
+          <ActingSwitch />
           <div className="aw-ai-messages">
             <div className="aw-ai-message-meta">Agent</div>
             <article className="aw-ai-agent-message">
@@ -825,7 +898,16 @@ export function LiveChat() {
                     {item.steps
                       .filter((s) => s.draft)
                       .map((s) => (
-                        <DraftCard key={s.draft!.id} draft={latest(s.draft!)} currency={currency} onApprove={(d) => (d.side === "SELL" ? approve(d) : setConfirm(d))} onDiscard={discard} />
+                        <DraftCard
+                          key={s.draft!.id}
+                          draft={latest(s.draft!)}
+                          currency={currency}
+                          balance={account ? Number(account.balance) / 100 : null}
+                          company={me?.acting ? { name: me.acting.name, threshold: me.acting.threshold } : null}
+                          // A company's purchase debits nothing yet: it goes to the signers' vote.
+                          onApprove={(d) => (d.side === "SELL" || me?.acting ? approve(d) : setConfirm(d))}
+                          onDiscard={discard}
+                        />
                       ))}
                   </article>
                 </div>
@@ -1413,6 +1495,7 @@ export function LivePrivacy() {
             <p className="aw-profile-passbook-note">E-money (test money) held by Agentic Wallet. Top up with the button above; deals lock money from here and pay out back here.</p>
           </Card>
         </div>
+        <CompaniesPanel />
         <section className="aw-profile-bottom">
           <Card className="aw-profile-consent">
             <h2>Your data</h2>

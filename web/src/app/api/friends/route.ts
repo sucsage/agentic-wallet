@@ -1,13 +1,16 @@
+import { getAddress } from "viem";
 import { z } from "zod";
 
-import { HttpError, errorResponse, requireCustomer } from "@/lib/guard";
+import { HttpError, actingAs, errorResponse, requireCustomer } from "@/lib/guard";
 import { SocialError, listFriends, requestFriend } from "@/lib/social";
 
 /** Friends and pending requests, with each friend's wallet and whether they are an allowed payee. */
 export async function GET() {
   try {
     const { user } = await requireCustomer();
-    return Response.json({ friends: await listFriends(user.id) });
+    // "Allowlisted" refers to the wallet the user acts as (a company's, or their own).
+    const company = await actingAs(user.id);
+    return Response.json({ friends: await listFriends(user.id, company ? getAddress(company.walletAddress) : undefined) });
   } catch (err) {
     return errorResponse(err);
   }

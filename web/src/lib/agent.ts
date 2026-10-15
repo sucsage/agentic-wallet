@@ -857,7 +857,12 @@ export async function runAgent(
   const { client, model, direct } = llm();
   const bankWallet = (await walletUnits(wallet)).currency !== null;
   const tools = bankWallet ? BANK_TOOLS : TOOLS;
-  const system = bankWallet ? `${SYSTEM}\n${BANK_SYSTEM}` : SYSTEM;
+  // Acting as a company: its purchases go to the signers' vote instead of the user's own approval.
+  const company = bankWallet ? await db.company.findUnique({ where: { walletAddress: getAddress(wallet) }, include: { group: { include: { members: true } } } }) : null;
+  const companyNote = company
+    ? `\n\nYou are acting for the company "${company.name}" (its own wallet account), not the user personally. A purchase you draft is paid from the company account only after ${company.group.threshold} of its ${company.group.members.filter((m) => m.canSign).length} signers approve: when the user presses Submit on the draft, it goes to the signers' vote (Approvals → Group votes). Say so instead of "approve & lock".`
+    : "";
+  const system = (bankWallet ? `${SYSTEM}\n${BANK_SYSTEM}` : SYSTEM) + companyNote;
   const isClaude = model.includes("claude");
   const userContent: Anthropic.Beta.BetaContentBlockParam[] = [];
   if (attachment && isClaude) {

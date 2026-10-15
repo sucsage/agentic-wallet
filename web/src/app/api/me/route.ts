@@ -1,6 +1,7 @@
 import { accountView, customerAccounts, customerOfUser } from "@/lib/bank/customers";
 import { db } from "@/lib/db";
-import { errorResponse, requireCustomer, requireUser } from "@/lib/guard";
+import { companiesOf } from "@/lib/company";
+import { actingAs, errorResponse, requireCustomer, requireUser } from "@/lib/guard";
 import { listUserWallets } from "@/lib/user-wallets";
 
 /** Who is signed in: their bank, linked accounts and wallets. The app's first call after sign-in. */
@@ -18,16 +19,27 @@ export async function GET() {
         wallets: [],
       });
     }
-    const [accounts, wallets] = await Promise.all([customerAccounts(customer.id), listUserWallets(user.id)]);
+    // "Acting as" a company: its account and wallet come first, so every page shows the company.
+    const company = await actingAs(user.id);
+    const shown = company ? await db.bankCustomer.findUniqueOrThrow({ where: { id: company.customerId } }) : customer;
+    const [accounts, all, companies] = await Promise.all([customerAccounts(shown.id), listUserWallets(user.id), companiesOf(user.id)]);
+    const companyWallets = new Set(companies.map((c) => c.wallet.toLowerCase()));
+    const wallets = company
+      ? all.filter((w) => w.walletAddress.toLowerCase() === company.walletAddress.toLowerCase())
+      : all.filter((w) => !companyWallets.has(w.walletAddress.toLowerCase()));
     return Response.json({
       user: { id: user.id, name: user.name },
       bank: {
         name: customer.currency === "THB" ? "Agentic Wallet · THB e-money" : "Agentic Wallet · CNY e-money",
-        currency: customer.currency,
-        token: customer.currency === "THB" ? "mTHB" : "mCNY",
-        customerType: customer.type,
-        consentedAt: customer.consentedAt,
+        currency: shown.currency,
+        token: shown.currency === "THB" ? "mTHB" : "mCNY",
+        customerType: shown.type,
+        consentedAt: shown.consentedAt,
       },
+      acting: company
+        ? { companyId: company.id, name: company.name, groupId: company.groupId, threshold: company.group.threshold, maskedTaxId: company.maskedTaxId }
+        : null,
+      companies,
       accounts: accounts.filter((a) => a.linkedAt).map(accountView),
       wallets: wallets.map((w) => ({
         address: w.walletAddress,

@@ -1,12 +1,12 @@
 import { z } from "zod";
 
 import { accountView, customerAccounts, linkAccounts } from "@/lib/bank/customers";
-import { HttpError, errorResponse, requireCustomer } from "@/lib/guard";
+import { HttpError, errorResponse, requireActingCustomer } from "@/lib/guard";
 
 /** The customer's passbooks. Linked ones carry balances; unlinked ones can be linked with PUT. */
 export async function GET() {
   try {
-    const { customer } = await requireCustomer();
+    const { customer } = await requireActingCustomer();
     const accounts = await customerAccounts(customer.id);
     return Response.json({ currency: customer.currency, accounts: accounts.map(accountView) });
   } catch (err) {
@@ -26,7 +26,7 @@ const LinkInput = z.object({
  */
 export async function PUT(req: Request) {
   try {
-    const { customer } = await requireCustomer();
+    const { customer } = await requireActingCustomer();
     const parsed = LinkInput.safeParse(await req.json().catch(() => null));
     if (!parsed.success) throw new HttpError(400, parsed.error.issues[0]?.message ?? "Invalid input");
     const own = await customerAccounts(customer.id);

@@ -187,6 +187,10 @@ export async function approveDraft(
   if (!opts.viaGroup && (await db.groupProposal.findFirst({ where: { draftId, status: "OPEN" } }))) {
     throw new DraftError("This draft is waiting for its group's vote. It is locked when enough members approve.");
   }
+  // A company's purchase is locked only by its signers' vote (N of M), never by one member.
+  if (!opts.viaGroup && draft.side === "BUY" && (await db.company.findUnique({ where: { walletAddress: getAddress(wallet) } }))) {
+    throw new DraftError("A company deal needs its signers' approval: submit it for the company vote.");
+  }
   // One approval at a time (DB-01): overlapping clicks used to sign several mandates and lock the
   // same draft several times. The lease expires on its own if a request dies half way.
   const claimed = await db.dealDraft.updateMany({
