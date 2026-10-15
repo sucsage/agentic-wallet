@@ -1368,7 +1368,7 @@ function DeliverForm({ dealId, index, parcel, onDone }: { dealId: number; index:
 type Parcel = NonNullable<NonNullable<DealDetail["milestones"][number]["delivery"]>["parcel"]>;
 
 /** Where the parcel is: the carrier's tracking events, newest first. */
-function ParcelPanel({ p, shipTo, role }: { p: Parcel; shipTo: string | null; role: "buyer" | "seller" }) {
+function ParcelPanel({ p, shipTo, role, reviewing }: { p: Parcel; shipTo: string | null; role: "buyer" | "seller"; reviewing: boolean }) {
   const t = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   return (
     <div className="aw-parcel">
@@ -1391,9 +1391,9 @@ function ParcelPanel({ p, shipTo, role }: { p: Parcel; shipTo: string | null; ro
         <p>{p.status}</p>
       )}
       {p.delivered === true && (
-        <p className="aw-parcel-ok">{role === "buyer" ? "✓ Delivered. Check the item, then approve to pay the seller (or dispute)." : "✓ Delivered to the buyer."}</p>
+        <p className="aw-parcel-ok">{role === "buyer" && reviewing ? "✓ Delivered. Check the item, then approve to pay the seller (or dispute)." : "✓ Delivered."}</p>
       )}
-      {p.delivered === false && role === "buyer" && <p>Not delivered yet. Approve only once you have the item.</p>}
+      {p.delivered === false && role === "buyer" && reviewing && <p>Not delivered yet. Approve only once you have the item.</p>}
     </div>
   );
 }
@@ -1498,11 +1498,11 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
                       </Button>
                     </>
                   ) : (
-                    m.delivery.fileName && data.role === "buyer" && <small> · unlocks after you approve and the key is released</small>
+                    m.delivery.fileName && data.role === "buyer" && !m.canPreview && <small> · unlocks after you approve and the key is released</small>
                   )}
                 </div>
               )}
-              {m.delivery?.parcel && <ParcelPanel p={m.delivery.parcel} shipTo={data.shipTo} role={data.role} />}
+              {m.delivery?.parcel && <ParcelPanel p={m.delivery.parcel} shipTo={data.shipTo} role={data.role} reviewing={m.status === "Delivered"} />}
               {!m.delivery?.parcel && m.delivers === "parcel" && data.shipTo && data.role === "seller" && <p>📦 Ship to: {data.shipTo}</p>}
               {m.moves.includes("deliver") && <DeliverForm dealId={id} index={m.index} parcel={m.delivers === "parcel"} onDone={after} />}
               {disputing === m.index && m.moves.includes("dispute") && (

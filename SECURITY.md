@@ -106,6 +106,15 @@ key (`ArbiterNotNeutral`), so the buyer's side can never judge its own dispute.
   user's own contacts, so an address in a document cannot become a payee. Every reply and tool result
   is filtered for 40-hex addresses, and streamed text holds back anything that could still grow into
   one. Database ids, keys and other users' data are never in what the tools return.
+- **The agent's memory is kept on the server.** Saved chats (five per wallet) are stored server-side,
+  and the model's history is rebuilt from them, so a browser cannot rewrite what the agent was told
+  earlier. The browser receives each tool step as the chat shows it (name, redacted summary, draft
+  card), never the raw tool result. Nicknames the user teaches the agent map to a contact on the
+  server; the model still sees only names.
+- **No draft from guesswork.** A deal draft needs acceptance criteria for every milestone and, for a
+  parcel, a delivery address; otherwise the tool refuses with NEED_INFO and the agent must ask.
+- **Previews before payment cannot replace the work.** A delivered image is shown to the buyer only as
+  a 720 px JPEG with a tiled watermark; the original stays encrypted until the key is released.
 - **Chain access.** Besu runs **account permissioning**, so only the app's own keys can send
   transactions. Its RPC needs a signed JWT (RS256) that only the server holds. The public `/api/rpc`
   passes **read-only methods** only (no `eth_sendRawTransaction`), with bounded `eth_getLogs` ranges.
