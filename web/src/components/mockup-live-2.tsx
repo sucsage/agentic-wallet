@@ -179,7 +179,7 @@ export function LiveApprovals() {
                 <small>The seller must be one of your payees</small>
               </div>
               <div className="aw-approval-buttons">
-                <Button variant="outline" onClick={() => (window.location.href = `/deal/D-${o.dealId}`)}>
+                <Button variant="outline" onClick={() => (window.location.href = `/deals/D-${o.dealId}`)}>
                   Details
                 </Button>
                 <Button variant="outline" disabled={!!busy} onClick={() => run(`n${o.dealId}`, () => send(`/api/deals/${o.dealId}/decline`, "POST"), after)}>
@@ -213,7 +213,7 @@ export function LiveApprovals() {
                 <Button
                   variant="outline"
                   disabled={!!busy}
-                  onClick={() => (window.location.href = `/deal/D-${r.dealId}`)}
+                  onClick={() => (window.location.href = `/deals/D-${r.dealId}`)}
                 >
                   Dispute
                 </Button>
@@ -245,7 +245,7 @@ export function LiveApprovals() {
                     {busy === `s${t.dealId}` ? "…" : "Decline"}
                   </Button>
                 )}
-                <Button onClick={() => (window.location.href = `/deal/D-${t.dealId}`)}>Open deal</Button>
+                <Button onClick={() => (window.location.href = `/deals/D-${t.dealId}`)}>Open deal</Button>
               </div>
             </article>
           ))}
@@ -409,7 +409,7 @@ export function LivePolicy() {
                     <b>{r.label}</b>
                     <small>
                       {r.address.slice(0, 8)}…{r.address.slice(-4)}
-                      {r.friendshipId ? " · friend" : ""}
+                      {r.friendshipId ? " · contact" : ""}
                     </small>
                   </div>
                   {r.allowed ? (
@@ -426,7 +426,7 @@ export function LivePolicy() {
                 </div>
               ))}
             </div>
-            <p className="aw-friend-policy">ⓘ Add payees from Friends. Nobody can be added by pasting an address.</p>
+            <p className="aw-friend-policy">ⓘ Add payees from Contacts. Nobody can be added by pasting an address.</p>
           </Card>
           <Card className="aw-policy-test">
             <header>
@@ -508,7 +508,7 @@ function Nicknames() {
       <header>
         <h2>Nicknames the AI remembers · {data?.nicknames.length ?? "…"}</h2>
       </header>
-      <small>Call a friend by a nickname in the AI chat (e.g. &quot;my designer&quot;); once you tell it who you mean, it remembers in every chat.</small>
+      <small>Call a contact by a nickname in the AI chat (e.g. &quot;my designer&quot;); once you tell it who you mean, it remembers in every chat.</small>
       {!data && <Loading text="Loading nicknames…" />}
       {data?.nicknames.length === 0 && <small>None yet.</small>}
       {data?.nicknames.map((n) => (
@@ -562,16 +562,16 @@ export function LiveFriends() {
       <main className="aw-friends-content">
         <header className="aw-friends-heading">
           <div>
-            <h1>Friends</h1>
-            <p>Add friends who use Agentic Wallet to invite them to groups and make them payees</p>
+            <h1>Contacts</h1>
+            <p>Add contacts who use Agentic Wallet to invite them to groups and make them payees</p>
           </div>
         </header>
         {error && <p className="aw-bank-error">{error}</p>}
-        {!data && !error && <Loading block text="Loading friends and payees…" />}
+        {!data && !error && <Loading block text="Loading contacts and payees…" />}
         {note}
         <div className="aw-friends-top">
           <section className="aw-friends-panel aw-find-friends">
-            <h2>Add a friend</h2>
+            <h2>Add a contact</h2>
             <p>Type part of their name or username. Only wallets in your currency are found.</p>
             <form
               onSubmit={(e) => {
@@ -626,7 +626,7 @@ export function LiveFriends() {
         <Nicknames />
         <section className="aw-friends-panel aw-friend-requests">
           <header>
-            <h2>Friend requests</h2>
+            <h2>Contact requests</h2>
             <span>{incoming.length}</span>
           </header>
           {incoming.length === 0 && <small>No requests.</small>}
@@ -650,9 +650,9 @@ export function LiveFriends() {
         </section>
         <section className="aw-friends-panel aw-my-friends">
           <header>
-            <h2>My friends · {mutual.length}</h2>
+            <h2>My contacts · {mutual.length}</h2>
           </header>
-          <div className="aw-friend-policy">ⓘ &nbsp; A friend is not automatically in your allowlist. Making someone a payee is an on-chain action you approve.</div>
+          <div className="aw-friend-policy">ⓘ &nbsp; A contact is not automatically in your allowlist. Making someone a payee is an on-chain action you approve.</div>
           <div className="aw-friend-cards">
             {mutual.map((f) => (
               <article key={f.friendshipId}>
@@ -673,7 +673,7 @@ export function LiveFriends() {
                     {busy === `p${f.friendshipId}` ? "Updating the allowlist on-chain…" : f.allowlisted ? "Allowlisted ✓ · remove" : f.wallet ? "Add to allowlist" : "No wallet yet"}
                   </Button>
                   <Button variant="outline" disabled={!!busy} onClick={() => run(`u${f.friendshipId}`, () => send(`/api/friends/${f.friendshipId}`, "DELETE"), reload)}>
-                    Unfriend
+                    Remove contact
                   </Button>
                 </div>
               </article>
@@ -910,13 +910,42 @@ export function LiveGroups({ initialCreateOpen = false }: { initialCreateOpen?: 
               aria-pressed={selected === g.id}
             >
               <div className="aw-group-card-top">
-                <b>{g.name}</b>
+                <span className="aw-group-icon">
+                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <circle cx="9" cy="8" r="3" />
+                    <path d="M3.5 19v-1.5a5.5 5.5 0 0 1 11 0V19M16 5.5a3 3 0 0 1 0 5.8M17 14a4.5 4.5 0 0 1 3.5 4.4V19" />
+                  </svg>
+                </span>
+                {(() => {
+                  const mine = g.members.find((m) => m.userId === me?.user.id);
+                  return mine && <span className={`aw-group-role ${mine.role === "ADMIN" ? "yellow" : "blue"}`}>{mine.role === "ADMIN" ? "Admin" : "Member"}</span>;
+                })()}
+              </div>
+              <h2>{g.name}</h2>
+              <p>
+                {g.members.length} members · {g.threshold} of {g.members.length} approve
+              </p>
+              <div className="aw-group-members">
+                <div>
+                  {g.members.map((m, i) => (
+                    <span key={m.userId} className={`aw-group-avatar c${i % 5}`} title={m.name}>
+                      {initials(m.name)}
+                    </span>
+                  ))}
+                </div>
                 <small>
-                  {g.threshold} of {g.members.length} votes · {g.currency}
+                  Open votes
+                  <br />
+                  <b>
+                    {g.openProposals} · {g.currency}
+                  </b>
                 </small>
               </div>
-              <div className="aw-group-members">{g.members.map((m) => m.name).join(", ")}</div>
-              <small>{g.openProposals} open vote(s)</small>
+              <footer>
+                <Button variant="outline" onClick={() => setSelected(g.id)}>
+                  Open group
+                </Button>
+              </footer>
             </article>
           ))}
         </div>
@@ -1452,28 +1481,57 @@ function DeliverForm({ dealId, index, parcel, onDone }: { dealId: number; index:
 
 type Parcel = NonNullable<NonNullable<DealDetail["milestones"][number]["delivery"]>["parcel"]>;
 
-/** Where the parcel is: the carrier's tracking events, newest first. */
+/** Where the parcel is: the carrier's tracking events as a timeline (Napat's v0.8 layout). */
 function ParcelPanel({ p, shipTo, role, reviewing }: { p: Parcel; shipTo: string | null; role: "buyer" | "seller"; reviewing: boolean }) {
-  const t = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const t = (iso: string) => new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  // Events arrive newest first; the timeline reads oldest first, ending at the latest one.
+  const events = [...p.events].reverse();
   return (
     <div className="aw-parcel">
-      <p>
-        📦 <b>{p.carrierLabel}</b> · <code>{p.tracking}</code>
-      </p>
-      {shipTo && <p>To: {shipTo}</p>}
-      {p.tracked ? (
-        <ol>
-          {p.events.map((e) => (
-            <li key={e.code}>
-              <time>{t(e.at)}</time>
-              <span>
-                {e.status} · {e.location}
-              </span>
+      <div className="aw-parcel-stats">
+        <span>
+          <small>Carrier</small>
+          <b>{p.carrierLabel}</b>
+        </span>
+        <span>
+          <small>Tracking number</small>
+          <b>
+            <code>{p.tracking}</code>
+          </b>
+        </span>
+        <span>
+          <small>Status</small>
+          <b className={p.delivered ? "green" : "blue"}>{p.delivered ? "Delivered" : p.tracked ? (p.events[0]?.status ?? p.status) : p.status}</b>
+        </span>
+      </div>
+      {shipTo && <p>Ship to: {shipTo}</p>}
+      {p.tracked && (
+        <ol className="aw-v08-tracking">
+          {events.map((e, i) => {
+            const last = i === events.length - 1;
+            const state = p.delivered || !last ? "done" : "current";
+            return (
+              <li key={e.code} className={state}>
+                <i>{state === "done" ? "✓" : i + 1}</i>
+                <div>
+                  <b>{e.status}</b>
+                  <small>
+                    {t(e.at)} · {e.location}
+                  </small>
+                </div>
+              </li>
+            );
+          })}
+          {!p.delivered && (
+            <li className="pending">
+              <i>{events.length + 1}</i>
+              <div>
+                <b>Delivered</b>
+                <small>Waiting for the carrier</small>
+              </div>
             </li>
-          ))}
+          )}
         </ol>
-      ) : (
-        <p>{p.status}</p>
       )}
       {p.delivered === true && (
         <p className="aw-parcel-ok">{role === "buyer" && reviewing ? "✓ Delivered. Check the item, then approve to pay the seller (or dispute)." : "✓ Delivered."}</p>

@@ -258,7 +258,7 @@
 .aw-agent-tier{min-height:39px;display:flex;align-items:center;gap:9px;margin:7px 0;padding:7px 10px;border-radius:10px;background:#1b1b1b}
 .aw-agent-tier i{padding:5px 9px;border-radius:16px;font-size:9px;font-style:normal;white-space:nowrap}
 .aw-agent-tier i.tier0{background:#0b3020;color:#14d875}.aw-agent-tier i.tier1{background:#36290b;color:#ffb000}.aw-agent-tier i.tier2{background:#102747;color:#408eff}.aw-agent-tier i.tier3{background:#351619;color:#ff4c52}
-.aw-agent-tier span{color:#999;font-size:10px;line-height:1.45}
+.aw-agent-tier span{color:#b8b8b8;font-size:10px;font-weight:500;line-height:1.45}
 .aw-ai-agent-panel hr{height:1px;margin:10px 0;border:0;background:#303030}
 .aw-ai-agent-panel>small{color:#777;font-size:10px}
 .aw-ai-limit{display:flex;justify-content:space-between;margin:16px 0;color:#999;font-size:11px}
@@ -361,31 +361,6 @@
 }
 
 @media(min-width:651px){.aw-topbar-workspace:has(+ .aw-ai-chat-workspace) .aw-lang-toggle{display:flex}}
-
-/* Keep every workspace page on the same sidebar dimensions as AI Chat. */
-@media(min-width:651px){
-  .aw-workspace:not(.aw-ai-chat-workspace){grid-template-columns:208px minmax(0,1fr)!important}
-  .aw-workspace:not(.aw-ai-chat-workspace).aw-sidebar-collapsed{grid-template-columns:64px minmax(0,1fr)!important}
-  .aw-workspace:not(.aw-ai-chat-workspace)>.aw-sidebar{position:relative;inset:auto;width:100%;padding:14px 13px 16px;gap:12px;transform:none;visibility:visible;pointer-events:auto}
-  .aw-workspace:not(.aw-ai-chat-workspace) .aw-sidebar-menu-head{height:34px;margin-bottom:0}
-  .aw-workspace:not(.aw-ai-chat-workspace) .aw-sidebar-menu-head>small,.aw-workspace:not(.aw-ai-chat-workspace) .aw-nav-title{font-size:9px;letter-spacing:.08em}
-  .aw-workspace:not(.aw-ai-chat-workspace) .aw-sidebar .aw-sidebar-toggle{width:32px;min-width:32px;height:32px;border-radius:8px}
-  .aw-workspace:not(.aw-ai-chat-workspace) .aw-sidebar .aw-menu-glyph{width:16px;height:16px}
-  .aw-workspace:not(.aw-ai-chat-workspace) .aw-sidebar-group{gap:2px}
-  .aw-workspace:not(.aw-ai-chat-workspace) .aw-sidebar-group .aw-nav-title{margin:0 0 5px}
-  .aw-workspace:not(.aw-ai-chat-workspace) .aw-nav-item{height:36px;min-height:36px;padding:0 9px!important;gap:9px;border-radius:9px;font-size:12px}
-  .aw-workspace:not(.aw-ai-chat-workspace) .aw-nav-icon{width:16px;height:16px;stroke-width:1.7}
-  .aw-workspace:not(.aw-ai-chat-workspace) .aw-nav-badge{min-width:18px;height:18px;font-size:10px}
-  .aw-workspace:not(.aw-ai-chat-workspace) .aw-sidebar-profile{height:56px;min-height:56px;padding:7px 10px}
-  .aw-workspace:not(.aw-ai-chat-workspace).aw-sidebar-collapsed>.aw-sidebar{padding:14px 8px 16px;gap:12px}
-  .aw-workspace:not(.aw-ai-chat-workspace).aw-sidebar-collapsed .aw-sidebar-menu-head{justify-content:center}
-  .aw-workspace:not(.aw-ai-chat-workspace).aw-sidebar-collapsed .aw-sidebar-menu-head>small{display:block!important;max-width:0;opacity:0}
-  .aw-workspace:not(.aw-ai-chat-workspace).aw-sidebar-collapsed .aw-sidebar-group .aw-nav-title{display:block!important;height:auto;max-height:0;margin:0;opacity:0;visibility:hidden}
-  .aw-workspace:not(.aw-ai-chat-workspace).aw-sidebar-collapsed .aw-nav-item{width:100%;height:36px;min-height:36px;justify-content:flex-start!important;padding:0 0 0 16px!important;gap:0}
-  .aw-workspace:not(.aw-ai-chat-workspace).aw-sidebar-collapsed .aw-sidebar-profile{width:40px;height:40px;min-height:40px;justify-content:center;padding:2px}
-  .aw-workspace:not(.aw-ai-chat-workspace).aw-sidebar-collapsed .aw-sidebar-avatar{width:26px;height:26px;font-size:9px}
-  .aw-workspace:not(.aw-ai-chat-workspace)>.aw-main{margin-left:0;min-width:0}
-}
 
 .aw-draft-actions .aw-button{display:inline-flex;flex-direction:row;align-items:center;justify-content:center;gap:7px;width:max-content;min-width:max-content;white-space:nowrap}.aw-draft-actions .aw-button svg{display:block;flex:none;margin:0;vertical-align:initial}
 
@@ -807,6 +782,29 @@
 .aw-summary-activity td:nth-child(2) b{font-weight:700}
 .aw-summary-activity td:last-child{min-width:115px;text-align:right;font-weight:700}
 .aw-summary-activity th:last-child{text-align:right;min-width:115px}
+
+/* Slightly reduce the AI summary card while preserving its hierarchy. */
+.aw-summary-ai{padding:12px 14px}
+.aw-summary-ai-head>b{font-size:11px}
+.aw-summary-ai-head>b span{width:21px;height:21px}
+.aw-summary-ai-head>small,.aw-summary-ai>div span{font-size:7px}
+.aw-summary-ai>p{margin:8px 0;font-size:10px;line-height:1.55}
+.aw-summary-ai>div span{padding:3px 7px}
+
+.aw-ai-agent-panel .aw-agent-panel-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:0}
+.aw-ai-agent-panel .aw-agent-panel-heading h2{margin:0 0 14px}
+.aw-ai-agent-panel{transition:transform .55s cubic-bezier(.22,.8,.24,1),width .55s cubic-bezier(.22,.8,.24,1)}
+.aw-agent-panel-slide{min-width:0;flex:1;max-height:720px;overflow:hidden;filter:blur(0);transition:max-height .55s cubic-bezier(.22,.8,.24,1),filter .55s cubic-bezier(.22,.8,.24,1)}
+.aw-agent-panel-heading>button{width:30px;height:30px;flex:none;display:grid;place-items:center;padding:0;border:1px solid #303030;border-radius:8px;background:#111;color:#aaa;cursor:pointer}
+.aw-agent-panel-heading>button:hover{background:#1b1b1b;color:#fff}
+.aw-agent-panel-heading>button svg{width:16px;height:16px;stroke:currentColor;stroke-width:1.5}
+.aw-agent-panel-content{overflow:hidden}
+.aw-agent-panel-content>small{color:#b3b3b3;font-size:11px;font-weight:600}
+.aw-agent-panel-content .aw-ai-limit,.aw-agent-panel-content .aw-ai-recent{color:#b0b0b0}
+.aw-ai-agent-panel.is-closed{min-width:0;min-height:44px;height:44px;padding:0;border-color:transparent;background:transparent;transform:translate(16px,-12px)}
+.aw-ai-agent-panel.is-closed .aw-agent-panel-slide{max-height:0;filter:blur(4px)}
+@media(min-width:901px){.aw-ai-chat-layout{padding-left:clamp(18px,2.3vw,40px);padding-right:clamp(18px,2.3vw,40px);grid-template-columns:minmax(0,1fr) auto;gap:14px}.aw-ai-agent-panel{width:clamp(280px,28vw,380px)}.aw-ai-chat-layout.agent-panel-collapsed{grid-template-columns:minmax(0,1fr) auto}.aw-ai-chat-layout.agent-panel-collapsed .aw-ai-agent-panel{justify-self:end;width:44px;overflow:visible}.aw-ai-chat-layout.agent-panel-collapsed .aw-agent-panel-heading{justify-content:flex-end}.aw-ai-chat-layout.agent-panel-collapsed .aw-agent-panel-heading>button{background:#111;border-color:#303030}}
+@media(max-width:900px){.aw-ai-chat-layout.agent-panel-collapsed .aw-ai-agent-panel{justify-self:end;width:44px;overflow:visible}.aw-ai-chat-layout.agent-panel-collapsed .aw-agent-panel-heading{justify-content:flex-end}.aw-ai-chat-layout.agent-panel-collapsed .aw-ai-agent-panel.is-closed{margin-bottom:0}}
 .aw-summary-activity td:last-child.debit{color:#ff4b53}
 .aw-summary-activity td:last-child.credit{color:#00d574}
 .aw-summary-activity td:last-child small{font-size:9px}
@@ -1496,12 +1494,8 @@
 .aw-kind-badge{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:8px;font-size:10px;letter-spacing:.04em;vertical-align:middle;border:1px solid #3a3a3a}
 .aw-kind-badge.hire{color:#c9bfff;border-color:#4a3f6b}
 .aw-kind-badge.goods{color:#ffd27a;border-color:#6b5a2e}
-.aw-parcel{display:flex;flex-direction:column;gap:6px;margin-top:10px;padding:12px;border:1px solid #6b5a2e;border-radius:12px;background:#1d1910;font-size:12px;line-height:1.5}
+.aw-parcel{display:flex;flex-direction:column;gap:10px;margin-top:10px;padding:16px;border:1px solid #333;border-radius:14px;background:#111;font-size:13px;line-height:1.5}
 .aw-parcel p{margin:0}
-.aw-parcel ol{margin:0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:4px}
-.aw-parcel li{display:flex;gap:8px;color:#9da9ba}
-.aw-parcel li:first-child{color:#ffd27a}
-.aw-parcel li time{flex:none;width:52px;color:#777;font-variant-numeric:tabular-nums}
 .aw-parcel code{color:#ffd27a}
 .aw-parcel-ok{color:#89ef82}
 .aw-preview{margin-top:8px;max-width:100%}
@@ -1596,3 +1590,12 @@
 .aw-onboarding-country button.active{border-color:#559bff;background:#141c29}
 .aw-onboarding-country small{color:#999;font-size:12px}
 .aw-onboarding-alt{align-self:center;border:0;background:transparent;color:#9fc2ff;font-size:13px;text-decoration:underline;cursor:pointer}
+
+/* Parcel panel in Napat's v0.8 layout: a stat row, then the tracking timeline. */
+.aw-parcel-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.aw-parcel-stats>span{display:flex;flex-direction:column;gap:4px;min-width:0;padding:10px 12px;border:1px solid #2a2a2a;border-radius:10px;background:#0a0a0a}
+.aw-parcel-stats small{color:#777;font-size:11px}
+.aw-parcel-stats b{font-size:13px;font-weight:600;overflow-wrap:anywhere}
+.aw-parcel-stats b.green{color:#16c76c}.aw-parcel-stats b.blue{color:#5aa2ff}
+.aw-parcel .aw-v08-tracking li{padding:6px 0}
+@media(max-width:600px){.aw-parcel-stats{grid-template-columns:1fr}}

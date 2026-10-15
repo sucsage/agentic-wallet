@@ -488,6 +488,19 @@ function DraftCard({
   );
 }
 
+const TIER_TEXT = [
+  "Read balance, deals, history",
+  "Draft a deal · you approve the debit",
+  "Approve small deliveries within limits + allowlist",
+  "Pause · anyone can, only owner resumes",
+];
+
+function chatDate(iso: string) {
+  const d = new Date(iso);
+  const time = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  return d.toDateString() === new Date().toDateString() ? `Today · ${time}` : d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+}
+
 export function LiveChat() {
   const lang = useLang();
   const { me, wallet, drafts, refresh, status, error: setupError } = useAppData();
@@ -499,6 +512,11 @@ export function LiveChat() {
   const [maxChats, setMaxChats] = useState(5);
   const [chatId, setChatId] = useState<string | null>(null);
   const [loadingChat, setLoadingChat] = useState(false);
+  const [agentOpen, setAgentOpen] = useState(true);
+  // On a phone the agent panel sits above the chat: start it collapsed there.
+  useEffect(() => {
+    if (window.matchMedia("(max-width: 900px)").matches) setAgentOpen(false);
+  }, []);
   // A card linked through Stripe covers a short balance at approval (shown in the debit dialog).
   const [card, setCard] = useState<StripeLinkView["link"]>(null);
   useEffect(() => {
@@ -686,7 +704,45 @@ export function LiveChat() {
   return localizeMockupNode(
     <div className="aw-ai-chat-page">
       <BalanceBar />
-      <div className="aw-ai-chat-layout">
+      <div className={`aw-ai-chat-layout${agentOpen ? "" : " agent-panel-collapsed"}`}>
+        <aside className="aw-v08-chats" aria-label="Saved chats">
+          <header>
+            <b>Chats</b>
+            {chats && (
+              <span>
+                {chats.length}/{maxChats}
+              </span>
+            )}
+          </header>
+          <Button onClick={newChat} disabled={busy || full || (!chatId && items.length === 0)} title={full ? `${maxChats} chats max: delete one first` : "Start a new chat"}>
+            ＋ New chat
+          </Button>
+          <div className="aw-v08-chat-list">
+            {chats === null && address && <small>Loading chats…</small>}
+            {!chatId && items.length > 0 && (
+              <div className="selected">
+                <button type="button" aria-pressed>
+                  <b>New chat</b>
+                  <small>Just now</small>
+                </button>
+              </div>
+            )}
+            {chats?.map((c) => (
+              <div key={c.id} className={c.id === chatId ? "selected" : ""}>
+                <button type="button" onClick={() => void openChat(c.id)} disabled={busy} aria-pressed={c.id === chatId} title={c.title}>
+                  <b>{c.title}</b>
+                  <small>{chatDate(c.updatedAt)}</small>
+                </button>
+                <button type="button" aria-label={`Delete chat ${c.title}`} onClick={() => void removeChat(c)} disabled={busy}>
+                  <svg viewBox="0 0 18 18" fill="none" aria-hidden="true">
+                    <path d="M3 5h12M7 5V3h4v2M5 5l1 10h6l1-10M8 8v4M10 8v4" />
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
+          <p>{full ? `${maxChats} chats max: delete one to start another. ` : ""}Deleting a chat removes only the conversation. Your deals and evidence stay.</p>
+        </aside>
         <section className="aw-ai-conversation">
           <header className="aw-ai-chat-heading">
             <div>
@@ -709,28 +765,6 @@ export function LiveChat() {
             </div>
             <span className="aw-policy-pill">Policy guard on</span>
           </header>
-          <nav className="aw-chat-tabs" aria-label="Saved chats">
-            <button type="button" className="aw-chat-new" onClick={newChat} disabled={busy || full || (!chatId && items.length === 0)} title={full ? `${maxChats} chats max: delete one first` : "Start a new chat"}>
-              ＋ New chat
-            </button>
-            {chats === null && address && <span className="aw-chat-count">Loading chats…</span>}
-            {chats?.map((c) => (
-              <span key={c.id} className={`aw-chat-tab${c.id === chatId ? " active" : ""}`}>
-                <button type="button" onClick={() => void openChat(c.id)} disabled={busy} title={c.title}>
-                  {c.title}
-                </button>
-                <button type="button" aria-label={`Delete chat ${c.title}`} onClick={() => void removeChat(c)} disabled={busy}>
-                  ×
-                </button>
-              </span>
-            ))}
-            {chats && (
-              <span className="aw-chat-count">
-                {chats.length}/{maxChats}
-                {full && " · delete one to start another"}
-              </span>
-            )}
-          </nav>
           <div className="aw-ai-messages">
             <div className="aw-ai-message-meta">Agent</div>
             <article className="aw-ai-agent-message">
@@ -817,42 +851,50 @@ export function LiveChat() {
             <small>AI checks your balance and policy before any payment.</small>
           </form>
         </section>
-        <aside className="aw-ai-agent-panel">
-          <h2>What the agent can do</h2>
-          <div className="aw-agent-tier">
-            <i className="tier0">Tier 0</i>
-            <span>Read balance, deals, history</span>
-          </div>
-          <div className="aw-agent-tier">
-            <i className="tier1">Tier 1</i>
-            <span>Draft a deal · you approve the debit</span>
-          </div>
-          <div className="aw-agent-tier">
-            <i className="tier2">Tier 2</i>
-            <span>Approve small deliveries within limits + allowlist</span>
-          </div>
-          <div className="aw-agent-tier">
-            <i className="tier3">Tier 3</i>
-            <span>Pause · anyone can, only owner resumes</span>
-          </div>
-          <hr />
-          <small>Your limits</small>
-          <p className="aw-ai-limit">
-            <span>Per transaction</span>
-            <b>{wallet ? tokenMoney(wallet.session.maxPerTx, wallet.token.currency) : "…"}</b>
-          </p>
-          <p className="aw-ai-limit">
-            <span>Per day</span>
-            <b>{wallet ? tokenMoney(wallet.session.dailyLimit, wallet.token.currency) : "…"}</b>
-          </p>
-          <hr />
-          <small>Recent drafts</small>
-          {drafts.slice(0, 4).map((d) => (
-            <p className="aw-ai-recent" key={d.id}>
-              <i />
-              {d.title} · {d.status.toLowerCase()}
-            </p>
+        <aside className={`aw-v08-agent-rail${agentOpen ? " expanded" : ""}`}>
+          <button className="aw-v08-agent-toggle" type="button" aria-label={agentOpen ? "Collapse agent details" : "Expand agent details"} aria-expanded={agentOpen} aria-controls="aw-agent-details" onClick={() => setAgentOpen((o) => !o)}>
+            <svg viewBox="0 0 18 18" fill="none" aria-hidden="true">
+              <rect x="2.5" y="2.5" width="13" height="13" rx="2" />
+              <path d="M7 2.5v13M10 6h3M10 9h3M10 12h3" />
+            </svg>
+          </button>
+          <span className="aw-v08-agent-symbol" role="img" aria-label="AI agent">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <rect x="5" y="7" width="14" height="13" rx="3" />
+              <path d="M12 7V3H8M2 12v4M22 12v4M9 12v3M15 12v3" />
+            </svg>
+          </span>
+          {[0, 1, 2, 3].map((tier) => (
+            <button key={tier} type="button" className={`aw-v08-tier tier${tier}`} aria-label={`Tier ${tier} details`} onClick={() => setAgentOpen(true)}>
+              {tier}
+            </button>
           ))}
+          <div id="aw-agent-details" className="aw-v08-agent-details" aria-hidden={!agentOpen} inert={!agentOpen}>
+            <h2>What the agent can do</h2>
+            {TIER_TEXT.map((text, tier) => (
+              <p key={text} className="aw-v08-agent-tier-row">
+                <b className={`tier${tier}`}>Tier {tier}</b>
+                <span>{text}</span>
+              </p>
+            ))}
+            <hr />
+            <small>Your limits</small>
+            <p>
+              Per transaction <strong>{wallet ? tokenMoney(wallet.session.maxPerTx, wallet.token.currency) : "…"}</strong>
+            </p>
+            <p>
+              Per day <strong>{wallet ? tokenMoney(wallet.session.dailyLimit, wallet.token.currency) : "…"}</strong>
+            </p>
+            <hr />
+            <small>Recent drafts</small>
+            {drafts.length === 0 && <p className="aw-v08-agent-recent">None yet</p>}
+            {drafts.slice(0, 4).map((d) => (
+              <p className="aw-v08-agent-recent" key={d.id}>
+                <i />
+                {d.title} · {d.status.toLowerCase()}
+              </p>
+            ))}
+          </div>
         </aside>
       </div>
       {confirm &&
@@ -982,6 +1024,12 @@ const STATUS_TONE: Record<string, string> = {
   FAILED: "red",
 };
 
+/** How the work arrives: a parcel (Physical), an encrypted file (Digital) or a written report. */
+function deliveryType(d: DraftView): "Physical" | "Digital" | "Report" {
+  const modes = d.milestones.map((m) => m.delivery ?? (m.hasFile ? "file" : "note"));
+  return modes.includes("parcel") ? "Physical" : modes.includes("file") ? "Digital" : "Report";
+}
+
 export function LiveDeals({ go }: { go: (screen: string) => void }) {
   const lang = useLang();
   const { wallet, drafts, me } = useAppData();
@@ -997,6 +1045,7 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
         id: "Draft",
         title: d.title,
         kind: d.kind,
+        type: deliveryType(d),
         person: d.sellerLabel || d.counterparty,
         role: d.side === "SELL" ? ("Selling" as const) : ("Buying" as const),
         milestones: `0 / ${d.milestones.length}`,
@@ -1013,6 +1062,7 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
         id: `D-${d.id}`,
         title: draft?.title ?? `File deal #${d.id}`,
         kind: draft?.kind ?? null,
+        type: draft ? deliveryType(draft) : d.milestones.some((m) => m.hasFile) ? ("Digital" as const) : null,
         person: d.counterpartyLabel || d.counterparty,
         role: d.role === "buyer" ? ("Buying" as const) : ("Selling" as const),
         milestones: `${done} / ${d.milestones.length}`,
@@ -1048,6 +1098,7 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
             <thead>
               <tr>
                 <th>Deal</th>
+                <th>Type</th>
                 <th>Role</th>
                 <th>Milestones</th>
                 <th>Amount</th>
@@ -1057,14 +1108,14 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
             <tbody>
               {!wallet && (
                 <tr>
-                  <td colSpan={5}>
+                  <td colSpan={6}>
                     <Loading text="Reading your deals from the chain…" />
                   </td>
                 </tr>
               )}
               {wallet && visible.length === 0 && (
                 <tr>
-                  <td colSpan={5}>No deals yet. Ask the AI agent in the chat to draft one.</td>
+                  <td colSpan={6}>No deals yet. Ask the AI agent in the chat to draft one.</td>
                 </tr>
               )}
               {visible.map((r) => (
@@ -1085,6 +1136,9 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
                       </b>
                       <small>{r.person}</small>
                     </span>
+                  </td>
+                  <td>
+                    {r.type && <span className={`aw-v08-deal-type ${r.type === "Physical" ? "physical" : "digital"}`}>{r.type === "Physical" ? "▣ Physical" : r.type === "Report" ? "▤ Report" : "▤ Digital"}</span>}
                   </td>
                   <td>
                     <span className={`aw-deal-role ${r.role === "Selling" ? "selling" : "buying"}`}>{r.role}</span>

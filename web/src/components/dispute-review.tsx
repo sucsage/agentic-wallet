@@ -78,7 +78,7 @@ export function DisputeReview() {
               ))}
             </ul>
           )}
-          <a className="text-xs underline" href={`/deal/D-${r.dealId}`}>
+          <a className="text-xs underline" href={`/deals/D-${r.dealId}`}>
             Open the deal (as a party) ↗
           </a>
           <textarea
