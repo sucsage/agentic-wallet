@@ -41,14 +41,14 @@ yet written). Contract tests run with `cd contracts && npm test` (97 passing at 
 | 25 | Party text steers the AI arbiter into a high-confidence ruling (DA-H-01) | 75% threshold, human fallback | To write (mocked model) | delta audit |
 | 26 | The buyer rewrites the dispute reason after review (DA-M-01) | None found | To write | delta audit |
 | 27 | AI, human and settlement race on one dispute (DA-M-02) | Idempotent redeem ids only | To write | delta audit |
-| 28 | Five parallel wrong PINs beat the lock (AW-M-02) | Counter, not atomic | To write | audit |
-| 29 | Registration reveals which usernames exist | `USERNAME_TAKEN` | To write | audit |
+| 28 | Five parallel wrong PINs beat the lock (AW-M-02) | Counter, not atomic | Known gap (20 parallel wrong PINs left the counter at 1, no lock) | `web/scripts/security/web-security.test.mts` |
+| 29 | Registration reveals which usernames exist | `USERNAME_TAKEN` | Known gap (sign-in itself does not leak) | `web-security.test.mts` |
 | 30 | Two approvals of one draft debit twice (DB-01) | None found | To write | delta audit |
 | 31 | Re-authorising a bank link while a funding runs still debits it (AW-L-01, DB-02) | None found | To write | audit, delta audit |
 | 32 | Whoever holds an invite link sets the payout destination (DB-03) | Destination locked once set | To write | delta audit |
-| 33 | A spoofed `x-forwarded-for` resets the rate limit (DB-06) | In-process limiter | To write | delta audit |
-| 34 | One user reads or acts on another's wallet, draft or deal | `guard.ts` ownership check | To write (route matrix) | delta audit |
+| 33 | A spoofed `x-forwarded-for` resets the rate limit (DB-06) | In-process limiter | Known gap (50 requests, 50 header values, none blocked) | `web-security.test.mts` |
+| 34 | One user reads or acts on another's wallet, draft or deal | `guard.ts` ownership check | Partly tested: every API route calls a guard except 7 open by design; per-route ownership still to write | `web-security.test.mts` |
 | 35 | The attack route, or a caller-chosen signing role for pause, burns shared gas | Auth only | To write | audit |
 
-Counts: 21 tested or known-gap cases on the contracts, 1 contract case to write, 13 web cases to write.
+Counts: 21 tested or known-gap cases on the contracts, 1 contract case to write; web: 3 known gaps tested, 1 partly tested, 9 to write. Account-deletion gap P1 from [PRIVACY-DATA-MAP.md](PRIVACY-DATA-MAP.md) is also tested there. Web tests run against a throwaway Postgres: see `web/scripts/security/web-security.test.mts`.
 Privacy test (canary text must not reach the chain on any path, SD-01) is tracked in [PRIVACY-DATA-MAP.md](PRIVACY-DATA-MAP.md).

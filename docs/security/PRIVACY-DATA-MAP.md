@@ -36,7 +36,7 @@ the account, and the tables marked "No" survive even then.
 
 | # | Gap | Evidence | Suggested change |
 |---|---|---|---|
-| P1 | Account deletion leaves delivery notes and files, dispute text, invited sellers' payout details and the bank customer row | `DELETE /api/me` removes only user-linked tables; `DealDelivery`, `DealDispute`, `SellerInvite` have no relation to `User` | Delete or anonymise those rows for the user's deals; or state clearly what survives and why |
+| P1 | Account deletion leaves delivery notes and files, dispute text, invited sellers' payout details and the bank customer row | `DELETE /api/me` removes only user-linked tables; `DealDelivery`, `DealDispute`, `SellerInvite` have no relation to `User`. Confirmed against a real database in `web/scripts/security/web-security.test.mts` (deleting the user row leaves all three) | Delete or anonymise those rows for the user's deals; or state clearly what survives and why |
 | P2 | The data export leaves out drafts, friends, groups, deliveries, disputes and invites | `web/src/app/api/me/export/route.ts` | Add them, or narrow the claim to "profile, wallets and bank data" |
 | P3 | Free text can reach the chain on the legacy path | `actions.ts:105,236` | Hash on chain, store the text off chain as in the FileEscrow flow; or disable the legacy tools |
 | P4 | The server holds delivery file keys | `DealDelivery.fileKey`, `SECURITY.md` R2 | Disclose (already in R2); the PDF's "key never touches the server" is not what is built |
