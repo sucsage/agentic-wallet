@@ -26,6 +26,7 @@ USDC_ADDRESS=$(j .contracts.MockUSDC)
 ESCROW_ADDRESS=$(j .contracts.MilestoneEscrow)
 FACTORY_ADDRESS=$(j .contracts.AgentWalletFactory)
 MTHB_ADDRESS=$(j .contracts.MockTHB)
+MCNY_ADDRESS=$(j .contracts.MockCNY)
 FILE_ESCROW_ADDRESS=$(j .contracts.FileEscrow)
 START_BLOCK=$(j .startBlock)
 ARBITER_ADDRESS=$ARBITER_ADDRESS

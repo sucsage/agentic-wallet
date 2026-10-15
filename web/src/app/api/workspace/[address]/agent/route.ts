@@ -48,6 +48,27 @@ export async function POST(req: Request, ctx: RouteContext<"/api/workspace/[addr
     // Advisory pre-scan of untrusted content, shown to the user next to the agent's answer.
     const text = attachment ? await attachmentText(attachment) : undefined;
     const flags = text !== undefined ? scanForInjection(text, await readWallet(wallet)) : [];
+    // Streaming (Server-Sent Events) when the client asks for it: the chat shows each tool call and
+    // the reply as it is written. Plain JSON otherwise (scripts, agent-eval).
+    if (req.headers.get("accept")?.includes("text/event-stream")) {
+      const enc = new TextEncoder();
+      const body = new ReadableStream({
+        async start(controller) {
+          const emit = (event: string, data: unknown) =>
+            controller.enqueue(enc.encode(`event: ${event}\ndata: ${JSON.stringify(data, (_k, v) => (typeof v === "bigint" ? v.toString() : v))}\n\n`));
+          if (flags.length) emit("flags", flags);
+          try {
+            const { reply, steps } = await runAgent(wallet, history, message, attachment, text, lang, user.id, (e) => emit(e.type, e));
+            emit("done", { reply, steps, flags });
+          } catch (err) {
+            emit("error", { error: err instanceof Error ? err.message : String(err) });
+          } finally {
+            controller.close();
+          }
+        },
+      });
+      return new Response(body, { headers: { "content-type": "text/event-stream", "cache-control": "no-cache, no-transform", "x-accel-buffering": "no" } });
+    }
     const { reply, steps } = await runAgent(wallet, history, message, attachment, text, lang, user.id);
     return Response.json({ reply, steps, flags });
   } catch (err) {

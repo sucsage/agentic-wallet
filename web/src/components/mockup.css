@@ -1472,3 +1472,7 @@
 .aw-arbiter-wait{color:#f3ed21}
 .aw-arbiter-seller{color:#89ef82}
 .aw-arbiter-buyer{color:#559bff}
+.aw-ai-live-steps{display:flex;flex-direction:column;gap:4px;margin:4px 0 8px;font-size:12px}
+.aw-ai-live-steps .done{color:#89ef82}
+.aw-ai-live-steps .running{color:#9fc2ff;animation:aw-pulse 1.2s ease-in-out infinite}
+@keyframes aw-pulse{50%{opacity:.45}}

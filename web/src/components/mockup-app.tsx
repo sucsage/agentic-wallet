@@ -8,9 +8,7 @@ import { BankAuthorizeLive, LiveChat, LiveDeals, LivePrivacy } from "./mockup-li
 import { LiveApprovals, LiveDealDetail, LiveFriends, LiveGroups, LivePolicy, LiveSummary } from "./mockup-live-2";
 import { translateMockupText, useLang } from "@/lib/i18n";
 import { Header, SIDEBAR_GROUPS, SidebarIcon, type ScreenName } from "./mockup-ui";
-import {
-  AiDecisionScreen, DisputeScreen, LandingScreen, LoginScreen, OfferScreen, SubmitWorkScreen, WalletScreen,
-} from "./mockup-screens";
+import { LandingScreen, LoginScreen } from "./mockup-screens";
 import type { BankChoice } from "./mockup-screens";
 import "./mockup.css";
 
@@ -65,16 +63,18 @@ export function MockupApp({ initialRoute = "landing", initialBank = "thai", init
         break;
     }
     switch (route) {
-      case "ส่งงาน (ผู้ขาย)": return <SubmitWorkScreen />;
-      case "รับข้อเสนอ": return <OfferScreen />;
-      case "ข้อพิพาท": return <DisputeScreen />;
-      case "คำตัดสิน AI": return <AiDecisionScreen />;
+      // Delivering, offers, disputes and the arbiter's ruling all live on the real deal pages now.
+      case "ส่งงาน (ผู้ขาย)":
+      case "รับข้อเสนอ":
+      case "ข้อพิพาท":
+      case "คำตัดสิน AI": return <LiveDeals go={goToScreen} />;
       case "รออนุมัติ": return <LiveApprovals />;
       case "กระเป๋": return <LiveSummary />;
       case "เพื่อน": return <LiveFriends />;
       case "กลุ่ม": return <LiveGroups initialCreateOpen={initialGroupCreate} />;
       case "นโยบาย & Allowlist": return <LivePolicy />;
-      case "กระเป๋า": return <WalletScreen />;
+      // The wallet's tiers, caps, pause and allowlist are the live Policy page.
+      case "กระเป๋า": return <LivePolicy />;
       case "ความเป็นส่วนตัว": return <LivePrivacy />;
       default: return <LiveChat />;
     }

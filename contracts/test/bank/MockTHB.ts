@@ -25,6 +25,18 @@ describe("MockTHB", async function () {
     };
   }
 
+  it("MockCNY is the same token under its own name, with the same minting rules", async () => {
+    const cny = await viem.deployContract("MockCNY", [admin.account.address, bank.account.address, thb(50_000), thb(100_000)]);
+    assert.equal(await cny.read.name(), "Mock Chinese Yuan");
+    assert.equal(await cny.read.symbol(), "mCNY");
+    assert.equal(await cny.read.decimals(), 2);
+    const asBank = await viem.getContractAt("MockCNY", cny.address, { client: { wallet: bank } });
+    await asBank.write.mint([holder.account.address, 12_345n, id("cny-1")]);
+    assert.equal(await cny.read.balanceOf([holder.account.address]), 12_345n);
+    const asAttacker = await viem.getContractAt("MockCNY", cny.address, { client: { wallet: attacker } });
+    await viem.assertions.revertWithCustomError(asAttacker.write.mint([attacker.account.address, 1n, id("cny-2")]), cny, "AccessControlUnauthorizedAccount");
+  });
+
   it("counts in satang, like the Mock Bank", async () => {
     const { token } = await networkHelpers.loadFixture(deploy);
     assert.equal(await token.read.decimals(), 2);
