@@ -113,6 +113,17 @@ key (`ArbiterNotNeutral`), so the buyer's side can never judge its own dispute.
   server; the model still sees only names.
 - **No draft from guesswork.** A deal draft needs acceptance criteria for every milestone and, for a
   parcel, a delivery address; otherwise the tool refuses with NEED_INFO and the agent must ask.
+- **KYC through a national digital ID, without keeping the ID.** Thai customers verify with a mock
+  ThaID, Chinese customers with a mock 国家网络身份认证 (National Network Identity), over OpenID Connect
+  (authorization code + PKCE, state, nonce; the id_token's signature, issuer, audience and expiry are
+  checked; codes are single use for 5 minutes). The ID holder must be the bank account holder. We
+  store only a masked id and an HMAC of it (one identity verifies one account); the mock provider
+  drops the claims once the token is issued. The Chinese flow follows the 网号 design: the app gets an
+  opaque network id and a name-match result, never the resident ID number. Until verified, a
+  customer can lock at most 2,000 THB / 400 CNY per deal and top up 1,000 THB / 200 CNY.
+- **Card top-ups cannot be forged.** Top-ups use Stripe Checkout in test mode only (live keys are
+  refused). The browser's return proves nothing: the server fetches the Checkout Session from Stripe
+  and credits it only if Stripe says it is paid, for this user, in this currency, once per session id.
 - **Previews before payment cannot replace the work.** A delivered image is shown to the buyer only as
   a 720 px JPEG with a tiled watermark; the original stays encrypted until the key is released.
 - **Chain access.** Besu runs **account permissioning**, so only the app's own keys can send

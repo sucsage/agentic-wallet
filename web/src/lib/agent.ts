@@ -15,6 +15,7 @@ import { friendLabels } from "./social";
 import { DraftError, type DraftView, createDraft, createSellDraft, draftView, listDrafts } from "./bank/drafts";
 import { db } from "./db";
 import { InviteError, createInvite } from "./bank/invites";
+import { LIMITS, kycOf } from "./kyc";
 import { type WalletState, readWallet, walletUnits } from "./state";
 
 const MAX_TURNS = 12;
@@ -101,7 +102,8 @@ Bank-paid wallet. This wallet is paid from the user's Mock Bank account and hold
 - Drafts the user has not approved yet are listed by list_deals with a draft_ref (DR-…). discard_draft removes one when the user asks.
 - To SELL the user's own work, a file or an item to someone, call propose_bank_sale with the buyer's name (get_wallet_status → friends). It also only saves a draft; the user presses "Send offer", which puts the offer on-chain and locks nothing. The buyer pays in from their bank when they accept it, and must have the user as a payee by then.
 - If the user wants to hire someone who is not a friend on the app (no account), call invite_seller with their name, give the user the link it returns, then draft the deal with propose_bank_deal to the seller address it returns.
-- Never say money moved, was paid or was locked because of a draft.`;
+- Never say money moved, was paid or was locked because of a draft.
+- KYC: if get_wallet_status shows identity_verified false and a deal's total is above unverified_deal_limit, you may still draft it, but tell the user they must verify their identity first (Profile page: ThaID for Thai banks, National Network Identity for Chinese banks) before "Approve & lock" will work.`;
 
 const tool = (name: string, description: string, properties: Record<string, unknown>, required: string[]) =>
   ({
@@ -504,7 +506,7 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
     case "get_wallet_status": {
       const state = await readWallet(wallet);
       if (!userId || state.token.currency === null) return { tool: name, input, summary: redactAddresses(JSON.stringify(walletSummary(state))) };
-      const people = await contacts(wallet, userId, state);
+      const [people, kyc] = await Promise.all([contacts(wallet, userId, state), kycOf(userId)]);
       return {
         tool: name,
         input,
@@ -519,6 +521,9 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
             active: state.session.active,
           },
           approvals_required: state.threshold,
+          // KYC: unverified users can lock at most this much per deal.
+          identity_verified: Boolean(kyc),
+          unverified_deal_limit: kyc ? null : LIMITS[state.token.currency].dealUnverified,
           // People the wallet may pay (allowlist): propose_bank_deal takes one of these names.
           payees: people.filter((c) => c.payee).map((c) => c.name),
           // Everyone the user deals with: propose_bank_sale takes one of these names.

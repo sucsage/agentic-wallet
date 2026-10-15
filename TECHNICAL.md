@@ -239,6 +239,38 @@ A buyer can hire someone who has no account:
   - another bank's account number
 - **Payout.** Earnings are swept there automatically after each payout.
 
+### 3.7 KYC with a national digital ID (mock ThaID, mock 国家网络身份认证)
+
+Identity is verified the way a bank app verifies it against a government digital ID: OpenID
+Connect, authorization code flow with PKCE.
+
+```
+Profile ─POST /api/kyc/start─► cookie {state, nonce, PKCE verifier} ─► ID provider consent screen
+   ▲                                                                   (scan QR / approve; demo: type ID card)
+   │                                                                          │ code (single use, 5 min)
+   └─ /profile?kyc=ok ◄─ /api/kyc/callback ─► token endpoint (client secret + code_verifier) ─► id_token
+                            checks: state, signature, iss, aud, exp, nonce, holder = bank account holder
+```
+
+- **Thailand: mock ThaID.** The id_token carries the citizen id (`pid`, 13 digits, mod-11 check digit) and the names. The app keeps `1-2345-xxxxx-xx-6` and an HMAC of the id.
+- **China: mock 国家网络身份认证 (National Network Identity).** It follows the 网号/网证 design: the app sends the bank holder's name as `login_hint`, and the provider returns only an opaque 网号 and `name_match`. The resident ID (18 characters, ISO 7064 MOD 11-2 check) never reaches the app.
+- **One identity per account.** The HMAC is unique, so one person cannot verify many accounts.
+- **Limits.** Unverified customers can lock at most 2,000 THB / 400 CNY per deal and top up 1,000 THB / 200 CNY. The agent sees `identity_verified` and tells the user to verify before approving a larger deal.
+- **Discovery.** Both providers publish a discovery document at `/api/mock-id/{thaid|netid}/openid-configuration`. Switching to the real providers means changing endpoints and keys, not the flow.
+
+### 3.8 Card and PromptPay top-ups (Stripe, test mode)
+
+```
+Top up ─► POST /api/bank/topup {amount ≤ KYC limit} ─► Stripe Checkout Session (thb / cny, client_reference_id = user)
+       ◄─ /chat?topup=cs_test_… ◄── Stripe redirects after payment
+       ─► POST /api/bank/topup/confirm ─► GET Session from Stripe: paid? this user? this currency?
+                                         ─► ledger TOPUP keyed "stripe:<session id>" (credited once)
+```
+
+- **No webhook needed.** The server asks Stripe directly, and the session id is the idempotency key, so a reload or a replayed redirect never credits twice.
+- **Test keys only.** Live keys are refused.
+- **Ledger invariant.** It becomes: sum of balances = deposits + top-ups.
+
 ---
 
 ## 4. The AI agent
@@ -334,4 +366,5 @@ or addresses. Deleting an account removes the user's drafts, chats and nicknames
 | Web | Next.js 16 (App Router), React 19, TypeScript, Vercel |
 | Data | PostgreSQL (Neon), Prisma 7 |
 | AI | Anthropic SDK (Messages API) to Anthropic, OpenRouter or a university gateway; tool use with zod validation |
+| Payments and identity | Stripe Checkout (test mode, card and PromptPay); OpenID Connect with PKCE via jose (mock ThaID, mock 国家网络身份认证) |
 | Other | sharp (watermarked previews), unpdf (PDF text), jsQR / qrcode (PromptPay QR), better-auth (sessions) |

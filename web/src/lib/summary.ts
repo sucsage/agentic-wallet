@@ -97,7 +97,7 @@ export async function buildSummary(
     const incoming = t.toId !== null && ids.includes(t.toId);
     const month = t.createdAt.toISOString().slice(0, 7);
     const m = months.get(month) ?? { month, income: 0, spent: 0, refunds: 0 };
-    if (t.kind === "DEPOSIT" && incoming) totals.openingDeposits += amount;
+    if ((t.kind === "DEPOSIT" || t.kind === "TOPUP") && incoming) totals.openingDeposits += amount;
     else if (t.kind === "FUND" && !incoming) {
       totals.spent += amount;
       m.spent += amount;

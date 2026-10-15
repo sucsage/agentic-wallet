@@ -243,7 +243,7 @@ Object.assign(mockupTh, {
   "Demo · Mock Bank · no real money": "เดโม่ · Mock Bank · ไม่มีเงินจริง",
   "Hire and get paid safely, with": "จ้างงานและรับเงินอย่างปลอดภัย", "AI in the middle": "โดยมี AI เป็นคนกลาง",
   "Your money stays in your own bank account. It is debited only when a deal is locked, and paid to the seller when the work is approved.": "เงินอยู่ในบัญชีธนาคารของคุณเอง ถูกหักเฉพาะตอนล็อกดีล และโอนให้ผู้ขายเมื่ออนุมัติงาน",
-  "No crypto, no top-ups, no withdrawals.": "ไม่มีคริปโต ไม่มีเติมเงิน ไม่มีถอนเงิน",
+  "No crypto to buy. Top up by card or PromptPay through Stripe (test mode).": "ไม่ต้องซื้อคริปโต เติมเงินด้วยบัตรหรือพร้อมเพย์ผ่าน Stripe (โหมดทดสอบ)",
   "Log in with your bank": "เข้าสู่ระบบด้วยธนาคารของคุณ", "Log in required to chat with the AI and start a deal": "ต้องเข้าสู่ระบบก่อนจึงจะแชตกับ AI และเริ่มดีลได้",
   "HOW IT WORKS": "วิธีทำงาน", "Four steps, all in your bank": "4 ขั้นตอน ทุกอย่างอยู่ในบัญชีธนาคารของคุณ",
   "Chat with AI": "คุยกับ AI", "Describe the job, e.g. “Hire a logo designer, ฿5,000, 2 milestones”. The AI drafts the deal.": "บอกงานที่ต้องการ เช่น “จ้างออกแบบโลโก้ 5,000 บาท 2 งวด” แล้ว AI จะร่างดีลให้",

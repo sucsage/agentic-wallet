@@ -7,7 +7,7 @@ import { db } from "../db";
 /**
  * Mock Bank ledger (demo only: simulated baht, not real money). Amounts are satang.
  *
- * Money enters only through DEPOSIT and then only moves between accounts, so at every moment
+ * Money enters only through DEPOSIT (or a card TOPUP) and then only moves between accounts, so at every moment
  * the sum of all balances equals the sum of all deposits. Every mTHB on-chain is backed by the
  * single RESERVE account.
  */
@@ -81,7 +81,8 @@ export async function transfer(input: {
 }): Promise<BankTransfer> {
   const { key, kind, fromId, toId, amount } = input;
   if (amount <= 0n) throw new Error("Amount must be positive");
-  if ((fromId === null) !== (kind === "DEPOSIT")) throw new Error("Only a deposit has no source account");
+  // Money enters the bank only as a demo deposit or a card top-up; everything else moves between accounts.
+  if ((fromId === null) !== (kind === "DEPOSIT" || kind === "TOPUP")) throw new Error("Only a deposit or top-up has no source account");
   // A fresh database has no reserve yet: open it on first use instead of failing the transfer.
   for (const c of Object.keys(RESERVES) as Currency[]) {
     if (fromId === RESERVES[c].id || toId === RESERVES[c].id) await reserveAccount(c);
@@ -124,7 +125,7 @@ export async function seedSandbox(walletAddress: string, amount: bigint): Promis
 export async function ledgerTotals(): Promise<{ balances: bigint; deposits: bigint }> {
   const [balances, deposits] = await Promise.all([
     db.bankAccount.aggregate({ _sum: { balance: true } }),
-    db.bankTransfer.aggregate({ _sum: { amount: true }, where: { kind: "DEPOSIT" } }),
+    db.bankTransfer.aggregate({ _sum: { amount: true }, where: { kind: { in: ["DEPOSIT", "TOPUP"] } } }),
   ]);
   return { balances: balances._sum.balance ?? 0n, deposits: deposits._sum.amount ?? 0n };
 }

@@ -10,6 +10,7 @@ import { publicClient, roleAddresses } from "../chain";
 import { accountOf } from "./ledger";
 import { agentWalletAbi } from "../abis";
 import { db } from "../db";
+import { KycRequired, requireKycFor } from "../kyc";
 import { walletUnits } from "../state";
 import { offerToSell } from "./deals";
 import { type FundingResult, fileOfferMandate, fundJustInTime, ownerSignMandate } from "./funding";
@@ -178,6 +179,13 @@ export async function approveDraft(userId: string, wallet: Address, draftId: str
   const units = await walletUnits(wallet);
   const milestones = draft.milestones as DraftMilestone[];
   if (draft.side === "SELL") return approveSellDraft(draft, wallet, units, milestones);
+  // Locking money above the unverified limit needs a verified identity (KYC) first.
+  if (draft.status !== "FUNDED" && units.currency) {
+    const total = milestones.reduce((t, m) => t + Number(m.amount), 0);
+    await requireKycFor(userId, units.currency, total).catch((e) => {
+      throw e instanceof KycRequired ? new DraftError(e.message) : e;
+    });
+  }
 
   // Reuse the signed mandate while its funding may still finish (same funding id resumes it).
   // After a definite failure (refunded / rejected) a new attempt needs a new mandate.

@@ -1508,3 +1508,18 @@
 .aw-preview img{display:block;max-width:100%;max-height:360px;border-radius:10px;border:1px solid #333}
 .aw-preview small{display:block;margin-top:4px;color:#888;font-size:11px}
 .aw-deliver-form select{min-height:36px;padding:6px 10px;border:1px solid #333;border-radius:10px;background:#111;color:#eee}
+
+.aw-kyc-card header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.aw-kyc-card h2{margin:0;font-size:15px}
+.aw-kyc-card p{margin:6px 0 10px;font-size:13px;line-height:1.5;color:#c6d0de}
+.aw-kyc-ok{color:#89ef82;font-size:12px}
+.aw-kyc-no{color:#f3ed21;font-size:12px}
+.aw-kyc-note{display:block;margin-top:8px;color:#888;font-size:11px}
+.aw-topup{position:relative;display:inline-flex;align-items:center;gap:8px}
+.aw-topup-button{min-height:28px;padding:4px 12px;border:1px solid #2e3f5e;border-radius:14px;background:#141c29;color:#9fc2ff;font-size:12px;cursor:pointer}
+.aw-topup>small{font-size:11px;max-width:220px}
+.aw-topup-box{position:absolute;right:0;top:36px;z-index:20;display:flex;flex-direction:column;gap:6px;width:240px;padding:12px;border:1px solid #333;border-radius:12px;background:#151515;box-shadow:0 8px 24px #0008}
+.aw-topup-box small{color:#999;font-size:11px}
+.aw-topup-box input{min-height:34px;padding:6px 10px;border:1px solid #333;border-radius:8px;background:#0d0d0d;color:#fff}
+.aw-topup-box button{min-height:34px;border:0;border-radius:8px;background:#559bff;color:#fff;font-weight:600;cursor:pointer}
+.aw-topup-box button:disabled{opacity:.5;cursor:not-allowed}

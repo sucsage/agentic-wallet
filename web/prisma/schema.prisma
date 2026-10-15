@@ -26,11 +26,12 @@ model User {
   wallets         UserWallet[]
   bankCustomer    BankCustomer?
   dealDrafts      DealDraft[]
-  friendsAsked    Friendship[]   @relation("friendRequester")
-  friendsReceived Friendship[]   @relation("friendAddressee")
+  friendsAsked    Friendship[]     @relation("friendRequester")
+  friendsReceived Friendship[]     @relation("friendAddressee")
   groups          GroupMember[]
   aliases         ContactAlias[]
   agentChats      AgentChat[]
+  kyc             KycVerification?
 }
 
 model Session {
@@ -274,6 +275,8 @@ enum BankTransferKind {
   /// An invited seller's earnings → the payout destination they chose (a Mock Bank account, or
   /// the EXTERNAL account standing in for PromptPay / another bank).
   WITHDRAW
+  /// Money paid in by card through Stripe (test mode), credited once per Checkout Session.
+  TOPUP
 }
 
 model BankAccount {
@@ -619,4 +622,44 @@ model AgentChat {
   updatedAt     DateTime @updatedAt
 
   @@index([userId, walletAddress])
+}
+
+// ---------------------------------------------------------------------------------------------
+// KYC: identity verified through a national digital ID (mock ThaID for Thai users, mock National
+// Network Identity 网号/网证 for Chinese users), over OpenID Connect. PDPA / PIPL: the ID number is
+// never stored; only a salted hash (to stop one person verifying many accounts) and a masked form.
+// ---------------------------------------------------------------------------------------------
+
+enum KycProvider {
+  THAID
+  CN_NETID
+}
+
+model KycVerification {
+  id           String      @id @default(cuid())
+  userId       String      @unique
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider     KycProvider
+  /// HMAC of the national id (ThaID) or the 网号 (China): one identity verifies one account.
+  subjectHash  String      @unique
+  /// e.g. 1-1234-xxxxx-xx-1 or WH****8F2K
+  maskedId     String
+  verifiedName String
+  verifiedAt   DateTime    @default(now())
+}
+
+/// Authorization codes issued by the mock identity providers (single use, 5 minutes).
+model MockIdCode {
+  /// sha256 of the code
+  id            String      @id
+  provider      KycProvider
+  clientId      String
+  redirectUri   String
+  codeChallenge String
+  nonce         String
+  /// The identity the user approved in the mock app.
+  claims        Json
+  expiresAt     DateTime
+  usedAt        DateTime?
+  createdAt     DateTime    @default(now())
 }

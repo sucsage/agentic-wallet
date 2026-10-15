@@ -4,6 +4,7 @@ import { z } from "zod";
 import { openDispute } from "@/lib/bank/arbiter";
 import { DealError, acceptAndPay, buyerAction, dealForWallet, sellerAction, syncDeal } from "@/lib/bank/deals";
 import { HttpError, errorResponse, rateLimit, requireBankWallet } from "@/lib/guard";
+import { KycRequired, requireKycFor } from "@/lib/kyc";
 
 export const maxDuration = 120;
 
@@ -23,7 +24,7 @@ const Body = z.object({
 export async function POST(req: Request, ctx: RouteContext<"/api/deals/[id]/action">) {
   try {
     rateLimit(req, "deal-action", 30, 60 * 60 * 1000);
-    const { user, wallet } = await requireBankWallet();
+    const { user, customer, wallet } = await requireBankWallet();
     const id = Number((await ctx.params).id);
     const parsed = Body.safeParse(await req.json().catch(() => null));
     if (!Number.isInteger(id) || !parsed.success) throw new HttpError(400, "Invalid request");
@@ -31,6 +32,12 @@ export async function POST(req: Request, ctx: RouteContext<"/api/deals/[id]/acti
     const deal = await dealForWallet(wallet, id).catch((e) => {
       throw e instanceof DealError ? new HttpError(404, e.message) : e;
     });
+    // Paying in for a seller's offer above the unverified limit needs KYC first.
+    if (action === "accept" && deal.role === "buyer") {
+      await requireKycFor(user.id, customer.currency, Number(deal.total)).catch((e) => {
+        throw e instanceof KycRequired ? new HttpError(403, e.message) : e;
+      });
+    }
     if (action === "dispute" && deal.role === "buyer") {
       if (!reason || reason.trim().length < 10) throw new HttpError(400, "Say what is wrong (at least 10 characters): the arbiter decides on it");
       // Recorded before the transaction, so the arbiter has the reason as soon as the chain says Disputed.

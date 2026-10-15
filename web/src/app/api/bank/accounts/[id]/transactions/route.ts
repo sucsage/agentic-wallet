@@ -9,6 +9,7 @@ const KIND_LABEL = {
   REFUND: "Refund from a deal",
   PAYOUT: "Payment received",
   WITHDRAW: "Payment from a deal (invited seller)",
+  TOPUP: "Card top-up (Stripe test)",
 } as const;
 
 /**

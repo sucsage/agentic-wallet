@@ -30,6 +30,75 @@ function defaultAccount(accounts: AccountView[] | undefined) {
   return accounts?.find((a) => a.isDefault && a.linked) ?? accounts?.find((a) => a.linked) ?? null;
 }
 
+/** Card top-up through Stripe Checkout (test mode); confirmed with Stripe when the user comes back. */
+function TopUp({ currency }: { currency: "THB" | "CNY" }) {
+  const { refresh } = useAppData();
+  const [open, setOpen] = useState(false);
+  const [amount, setAmount] = useState("");
+  const [limit, setLimit] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  useEffect(() => {
+    const session = new URLSearchParams(window.location.search).get("topup");
+    if (!session) return;
+    window.history.replaceState(null, "", window.location.pathname);
+    if (session === "cancelled") {
+      // Reading the redirect's result once on mount is what this effect is for.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setMsg({ ok: false, text: "Top-up cancelled" });
+      return;
+    }
+    api<{ status: string; amount: number; currency: string }>("/api/bank/topup/confirm", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ session }),
+    })
+      .then((r) => {
+        setMsg(r.status === "paid" ? { ok: true, text: `✓ ${tokenMoney(r.amount, currency)} added by card (Stripe test)` } : { ok: false, text: `Payment ${r.status}` });
+        return refresh();
+      })
+      .catch((e) => setMsg({ ok: false, text: (e as Error).message }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  async function openBox() {
+    setOpen((o) => !o);
+    if (limit === null) api<{ limit: number }>("/api/bank/topup").then((r) => setLimit(r.limit)).catch(() => {});
+  }
+  async function pay() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const { url } = await api<{ url: string }>("/api/bank/topup", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ amount: Number(amount) }),
+      });
+      window.location.assign(url);
+    } catch (e) {
+      setMsg({ ok: false, text: (e as Error).message });
+      setBusy(false);
+    }
+  }
+  return (
+    <span className="aw-topup">
+      <button type="button" className="aw-topup-button" onClick={() => void openBox()}>
+        ＋ Top up
+      </button>
+      {msg && <small className={msg.ok ? "aw-live-ok" : "aw-bank-error"}>{msg.text}</small>}
+      {open && (
+        <span className="aw-topup-box">
+          <small>Card or PromptPay · Stripe test mode · test card 4242 4242 4242 4242</small>
+          <input value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ""))} placeholder={currency === "THB" ? "500" : "100"} inputMode="decimal" aria-label="Amount" />
+          {limit !== null && <small>Up to {tokenMoney(limit, currency)} per top-up</small>}
+          <button type="button" disabled={busy || !Number(amount)} onClick={() => void pay()}>
+            {busy ? "Opening Stripe…" : `Pay ${amount ? tokenMoney(Number(amount), currency) : ""}`}
+          </button>
+        </span>
+      )}
+    </span>
+  );
+}
+
 export function BalanceBar() {
   const { me, wallet, status } = useAppData();
   const account = defaultAccount(me?.accounts);
@@ -61,7 +130,7 @@ export function BalanceBar() {
         <b>{wallet ? tokenMoney(wallet.session.dailyLimit, wallet.token.currency) : "…"}</b>
       </div>
       <div className="aw-ai-balance-actions">
-        <span className="aw-no-topup">× No top-up / withdraw</span>
+        <TopUp currency={currency} />
         <span className="aw-demo-bank-pill">Demo bank</span>
       </div>
     </div>
@@ -1062,6 +1131,76 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
 // Profile & privacy (PrivacyScreen)
 // ------------------------------------------------------------------------------------------
 
+type KycStatus = {
+  currency: "THB" | "CNY";
+  provider: "THAID" | "CN_NETID";
+  verified: { provider: string; maskedId: string; name: string; at: string } | null;
+  limits: { dealUnverified: number; topupUnverified: number; topupVerified: number };
+};
+
+/** Identity verification (KYC) through a national digital ID: mock ThaID or mock 国家网络身份认证. */
+function KycCard() {
+  const [kyc, setKyc] = useState<KycStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  useEffect(() => {
+    // The ID provider sends the user back here with ?kyc=ok or an error message.
+    const r = new URLSearchParams(window.location.search).get("kyc");
+    if (r) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setResult(r);
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+    api<KycStatus>("/api/kyc").then(setKyc).catch(() => setKyc(null));
+  }, []);
+  async function start() {
+    setBusy(true);
+    try {
+      const { url } = await api<{ url: string }>("/api/kyc/start", { method: "POST" });
+      window.location.assign(url);
+    } catch (e) {
+      setResult((e as Error).message);
+      setBusy(false);
+    }
+  }
+  const thai = kyc?.provider === "THAID";
+  const c = kyc?.currency ?? "THB";
+  return (
+    <Card className="aw-kyc-card">
+      <header>
+        <h2>Identity verification (KYC)</h2>
+        {kyc?.verified ? <span className="aw-kyc-ok">✓ Verified</span> : kyc ? <span className="aw-kyc-no">Not verified</span> : null}
+      </header>
+      {!kyc && <Loading text="Checking your verification…" />}
+      {result === "ok" && <p className="aw-live-ok">✓ Your identity is verified. Higher limits are on.</p>}
+      {result && result !== "ok" && <p className="aw-bank-error">{result}</p>}
+      {kyc?.verified && (
+        <p>
+          {kyc.verified.provider === "THAID" ? "ThaID" : "国家网络身份认证 (National Network Identity)"} · {kyc.verified.maskedId} · {kyc.verified.name}
+          <small> · {new Date(kyc.verified.at).toLocaleDateString()}</small>
+        </p>
+      )}
+      {kyc && !kyc.verified && (
+        <>
+          <p>
+            Until you verify, deals are limited to {tokenMoney(kyc.limits.dealUnverified, c)} and card top-ups to {tokenMoney(kyc.limits.topupUnverified, c)}. Verify with{" "}
+            {thai ? "ThaID, Thailand's digital ID" : "国家网络身份认证 (China's National Network Identity: the app gets a 网号, never your ID number)"}.
+          </p>
+          <Button disabled={busy} onClick={() => void start()}>
+            {busy ? "Opening…" : thai ? "Verify with ThaID" : "Verify with 国家网络身份认证"}
+          </Button>
+          <small className="aw-kyc-note">Demo identity provider: use test data. We keep only a masked id and a hash, never the ID number.</small>
+        </>
+      )}
+      {kyc?.verified && (
+        <small className="aw-kyc-note">
+          Limits now: deals up to your agent policy · top-ups up to {tokenMoney(kyc.limits.topupVerified, c)}
+        </small>
+      )}
+    </Card>
+  );
+}
+
 export function LivePrivacy() {
   const lang = useLang();
   const { me } = useAppData();
@@ -1115,6 +1254,7 @@ export function LivePrivacy() {
               </Button>
             </div>
           </Card>
+          <KycCard />
           <Card className="aw-profile-passbooks">
             <header>
               <div>
