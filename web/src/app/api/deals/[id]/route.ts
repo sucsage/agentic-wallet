@@ -35,7 +35,7 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/deals/[id]">) {
     });
     after(() => syncDeal(wallet, id).catch((e) => console.error("syncDeal", id, e)));
     const buyer = deal.role === "buyer" ? wallet : deal.counterparty;
-    const draft = await dealTerms(id, buyer);
+    const draft = await dealTerms(id, buyer, deal.role === "seller" ? wallet : deal.counterparty);
     const terms = draft ? await draftView(draft) : null;
     const demoSeller = deal.role === "buyer" && deal.counterparty === roleAddresses().contractor;
     const [deliveries, friends] = await Promise.all([
@@ -49,8 +49,9 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/deals/[id]">) {
       summary: terms?.summary ?? null,
       escrow: explorerAddress(config.bankContracts.fileEscrow),
       demoSeller,
-      canCancel: deal.role === "buyer" && deal.status === "Proposed",
-      canAccept: deal.role === "seller" && deal.status === "Proposed",
+      // The side that made the offer may withdraw it; the other side accepts it (a buyer pays in then).
+      canCancel: deal.status === "Proposed" && deal.offeredBy === "me",
+      canAccept: deal.status === "Proposed" && deal.offeredBy === "them",
       milestones: deal.milestones.map((m, i) => ({
         ...m,
         name: terms?.milestones[i]?.name ?? `Milestone ${i + 1}`,

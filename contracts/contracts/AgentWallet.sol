@@ -574,6 +574,12 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
     ///      to the arbiter, so it must be neutral. The rest can only return money or stop a deal.
     function _checkFileCall(address escrow, bytes memory data) private view {
         bytes4 selector = bytes4(data);
+        if (selector == FileEscrow.offerToSell.selector) {
+            // Selling locks nothing here; the deal must pay in this wallet's token, under a neutral arbiter.
+            (, address arbiter, address dealToken) = abi.decode(_args(data), (address, address, address));
+            if (dealToken != address(token)) revert WrongToken();
+            return _checkArbiter(arbiter);
+        }
         if (_isSellerCall(escrow, selector, data)) return _checkSellerCall(escrow, selector, data);
         bool locksOrPays = selector == FileEscrow.accept.selector || selector == FileEscrow.approve.selector;
         bool dealOnly = selector == FileEscrow.accept.selector || selector == FileEscrow.cancel.selector;
@@ -592,9 +598,11 @@ contract AgentWallet is Ownable2Step, ReentrancyGuard {
             selector == FileEscrow.deliver.selector || selector == FileEscrow.releaseKey.selector
                 || selector == FileEscrow.claim.selector || selector == FileEscrow.refund.selector
         ) return true;
-        if (selector != FileEscrow.accept.selector || data.length != 36) return false;
+        bool cancel = selector == FileEscrow.cancel.selector;
+        if ((!cancel && selector != FileEscrow.accept.selector) || data.length != 36) return false;
         FileEscrow.Deal memory d = FileEscrow(escrow).getDeal(abi.decode(_args(data), (uint256)));
-        return d.seller == address(this) && d.creator == d.buyer;
+        // accept: a buyer's offer to this wallet. cancel: withdrawing this wallet's own offer to sell.
+        return d.seller == address(this) && d.creator == (cancel ? address(this) : d.buyer);
     }
 
     /// @dev None of the seller's moves can take money out of this wallet: accepting a buyer's offer

@@ -9,7 +9,7 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/workspace/[addr
     const user = await requireUser();
     const drafts = await listDrafts(user.id, wallet);
     const friends = await friendLabels(user.id);
-    return Response.json({ drafts: await Promise.all(drafts.map((d) => draftView(d, friends.get(d.seller.toLowerCase())))) });
+    return Response.json({ drafts: await Promise.all(drafts.map((d) => draftView(d, friends.get((d.side === "SELL" ? (d.buyer ?? "") : d.seller).toLowerCase())))) });
   } catch (err) {
     return errorResponse(err);
   }

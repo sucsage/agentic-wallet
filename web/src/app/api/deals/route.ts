@@ -19,7 +19,7 @@ export async function GET() {
     });
     // Titles come from the buyer's draft, so a seller sees the same name for the deal.
     const friends = await friendLabels(user.id);
-    const titles = await Promise.all(deals.map((d) => dealTerms(d.id, d.role === "buyer" ? wallet : d.counterparty)));
+    const titles = await Promise.all(deals.map((d) => dealTerms(d.id, d.role === "buyer" ? wallet : d.counterparty, d.role === "seller" ? wallet : d.counterparty)));
     return Response.json({
       deals: deals.map((d, i) => ({
         ...d,

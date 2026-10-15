@@ -6,8 +6,15 @@ export default defineConfig({
   solidity: {
     profiles: {
       default: {
-        version: "0.8.28",
-        settings: { optimizer: { enabled: true, runs: 200 } },
+        compilers: [{ version: "0.8.28", settings: { optimizer: { enabled: true, runs: 200 } } }],
+        // The factory embeds AgentWallet's creation code; the IR pipeline tuned for size keeps it well
+        // under the 24,576-byte contract limit (EIP-170). Calls cost a little more gas.
+        overrides: {
+          "contracts/AgentWalletFactory.sol": {
+            version: "0.8.28",
+            settings: { optimizer: { enabled: true, runs: 1 }, viaIR: true },
+          },
+        },
       },
     },
   },

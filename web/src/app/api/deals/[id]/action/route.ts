@@ -1,7 +1,7 @@
 import { after } from "next/server";
 import { z } from "zod";
 
-import { DealError, buyerAction, sellerAction, syncDeal } from "@/lib/bank/deals";
+import { DealError, acceptAndPay, buyerAction, dealForWallet, sellerAction, syncDeal } from "@/lib/bank/deals";
 import { HttpError, errorResponse, rateLimit, requireBankWallet } from "@/lib/guard";
 
 export const maxDuration = 120;
@@ -13,7 +13,8 @@ const Body = z.object({
 
 /**
  * A move on a deal, pressed by the user. Buyer: approve (the agent's Tier 2 path within its caps,
- * else the owner's mandate), dispute, reclaim, cancel. Seller: accept a buyer's offer, claim, refund.
+ * else the owner's mandate), dispute, reclaim, cancel its own offer, accept a seller's offer (paying
+ * in from the bank). Seller: accept a buyer's offer, cancel its own offer, claim, refund.
  * Delivering has its own route (it carries a file).
  */
 export async function POST(req: Request, ctx: RouteContext<"/api/deals/[id]/action">) {
@@ -24,10 +25,17 @@ export async function POST(req: Request, ctx: RouteContext<"/api/deals/[id]/acti
     const parsed = Body.safeParse(await req.json().catch(() => null));
     if (!Number.isInteger(id) || !parsed.success) throw new HttpError(400, "Invalid request");
     const { action, index } = parsed.data;
-    const run =
-      action === "accept" || action === "claim" || action === "refund"
-        ? sellerAction(wallet, id, action, index)
-        : buyerAction(wallet, id, action, index);
+    const deal = await dealForWallet(wallet, id).catch((e) => {
+      throw e instanceof DealError ? new HttpError(404, e.message) : e;
+    });
+    const run: Promise<unknown> =
+      deal.role === "buyer"
+        ? action === "accept"
+          ? acceptAndPay(wallet, id)
+          : buyerAction(wallet, id, action as "approve" | "dispute" | "reclaim" | "cancel", index)
+        : action === "accept" || action === "claim" || action === "refund" || action === "cancel"
+          ? sellerAction(wallet, id, action, index)
+          : Promise.reject(new DealError("Only the buyer can do this"));
     const result = await run.catch((e) => {
       throw e instanceof DealError ? new HttpError(400, e.message) : e;
     });

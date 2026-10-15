@@ -7,9 +7,11 @@ import { type Address, formatUnits, getAddress, parseUnits } from "viem";
 import type { DealDraft, Prisma } from "@/generated/prisma/client";
 
 import { publicClient, roleAddresses } from "../chain";
+import { accountOf } from "./ledger";
 import { agentWalletAbi } from "../abis";
 import { db } from "../db";
 import { walletUnits } from "../state";
+import { offerToSell } from "./deals";
 import { type FundingResult, fileOfferMandate, fundJustInTime, ownerSignMandate } from "./funding";
 
 /**
@@ -17,6 +19,8 @@ import { type FundingResult, fileOfferMandate, fundJustInTime, ownerSignMandate 
  *   1. the agent drafts (createDraft): nothing is signed, nothing moves, the draft is only in our DB;
  *   2. the user approves (approveDraft): the owner signs the mandate and fundJustInTime debits the
  *      bank, mints and locks the offer in FileEscrow, or refunds if that fails.
+ * A seller drafts too (side SELL): approving makes the offer on-chain and locks nothing; the buyer
+ * pays in from their bank when they accept it (acceptAndPay in deals.ts).
  * The draft is read back from the database at approval, so what gets locked is exactly what the
  * user saw; the browser never sends amounts or the seller.
  */
@@ -25,7 +29,10 @@ export type DraftMilestone = { name: string; amount: string; hasFile: boolean; d
 
 export type DraftView = {
   id: string;
+  side: "BUY" | "SELL";
   wallet: string;
+  /** The other party: the seller of a BUY draft, the buyer of a SELL draft. */
+  counterparty: string;
   seller: string;
   sellerLabel: string;
   title: string;
@@ -53,7 +60,9 @@ export async function draftView(d: DealDraft, sellerLabel = ""): Promise<DraftVi
   const total = milestones.reduce((t, m) => t + parseUnits(m.amount, units.decimals), 0n);
   return {
     id: d.id,
+    side: d.side,
     wallet: d.walletAddress,
+    counterparty: d.side === "SELL" ? (d.buyer ?? "") : d.seller,
     seller: d.seller,
     sellerLabel,
     title: d.title,
@@ -98,6 +107,43 @@ export async function createDraft(
   });
 }
 
+/**
+ * The seller's draft: work offered to a buyer. Nothing is locked, so the buyer need not allowlist
+ * the seller yet (they must before accepting). The buyer must bank in the same currency to pay.
+ */
+export async function createSellDraft(
+  userId: string,
+  wallet: Address,
+  input: { buyer: string; title: string; summary: string; reviewHours: number; milestones: DraftMilestone[] },
+): Promise<DealDraft> {
+  const units = await walletUnits(wallet);
+  if (!units.currency) throw new DraftError("This wallet is not paid from a bank account");
+  const buyer = getAddress(input.buyer);
+  if (buyer === wallet) throw new DraftError("You cannot sell to yourself");
+  const buyerAccount = await accountOf(buyer);
+  if (!buyerAccount) throw new DraftError(`Buyer ${buyer} has no Mock Bank wallet`);
+  if (buyerAccount.currency !== units.currency) throw new DraftError(`The buyer banks in ${buyerAccount.currency}, this wallet in ${units.currency}`);
+  for (const m of input.milestones) {
+    if (parseUnits(m.amount, units.decimals) <= 0n) throw new DraftError(`Milestone "${m.name}" needs a positive amount`);
+  }
+  const terms = { title: input.title, summary: input.summary, milestones: input.milestones, reviewHours: input.reviewHours };
+  const termsHash = createHash("sha256").update(JSON.stringify(terms)).digest("hex");
+  return db.dealDraft.create({
+    data: {
+      userId,
+      side: "SELL",
+      walletAddress: wallet,
+      seller: wallet,
+      buyer,
+      title: input.title,
+      summary: input.summary,
+      milestones: input.milestones as unknown as Prisma.InputJsonValue,
+      reviewHours: input.reviewHours,
+      termsHash,
+    },
+  });
+}
+
 /** The user approves: sign, debit the bank just in time, lock in FileEscrow. Safe to call again. */
 export async function approveDraft(userId: string, wallet: Address, draftId: string): Promise<{ draft: DealDraft; funding: FundingResult }> {
   const draft = await db.dealDraft.findFirst({ where: { id: draftId, userId, walletAddress: wallet } });
@@ -105,6 +151,7 @@ export async function approveDraft(userId: string, wallet: Address, draftId: str
   if (draft.status === "CANCELLED") throw new DraftError("This draft was cancelled");
   const units = await walletUnits(wallet);
   const milestones = draft.milestones as DraftMilestone[];
+  if (draft.side === "SELL") return approveSellDraft(draft, wallet, units, milestones);
 
   // Reuse the signed mandate while its funding may still finish (same funding id resumes it).
   // After a definite failure (refunded / rejected) a new attempt needs a new mandate.
@@ -159,6 +206,41 @@ export async function approveDraft(userId: string, wallet: Address, draftId: str
       result: JSON.parse(
         JSON.stringify({ ...keep, funding }, (_k, v) => (typeof v === "bigint" ? v.toString() : v)),
       ) as Prisma.InputJsonValue,
+    },
+  });
+  return { draft: updated, funding };
+}
+
+/** A seller's draft goes on-chain as an offer; nothing is debited. Once offered, it stays offered. */
+async function approveSellDraft(
+  draft: DealDraft,
+  wallet: Address,
+  units: Awaited<ReturnType<typeof walletUnits>>,
+  milestones: DraftMilestone[],
+): Promise<{ draft: DealDraft; funding: FundingResult }> {
+  const prior = draft.result as { funding?: FundingResult } | null;
+  if (draft.status === "FUNDED" && prior?.funding) return { draft, funding: prior.funding };
+  const { outcome, dealId } = await offerToSell(wallet, {
+    buyer: getAddress(draft.buyer!),
+    milestones: milestones.map((m) => ({ amount: parseUnits(m.amount, units.decimals), hasFile: m.hasFile })),
+    reviewPeriod: BigInt(draft.reviewHours * 3600),
+    termsURI: `sha256:${draft.termsHash}`,
+    reason: draft.title,
+  });
+  const funding: FundingResult = {
+    status: dealId !== undefined ? "FUNDED" : outcome.status === "reverted" || outcome.status === "rejected" ? "REJECTED" : "PENDING",
+    fundingId: outcome.status === "success" ? outcome.hash : (`0x${"0".repeat(64)}` as `0x${string}`),
+    amount: 0n,
+    dealId,
+    steps: [{ step: "lock", outcome }],
+    error: "error" in outcome ? outcome.error : undefined,
+  };
+  const updated = await db.dealDraft.update({
+    where: { id: draft.id },
+    data: {
+      status: funding.status === "FUNDED" ? "FUNDED" : funding.status === "PENDING" ? "DRAFT" : "FAILED",
+      dealId: dealId ?? null,
+      result: JSON.parse(JSON.stringify({ funding }, (_k, v) => (typeof v === "bigint" ? v.toString() : v))) as Prisma.InputJsonValue,
     },
   });
   return { draft: updated, funding };

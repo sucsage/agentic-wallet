@@ -57,9 +57,12 @@ function useAction() {
     setBusy(key);
     setMessage(null);
     try {
-      const r = (await fn()) as { outcome?: Outcome; status?: string } | undefined;
+      const r = (await fn()) as { outcome?: Outcome; status?: string; error?: string } | undefined;
       const o = r?.outcome;
       if (o && o.status !== "success") setMessage({ ok: false, text: o.error ?? o.status, url: o.url });
+      // Accepting a seller's offer reports a funding status instead of one transaction.
+      else if (r?.status && !["FUNDED", "success"].includes(r.status))
+        setMessage({ ok: false, text: r.status === "REFUNDED" ? `Not accepted · money refunded to your bank${r.error ? ` (${r.error})` : ""}` : `Still processing (${r.status}) · try again in a moment` });
       else setMessage({ ok: true, text: "Done", url: o?.url });
       await done?.();
     } catch (e) {
@@ -95,7 +98,8 @@ const when = (unix: number) =>
 type Approvals = {
   count: number;
   sellerTodo: { dealId: number; title: string; index: number | null; amount: string; step: "accept" | "deliver" }[];
-  drafts: { id: string; title: string; total: string; sellerLabel: string; seller: string; milestones: unknown[] }[];
+  offers: { dealId: number; title: string; amount: string; seller: string; sellerLabel: string }[];
+  drafts: { id: string; side: "BUY" | "SELL"; title: string; total: string; sellerLabel: string; counterparty: string; milestones: unknown[] }[];
   reviews: { dealId: number; title: string; index: number; amount: string; reviewUntil: number; tier: 1 | 2 }[];
   groupVotes: { proposalId: string; group: { id: string; name: string; threshold: number }; title: string; yes: number }[];
   proposals: { id: number; summary: string }[];
@@ -127,23 +131,50 @@ export function LiveApprovals() {
         {note}
         <small className="aw-approvals-section-label">YOUR ACCOUNT</small>
         <div className="aw-approval-list">
-          {data && data.drafts.length + data.reviews.length === 0 && <p className="aw-approval-empty">Nothing waiting for you.</p>}
+          {data && data.offers.length + data.drafts.length + data.reviews.length === 0 && <p className="aw-approval-empty">Nothing waiting for you.</p>}
           {data?.drafts.map((d) => (
             <article className="aw-approval-item" key={d.id}>
               <span className="aw-approval-tier">T1</span>
               <div className="aw-approval-copy">
                 <b>
-                  Lock “{d.title}” · {tokenMoney(d.total, currency)}
+                  {d.side === "SELL" ? "Offer to sell" : "Lock"} “{d.title}” · {tokenMoney(d.total, currency)}
                 </b>
-                <p>To {d.sellerLabel || d.seller}. Locking money always needs your approval.</p>
-                <small>Debited from your default passbook only when you press approve</small>
+                <p>
+                  {d.side === "SELL"
+                    ? `To ${d.sellerLabel || d.counterparty}. Sending locks nothing; they pay when they accept.`
+                    : `To ${d.sellerLabel || d.counterparty}. Locking money always needs your approval.`}
+                </p>
+                {d.side !== "SELL" && <small>Debited from your default passbook only when you press approve</small>}
               </div>
               <div className="aw-approval-buttons">
                 <Button
                   disabled={!!busy || !address}
                   onClick={() => run(d.id, () => send(`/api/workspace/${address}/drafts/${d.id}/approve`, "POST"), after)}
                 >
-                  {busy === d.id ? "Locking…" : "Approve & debit"}
+                  {busy === d.id ? (d.side === "SELL" ? "Sending…" : "Locking…") : d.side === "SELL" ? "Send offer" : "Approve & debit"}
+                </Button>
+              </div>
+            </article>
+          ))}
+          {data?.offers.map((o) => (
+            <article className="aw-approval-item" key={`o${o.dealId}`}>
+              <span className="aw-approval-tier">T1</span>
+              <div className="aw-approval-copy">
+                <b>
+                  Offer from {o.sellerLabel || o.seller} · {o.title} · {tokenMoney(o.amount, currency)}
+                </b>
+                <p>Accepting debits the total from your bank and locks it in escrow until you approve each delivery.</p>
+                <small>The seller must be one of your payees</small>
+              </div>
+              <div className="aw-approval-buttons">
+                <Button variant="outline" onClick={() => (window.location.href = `/deal/D-${o.dealId}`)}>
+                  Details
+                </Button>
+                <Button
+                  disabled={!!busy}
+                  onClick={() => run(`o${o.dealId}`, () => send(`/api/deals/${o.dealId}/action`, "POST", { action: "accept" }), after)}
+                >
+                  {busy === `o${o.dealId}` ? "Paying…" : `Accept & pay ${tokenMoney(o.amount, currency)}`}
                 </Button>
               </div>
             </article>
@@ -1112,14 +1143,18 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
         {data?.canAccept && (
           <div className="aw-d012-actions">
             <Button disabled={!!busy} onClick={() => act("accept", 0)}>
-              {busy === "accept0" ? "…" : `Accept offer · ${tokenMoney(data.total, c)} is already locked by the buyer`}
+              {busy === "accept0"
+                ? "…"
+                : data.role === "buyer"
+                  ? `Accept & pay ${tokenMoney(data.total, c)} from your bank`
+                  : `Accept offer · ${tokenMoney(data.total, c)} is already locked by the buyer`}
             </Button>
           </div>
         )}
         {data?.canCancel && (
           <div className="aw-d012-actions">
             <Button variant="danger" disabled={!!busy} onClick={() => act("cancel", 0)}>
-              Cancel offer · refund to bank
+              {data.role === "buyer" ? "Cancel offer · refund to bank" : "Withdraw offer"}
             </Button>
           </div>
         )}

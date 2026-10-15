@@ -114,6 +114,8 @@ export type FileDealView = {
   role: "buyer" | "seller";
   counterparty: Address;
   counterpartyLabel: string;
+  /** Who made the offer: while it is Proposed, only the other side can accept it. */
+  offeredBy: "me" | "them";
   total: string;
   status: (typeof FILE_DEAL_STATUS)[number];
   reviewHours: number;
@@ -150,6 +152,7 @@ export async function readFileDeals(wallet: Address, u?: Units): Promise<FileDea
         role: buyer ? ("buyer" as const) : ("seller" as const),
         counterparty,
         counterpartyLabel: labelFor(counterparty),
+        offeredBy: getAddress(d.creator) === wallet ? ("me" as const) : ("them" as const),
         total: amountOf(d.total, units),
         status: FILE_DEAL_STATUS[d.status],
         reviewHours: Number(d.reviewPeriod) / 3600,

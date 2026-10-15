@@ -326,8 +326,18 @@ enum DealDraftStatus {
   CANCELLED
 }
 
+/// Who drafted the deal: the buyer (locks money when approved) or the seller (offers work; the
+/// buyer pays in when they accept).
+enum DraftSide {
+  BUY
+  SELL
+}
+
 model DealDraft {
   id            String          @id @default(cuid())
+  side          DraftSide       @default(BUY)
+  /// SELL drafts: the buyer's wallet the offer is made to. BUY drafts: null (the wallet is the buyer).
+  buyer         String?
   userId        String
   user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   walletAddress String

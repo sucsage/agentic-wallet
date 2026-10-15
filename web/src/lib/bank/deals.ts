@@ -2,7 +2,7 @@ import "server-only";
 
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 
-import { type Address, type Hex, encodeFunctionData, getAddress, keccak256, toHex } from "viem";
+import { type Address, type Hex, decodeEventLog, encodeFunctionData, getAddress, keccak256, toHex } from "viem";
 
 import { agentWalletAbi, fileEscrowAbi, mockTHBAbi } from "../abis";
 import { type TxOutcome, atFreshBlock, publicClient, roleAddresses, send } from "../chain";
@@ -10,12 +10,13 @@ import { config } from "../config";
 import { db } from "../db";
 import { type FileDealView, readFileDeals, walletUnits } from "../state";
 import { type Mandate, ownerSignMandate } from "./funding";
-import { accountOf, openAccount, reserveIdFor, transfer } from "./ledger";
+import { InsufficientFunds, accountOf, openAccount, reserveIdFor, transfer } from "./ledger";
 
 /**
  * File deals after the lock, for both sides:
  *   buyer:  approve, dispute, reclaim, cancel
- *   seller: accept a buyer's offer, deliver (file + evidence), refund; the key release and the
+ *   buyer:  accept a seller's offer, paying in from the bank just in time (acceptAndPay)
+ *   seller: offer work (offerToSell), withdraw that offer, accept a buyer's offer, deliver (file + evidence), refund; the key release and the
  *           claim run on their own once the buyer approves and the windows pass (the agent's job)
  * plus the demo contractor (a server-run seller) and settlement back to the Mock Bank.
  *
@@ -65,12 +66,13 @@ export async function dealForWallet(wallet: Address, dealId: number): Promise<Fi
   return deal;
 }
 
-/** Sends one FileEscrow call from the wallet, approved by the owner's signature (the user's click). */
-async function viaMandate(wallet: Address, data: Hex, reason: string): Promise<TxOutcome> {
+/** Sends one call from the wallet (to FileEscrow unless `target` says otherwise), approved by the
+ *  owner's signature (the user's click). The wallet checks it against its policy either way. */
+async function viaMandate(wallet: Address, data: Hex, reason: string, target: Address = escrow()): Promise<TxOutcome> {
   const random = crypto.getRandomValues(new Uint32Array(2));
   const mandate: Mandate = {
     kind: KIND_CALL,
-    target: escrow(),
+    target,
     amount: 0n,
     index: 0n,
     data,
@@ -126,13 +128,119 @@ export async function buyerAction(
 // Seller moves
 // ------------------------------------------------------------------------------------------
 
-export type SellerAction = "accept" | "claim" | "refund";
+export type SellerAction = "accept" | "claim" | "refund" | "cancel";
 
 export async function sellerAction(wallet: Address, dealId: number, action: SellerAction, index = 0): Promise<{ tier: 1; outcome: TxOutcome }> {
   const deal = await dealForWallet(wallet, dealId);
   if (deal.role !== "seller") throw new DealError("Only the seller can do this");
-  const data = action === "accept" ? dealCall("accept", dealId) : milestoneCall(action, dealId, index);
+  const data = action === "accept" || action === "cancel" ? dealCall(action, dealId) : milestoneCall(action, dealId, index);
   return { tier: 1, outcome: await viaMandate(wallet, data, `${action} deal ${dealId} milestone ${index}`) };
+}
+
+/** The seller's offer goes on-chain. It locks nothing; the deal id comes from the receipt. */
+export async function offerToSell(
+  wallet: Address,
+  offer: { buyer: Address; milestones: { amount: bigint; hasFile: boolean }[]; reviewPeriod: bigint; termsURI: string; reason: string },
+): Promise<{ outcome: TxOutcome; dealId?: number }> {
+  const { address: token } = await walletUnits(wallet);
+  const terms = offer.milestones.map((m) => ({ amount: m.amount, hasFile: m.hasFile, workHash: `0x${"0".repeat(64)}` as Hex }));
+  const data = encodeFunctionData({
+    abi: fileEscrowAbi,
+    functionName: "offerToSell",
+    args: [offer.buyer, config.arbiter, token, terms, offer.reviewPeriod, offer.termsURI],
+  });
+  const outcome = await viaMandate(wallet, data, offer.reason);
+  if (outcome.status !== "success") return { outcome };
+  const receipt = await publicClient().getTransactionReceipt({ hash: outcome.hash });
+  for (const log of receipt.logs) {
+    if (getAddress(log.address) !== escrow()) continue;
+    try {
+      const event = decodeEventLog({ abi: fileEscrowAbi, data: log.data, topics: log.topics });
+      if (event.eventName === "OfferCreated") return { outcome, dealId: Number(event.args.dealId) };
+    } catch {
+      // another event from the escrow
+    }
+  }
+  return { outcome };
+}
+
+export type AcceptResult = {
+  status: "FUNDED" | "REFUNDED" | "PENDING";
+  dealId: number;
+  steps: { step: "debit" | "mint" | "approve" | "accept" | "refund"; outcome?: TxOutcome; done?: true }[];
+  error?: string;
+};
+
+/** Mined and reverted, or refused by the contract before sending: it did not and will not happen. */
+const certainFailure = (o: TxOutcome) => o.status === "reverted" || (o.status === "rejected" && o.definite === true);
+
+/**
+ * The buyer accepts a seller's offer and pays in just in time, like fundJustInTime for a buyer's
+ * own offer: debit the bank, mint the same amount into the wallet, approve the escrow and accept,
+ * which locks it. Every step is keyed by the deal, so pressing again resumes instead of paying
+ * twice. If the accept certainly failed, the minted tokens are burned and the bank is refunded.
+ */
+export async function acceptAndPay(wallet: Address, dealId: number): Promise<AcceptResult> {
+  const d = await getDeal(dealId);
+  if (getAddress(d.buyer) !== wallet) throw new DealError("Only the buyer can accept this offer");
+  const steps: AcceptResult["steps"] = [];
+  const done = (status: AcceptResult["status"], error?: string): AcceptResult => ({ status, dealId, steps, error });
+  if (d.status === 1) return done("FUNDED");
+  if (d.status !== 0) throw new DealError("This offer is no longer open");
+  if (getAddress(d.creator) === wallet) throw new DealError("You made this offer; the seller accepts it");
+  const seller = getAddress(d.seller);
+  const allowed = await publicClient().readContract({ address: wallet, abi: agentWalletAbi, functionName: "allowedRecipient", args: [seller] });
+  if (!allowed) throw new DealError("Add the seller as a payee first (Friends → Make payee)");
+  const units = await walletUnits(wallet);
+  const account = await accountOf(wallet);
+  if (!account || !units.currency) throw new DealError("This wallet has no Mock Bank account");
+  if (getAddress(d.token) !== units.address) throw new DealError("This offer is in another currency");
+  const { address: token, currency } = units;
+  const id = redeemId("accept", dealId);
+
+  // 1. Debit: the transfer row is the funding record, written before anything happens on-chain.
+  try {
+    await transfer({ key: `accept:${id}:debit`, kind: "FUND", fromId: account.id, toId: reserveIdFor(currency), amount: d.total });
+  } catch (err) {
+    if (err instanceof InsufficientFunds) throw new DealError("Not enough money in your bank account");
+    throw err;
+  }
+  steps.push({ step: "debit" });
+
+  // 2. Mint the same amount into the wallet; the id makes a second mint impossible.
+  const minted = () =>
+    atFreshBlock((blockNumber) => publicClient().readContract({ address: token, abi: mockTHBAbi, functionName: "minted", args: [id], blockNumber }));
+  if (await minted()) {
+    steps.push({ step: "mint", done: true });
+  } else {
+    const mint = await send("bank", { address: token, abi: mockTHBAbi, functionName: "mint", args: [wallet, d.total, id] });
+    steps.push({ step: "mint", outcome: mint });
+    if (mint.status !== "success" && !(await minted())) {
+      if (!certainFailure(mint)) return done("PENDING", "error" in mint ? mint.error : undefined);
+      await transfer({ key: `accept:${id}:refund`, kind: "REFUND", fromId: reserveIdFor(currency), toId: account.id, amount: d.total });
+      steps.push({ step: "refund" });
+      return done("REFUNDED", "error" in mint ? mint.error : undefined);
+    }
+  }
+
+  // 3. Approve and accept: the wallet checks the seller is a payee, the token and the arbiter.
+  const approve = await viaMandate(
+    wallet,
+    encodeFunctionData({ abi: mockTHBAbi, functionName: "approve", args: [escrow(), d.total] }),
+    `approve deal ${dealId}`,
+    token,
+  );
+  steps.push({ step: "approve", outcome: approve });
+  const accept = await viaMandate(wallet, dealCall("accept", dealId), `accept deal ${dealId}`);
+  steps.push({ step: "accept", outcome: accept });
+  if ((await getDeal(dealId)).status === 1) return done("FUNDED");
+  const failed = certainFailure(accept) ? accept : certainFailure(approve) ? approve : null;
+  if (!failed) return done("PENDING", "error" in accept ? accept.error : undefined);
+
+  // 4. Undo: burn what was minted for this deal and give the money back.
+  await settleToWalletBank(wallet, token, currency, id, d.total, "REFUND");
+  steps.push({ step: "refund" });
+  return done("REFUNDED", "error" in failed ? failed.error : undefined);
 }
 
 /**
@@ -239,7 +347,7 @@ export function demoDeliverable(dealId: number, index: number) {
   return { text, sha256: createHash("sha256").update(text).digest("hex") };
 }
 
-const redeemId = (kind: "payout" | "refund" | "cancel", dealId: number, index = 0): Hex =>
+const redeemId = (kind: "payout" | "refund" | "cancel" | "accept", dealId: number, index = 0): Hex =>
   keccak256(toHex(`${kind}:${config.chain.id}:${escrow()}:${dealId}:${index}`));
 
 async function redeemed(token: Address, holder: Address, id: Hex): Promise<boolean> {
@@ -313,7 +421,7 @@ async function doSync(dealId: number): Promise<void> {
 
   // The offer was withdrawn before acceptance: the whole total went back to the buyer.
   if (d.status === 2) {
-    if (buyerIsUser) await settleToWalletBank(buyer, token, currency, redeemId("cancel", dealId), d.total, "REFUND");
+    if (buyerIsUser && getAddress(d.creator) === buyer) await settleToWalletBank(buyer, token, currency, redeemId("cancel", dealId), d.total, "REFUND");
     return;
   }
   if (d.status === 0) {
@@ -422,6 +530,6 @@ async function confirmKeyFor(buyer: Address, dealId: number, index: number): Pro
 }
 
 /** Off-chain terms of a deal (title, milestone names), drafted by its buyer. Both parties see them. */
-export async function dealTerms(dealId: number, buyer: Address) {
-  return db.dealDraft.findFirst({ where: { dealId, walletAddress: buyer } });
+export async function dealTerms(dealId: number, buyer: Address, seller?: Address) {
+  return db.dealDraft.findFirst({ where: { dealId, walletAddress: { in: seller ? [buyer, seller] : [buyer] } } });
 }

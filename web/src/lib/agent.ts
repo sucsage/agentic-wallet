@@ -12,7 +12,7 @@ import {
   transfer,
 } from "./actions";
 import { friendLabels } from "./social";
-import { DraftError, type DraftView, createDraft, draftView } from "./bank/drafts";
+import { DraftError, type DraftView, createDraft, createSellDraft, draftView } from "./bank/drafts";
 import { type WalletState, readWallet, walletUnits } from "./state";
 
 const MAX_TURNS = 12;
@@ -92,6 +92,7 @@ Bank-paid wallet. This wallet is paid from the user's Mock Bank account and hold
 - To buy work, call propose_bank_deal. It ONLY saves a draft: nothing is signed or debited. The user then presses "Approve & lock" in the chat; only then is their bank account debited for the offer's total, which is locked in the file escrow until each milestone is approved.
 - Amounts are plain numbers in the bank's currency (THB or CNY), e.g. 5000 means 5,000 baht. Never call them mUSDC.
 - The seller must be one of the wallet's allowlisted recipients (get_wallet_status → allowlisted_recipients). If the user names someone else, say they must add that person as a recipient first.
+- To SELL the user's own work or a file to someone, call propose_bank_sale with the buyer's wallet (get_wallet_status → friends). It also only saves a draft; the user presses "Send offer", which puts the offer on-chain and locks nothing. The buyer pays in from their bank when they accept it, and must have the user as a payee by then.
 - Never say money moved, was paid or was locked because of a draft.`;
 
 const tool = (name: string, description: string, properties: Record<string, unknown>, required: string[]) =>
@@ -166,6 +167,22 @@ const TOOLS = [
   ]),
 ];
 
+const BANK_MILESTONES = {
+  type: "array",
+  items: {
+    type: "object",
+    properties: {
+      name: { type: "string" },
+      amount: { type: "number", description: "In the bank's currency, e.g. 2500 = 2,500 baht" },
+      has_file: { type: "boolean", description: "true if the seller delivers a file for this milestone" },
+      due_date: { type: "string", description: "YYYY-MM-DD, or empty if none" },
+      acceptance: { type: "string", description: "What must be delivered for the buyer to approve" },
+    },
+    required: ["name", "amount", "has_file", "due_date", "acceptance"],
+    additionalProperties: false,
+  },
+};
+
 const BANK_TOOLS = [
   ...TOOLS.filter((t) => ["get_wallet_status", "list_deals", "pause_wallet"].includes(t.name)),
   tool(
@@ -176,23 +193,21 @@ const BANK_TOOLS = [
       title: { type: "string", description: "Short project title" },
       summary: { type: "string", description: "One-paragraph summary of the scope" },
       review_hours: { type: "integer", description: "Hours the buyer has to review each delivery (1-720, usually 72)" },
-      milestones: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            name: { type: "string" },
-            amount: { type: "number", description: "In the bank's currency, e.g. 2500 = 2,500 baht" },
-            has_file: { type: "boolean", description: "true if the seller delivers a file for this milestone" },
-            due_date: { type: "string", description: "YYYY-MM-DD, or empty if none" },
-            acceptance: { type: "string", description: "What must be delivered for the buyer to approve" },
-          },
-          required: ["name", "amount", "has_file", "due_date", "acceptance"],
-          additionalProperties: false,
-        },
-      },
+      milestones: BANK_MILESTONES,
     },
     ["seller", "title", "summary", "review_hours", "milestones"],
+  ),
+  tool(
+    "propose_bank_sale",
+    "Draft an offer to SELL work or a file to a buyer (a friend's wallet). Saves a draft only; the user sends it from the chat. Nothing is locked until the buyer accepts and pays from their bank.",
+    {
+      buyer: { type: "string", description: "Buyer wallet address (a friend, see get_wallet_status → friends)" },
+      title: { type: "string", description: "Short project title" },
+      summary: { type: "string", description: "One-paragraph summary of the scope" },
+      review_hours: { type: "integer", description: "Hours the buyer has to review each delivery (1-720, usually 72)" },
+      milestones: BANK_MILESTONES,
+    },
+    ["buyer", "title", "summary", "review_hours", "milestones"],
   ),
 ];
 
@@ -228,6 +243,24 @@ const INPUTS: Record<string, z.ZodType> = {
   pause_wallet: z.object({ reason: z.string() }),
   propose_bank_deal: z.object({
     seller: address,
+    title: z.string().min(1).max(120),
+    summary: z.string().max(2000),
+    review_hours: z.number().int().min(1).max(720),
+    milestones: z
+      .array(
+        z.object({
+          name: z.string().min(1).max(120),
+          amount: z.number().positive(),
+          has_file: z.boolean(),
+          due_date: z.string(),
+          acceptance: z.string().max(1000),
+        }),
+      )
+      .min(1)
+      .max(10),
+  }),
+  propose_bank_sale: z.object({
+    buyer: address,
     title: z.string().min(1).max(120),
     summary: z.string().max(2000),
     review_hours: z.number().int().min(1).max(720),
@@ -361,6 +394,8 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
                 recipient.label,
             }),
           ),
+          // Anyone here can be offered work (propose_bank_sale); paying them needs the allowlist.
+          friends: [...labels].map(([address, label]) => ({ address, label })),
         }),
       };
     }
@@ -425,6 +460,43 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
           input,
           draft,
           summary: `DRAFT SAVED (Tier 1, nothing debited yet): draft ${d.id}, total ${draft.total} ${units.currency}. The user must press "Approve & lock" in the chat.`,
+        };
+      } catch (err) {
+        if (err instanceof DraftError) return { tool: name, input, summary: `BLOCKED: ${err.message}` };
+        throw err;
+      }
+    }
+    case "propose_bank_sale": {
+      if (!userId) throw new Error("Drafts need a signed-in user");
+      const i = input as {
+        buyer: string;
+        title: string;
+        summary: string;
+        review_hours: number;
+        milestones: { name: string; amount: number; has_file: boolean; due_date: string; acceptance: string }[];
+      };
+      const units = await walletUnits(wallet);
+      try {
+        const d = await createSellDraft(userId, wallet, {
+          buyer: i.buyer,
+          title: i.title,
+          summary: i.summary,
+          reviewHours: i.review_hours,
+          milestones: i.milestones.map((m) => ({
+            name: m.name,
+            amount: m.amount.toFixed(units.decimals),
+            hasFile: m.has_file,
+            due: m.due_date || null,
+            acceptance: m.acceptance,
+          })),
+        });
+        const friends = await friendLabels(userId);
+        const draft = await draftView(d, friends.get((d.buyer ?? "").toLowerCase()) ?? "");
+        return {
+          tool: name,
+          input,
+          draft,
+          summary: `SALE DRAFT SAVED (nothing on-chain yet): draft ${d.id}, total ${draft.total} ${units.currency}. The user must press "Send offer" in the chat; the buyer then accepts and pays.`,
         };
       } catch (err) {
         if (err instanceof DraftError) return { tool: name, input, summary: `BLOCKED: ${err.message}` };

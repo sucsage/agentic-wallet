@@ -293,18 +293,30 @@ type FundingResult = { status: string; steps: { step: string; outcome?: { url?: 
 function DraftCard({ draft, currency, onApprove }: { draft: DraftView; currency: "THB" | "CNY"; onApprove: (d: DraftView) => void }) {
   const funded = draft.status === "FUNDED";
   const failed = draft.status === "FAILED";
+  const sell = draft.side === "SELL";
+  const who = draft.sellerLabel || `${draft.counterparty.slice(0, 6)}…${draft.counterparty.slice(-4)}`;
   return (
     <section className="aw-deal-draft">
       <div className="aw-draft-topline">
-        <small>DRAFT DEAL · {draft.id.slice(-6).toUpperCase()}</small>
-        <span>{funded ? `Locked · deal #${draft.dealId}` : failed ? "Failed · money refunded" : "Needs your approval · Tier 1"}</span>
+        <small>{sell ? "DRAFT OFFER TO SELL" : "DRAFT DEAL"} · {draft.id.slice(-6).toUpperCase()}</small>
+        <span>
+          {funded
+            ? sell
+              ? `Offered · deal #${draft.dealId}`
+              : `Locked · deal #${draft.dealId}`
+            : failed
+              ? sell
+                ? "Failed · nothing was offered"
+                : "Failed · money refunded"
+              : "Needs your approval · Tier 1"}
+        </span>
       </div>
       <h2>{draft.title}</h2>
       <div className="aw-draft-parties">
         <span>
-          Seller&nbsp; <b>{draft.sellerLabel || `${draft.seller.slice(0, 6)}…${draft.seller.slice(-4)}`}</b>
+          {sell ? "Buyer" : "Seller"}&nbsp; <b>{who}</b>
         </span>
-        <i className="green">In allowlist ✓</i>
+        {!sell && <i className="green">In allowlist ✓</i>}
       </div>
       {draft.milestones.map((m, i) => (
         <div className="aw-draft-milestone" key={i}>
@@ -321,11 +333,14 @@ function DraftCard({ draft, currency, onApprove }: { draft: DraftView; currency:
         <b>{tokenMoney(draft.total, currency)}</b>
       </div>
       <div className="aw-draft-notice">
-        ⓘ &nbsp;Approving debits the total from your bank and locks it in escrow. Each milestone is paid only after you approve its delivery.
+        ⓘ &nbsp;
+        {sell
+          ? "Sending puts the offer on-chain and locks nothing. The buyer pays the total from their bank when they accept; you are paid as each delivery is approved."
+          : "Approving debits the total from your bank and locks it in escrow. Each milestone is paid only after you approve its delivery."}
       </div>
       {!funded && (
         <div className="aw-draft-actions">
-          <Button onClick={() => onApprove(draft)}>{failed ? "Try again" : `Approve & lock ${tokenMoney(draft.total, currency)}`}</Button>
+          <Button onClick={() => onApprove(draft)}>{failed ? "Try again" : sell ? `Send offer · ${tokenMoney(draft.total, currency)}` : `Approve & lock ${tokenMoney(draft.total, currency)}`}</Button>
         </div>
       )}
     </section>
@@ -389,9 +404,13 @@ export function LiveChat() {
     try {
       const res = await api<{ draft: DraftView; funding: FundingResult }>(`/api/workspace/${address}/drafts/${d.id}/approve`, { method: "POST" });
       setDebitResult(res.funding);
+      if (d.side === "SELL" && res.funding.status !== "FUNDED") {
+        setItems((cur) => [...cur, { kind: "error", text: `The offer was not sent: ${res.funding.error ?? res.funding.status}` }]);
+      }
       await refresh();
     } catch (e) {
       setDebitResult({ status: "ERROR", steps: [], error: (e as Error).message });
+      if (d.side === "SELL") setItems((cur) => [...cur, { kind: "error", text: (e as Error).message }]);
     } finally {
       setDebiting(false);
     }
@@ -478,7 +497,7 @@ export function LiveChat() {
                     {item.steps
                       .filter((s) => s.draft)
                       .map((s) => (
-                        <DraftCard key={s.draft!.id} draft={latest(s.draft!)} currency={currency} onApprove={setConfirm} />
+                        <DraftCard key={s.draft!.id} draft={latest(s.draft!)} currency={currency} onApprove={(d) => (d.side === "SELL" ? approve(d) : setConfirm(d))} />
                       ))}
                   </article>
                 </div>
@@ -672,11 +691,11 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
         key: `draft-${d.id}`,
         id: "Draft",
         title: d.title,
-        person: d.sellerLabel || d.seller,
-        role: "Buying" as const,
+        person: d.sellerLabel || d.counterparty,
+        role: d.side === "SELL" ? ("Selling" as const) : ("Buying" as const),
         milestones: `0 / ${d.milestones.length}`,
         amount: tokenMoney(d.total, currency),
-        status: d.status === "DRAFT" ? "Awaiting your approval" : "Failed · refunded",
+        status: d.status === "DRAFT" ? "Awaiting your approval" : d.side === "SELL" ? "Failed · not offered" : "Failed · refunded",
         tone: STATUS_TONE[d.status],
       })),
     ...(wallet?.fileDeals ?? []).map((d) => {
