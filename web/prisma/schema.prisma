@@ -539,6 +539,8 @@ model SellerInvite {
   /// The Mock Bank account paid for MOCKBANK payouts.
   payoutAccountId String?
   payoutSetAt     DateTime?
+  /// BANK payouts through Opn Payments (test mode): the recipient created for this seller.
+  opnRecipientId  String?
   expiresAt       DateTime
   createdAt       DateTime      @default(now())
 
@@ -712,4 +714,23 @@ model KycApplication {
   updatedAt   DateTime  @updatedAt
 
   @@index([status])
+}
+
+/// One real (test-mode) bank transfer through Opn Payments to an invited seller, per paid milestone.
+/// The row is written before calling Opn, keyed by the milestone's payout, so it is sent once.
+model OpnPayout {
+  id            String   @id @default(cuid())
+  /// The PAYOUT ledger transfer this sends on (unique: one bank transfer per payout).
+  payoutKey     String   @unique
+  inviteId      String
+  recipientId   String
+  amount        BigInt
+  opnTransferId String?
+  /// PENDING (not sent yet), SENT, PAID or FAILED
+  status        String   @default("PENDING")
+  error         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([inviteId])
 }

@@ -45,6 +45,8 @@ type View = {
   sent: string;
   payout: { method: string; target: string; bank: string | null; name: string; setAt: string } | null;
   deals: Deal[];
+  /** Bank payouts through Opn Payments (test mode). */
+  opn: { active: boolean | null; transfers: { amount: string; status: string; id: string | null; error: string | null; at: string }[] } | null;
 };
 
 const SIGN = { THB: "฿", CNY: "¥" } as const;
@@ -306,6 +308,23 @@ function PayoutCard({ base, view, onDone }: { base: string; view: View; onDone: 
         <small className="inv-muted">
           Set on {new Date(p.setAt).toLocaleString()}. It cannot be changed through this link, so a leaked link cannot redirect your money.
         </small>
+        {view.opn && (
+          <div className="inv-opn">
+            <small className="inv-label">BANK TRANSFER · OPN PAYMENTS (TEST MODE)</small>
+            {view.opn.active === false && <p className="inv-muted">⏳ Waiting for the payment provider to approve this bank account. Earnings wait safely until then.</p>}
+            {view.opn.active && <p className="inv-ok">✓ Bank account approved for transfers</p>}
+            {view.opn.transfers.map((t, i) => (
+              <p key={i} className="inv-opn-row">
+                <b>{(Number(t.amount) / 100).toLocaleString(undefined, { minimumFractionDigits: 2 })} THB</b>
+                <span>
+                  {t.status === "PAID" ? "✓ Paid" : t.status === "SENDING" ? "Sending…" : t.status === "FAILED" ? "Retrying" : "Waiting"}
+                  {t.id ? ` · ${t.id}` : ""}
+                </span>
+                {t.error && t.status !== "PAID" && <small className="inv-muted">{t.error}</small>}
+              </p>
+            ))}
+          </div>
+        )}
       </section>
     );
   }
@@ -422,7 +441,8 @@ function PayoutCard({ base, view, onDone }: { base: string; view: View; onDone: 
           <span>Account holder&apos;s name{method === "MOCKBANK" ? " (must match the account)" : ""}</span>
           <input value={name} onChange={(e) => setName(e.target.value)} required />
         </label>
-        {method !== "MOCKBANK" && <small className="inv-muted">Demo: transfers to PromptPay and other banks are simulated.</small>}
+        {method === "BANK" && <small className="inv-muted">Paid by real bank transfer through Opn Payments in test mode (no real money). A new bank account is approved by the payment provider first.</small>}
+        {method !== "MOCKBANK" && method !== "BANK" && <small className="inv-muted">Demo: PromptPay transfers are simulated.</small>}
         <button className="inv-btn" type="submit" disabled={busy || !name.trim() || (method === "QR" ? !qr : !target.trim())}>
           {busy ? "Checking…" : "Save payout account"}
         </button>

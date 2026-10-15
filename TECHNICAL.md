@@ -237,7 +237,13 @@ A buyer can hire someone who has no account:
   - a Mock Bank account (the holder name must match)
   - a PromptPay id, typed or read from a PromptPay QR code (EMVCo TLV parsed, CRC-16 checked)
   - another bank's account number
-- **Payout.** Earnings are swept there automatically after each payout.
+- **Payout.** Earnings are swept there automatically after each payout. A Thai bank account is paid by a real **Opn Payments** transfer (test mode, `src/lib/bank/opn.ts`):
+  - setting the payout creates the seller as an Opn recipient (name, bank, account number) and verifies it;
+  - Opn sends nothing to a new recipient until the operator activates it in Opn's dashboard (a new-payee review);
+  - each paid milestone becomes one Opn transfer, recorded before it is sent so it is sent once;
+  - the seller's link page shows the transfer id and its state (waiting, paid).
+
+  PromptPay payouts are still simulated.
 
 ### 3.7 KYC with a national digital ID (mock ThaID, mock 国家网络身份认证)
 

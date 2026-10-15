@@ -3,7 +3,7 @@ import { getAddress } from "viem";
 
 import { disputeOf, disputeView } from "@/lib/bank/arbiter";
 import { dealTerms, deliveryInfo, syncDeal } from "@/lib/bank/deals";
-import { InviteError, inviteByToken, inviteView } from "@/lib/bank/invites";
+import { InviteError, inviteByToken, inviteView, sweepInvite } from "@/lib/bank/invites";
 import { HttpError, errorResponse, rateLimit } from "@/lib/guard";
 
 /**
@@ -18,7 +18,11 @@ export async function GET(req: Request, ctx: RouteContext<"/api/invite/[token]">
     });
     const view = await inviteView(invite);
     const wallet = getAddress(invite.sellerWallet);
-    after(() => Promise.all(view.deals.map((d) => syncDeal(wallet, d.id).catch((e) => console.error("syncDeal", d.id, e)))));
+    after(async () => {
+      await Promise.all(view.deals.map((d) => syncDeal(wallet, d.id).catch((e) => console.error("syncDeal", d.id, e))));
+      // Also picks up a bank account the payment provider approved since the last visit.
+      await sweepInvite(wallet).catch((e) => console.error("sweepInvite", e));
+    });
     const deals = await Promise.all(
       view.deals.map(async (d) => {
         const terms = await dealTerms(d.id, d.counterparty, wallet);

@@ -12,6 +12,7 @@ import { type TxOutcome, send } from "../chain";
 import { db } from "../db";
 import { readFileDeals } from "../state";
 import { accountOf, openAccount, transfer } from "./ledger";
+import { OpnError, createRecipient, findTransfer, opnEnabled, recipient, sendTransfer } from "./opn";
 
 /**
  * Sellers without an account. The buyer invites someone by name and gets a link; the server runs
@@ -212,7 +213,7 @@ export async function setPayout(invite: SellerInvite, input: PayoutInput): Promi
   const name = input.name.trim().replace(/\s+/g, " ").slice(0, 120);
   if (name.length < 2) throw new InviteError("Enter the account holder's name");
 
-  let data: { payoutMethod: PayoutMethod; payoutTarget: string; payoutBank?: string; payoutAccountId?: string; payoutName: string };
+  let data: { payoutMethod: PayoutMethod; payoutTarget: string; payoutBank?: string; payoutAccountId?: string; payoutName: string; opnRecipientId?: string };
   if (input.method === "MOCKBANK") {
     const accountNo = formatMockAccountNo(input.accountNo, invite.currency);
     if (!accountNo) throw new InviteError("Enter the full Mock Bank account number");
@@ -232,7 +233,13 @@ export async function setPayout(invite: SellerInvite, input: PayoutInput): Promi
     if (!(THAI_BANKS as readonly string[]).includes(input.bank)) throw new InviteError("Choose a bank");
     const accountNo = digits(input.accountNo);
     if (accountNo.length < 10 || accountNo.length > 12) throw new InviteError("A Thai bank account number has 10 to 12 digits");
-    data = { payoutMethod: "BANK", payoutTarget: accountNo, payoutBank: input.bank, payoutName: maskName(name) };
+    // A real bank transfer through Opn Payments (test mode) when it is configured; simulated otherwise.
+    const opnRecipientId = opnEnabled()
+      ? await createRecipient({ name, bank: input.bank, accountNo }).catch((e) => {
+          throw e instanceof OpnError ? new InviteError(e.message) : e;
+        })
+      : undefined;
+    data = { payoutMethod: "BANK", payoutTarget: accountNo, payoutBank: input.bank, payoutName: maskName(name), ...(opnRecipientId ? { opnRecipientId } : {}) };
   }
 
   // Set once: the update only matches while no destination is set, so two requests cannot both win.
@@ -256,7 +263,39 @@ export async function sweepInvite(sellerWalletInput: Address): Promise<void> {
   const to = invite.payoutAccountId ?? (await externalAccount(invite.currency)).id;
   const earned = await db.bankTransfer.findMany({ where: { toId: from.id, kind: "PAYOUT" } });
   for (const t of earned) {
+    if (await db.bankTransfer.findUnique({ where: { idempotencyKey: `withdraw:${t.idempotencyKey}` } })) continue;
+    // A bank payout through Opn: the money leaves the ledger only once Opn has sent it.
+    if (invite.opnRecipientId && !(await sendThroughOpn(invite.id, invite.opnRecipientId, t.idempotencyKey, t.amount))) return;
     await transfer({ key: `withdraw:${t.idempotencyKey}`, kind: "WITHDRAW", fromId: from.id, toId: to, amount: t.amount });
+  }
+}
+
+/**
+ * One Opn transfer for one paid milestone. The row is claimed before calling Opn, so concurrent
+ * sweeps cannot send twice; a crash after Opn accepted it is recovered by looking the transfer up
+ * by its reference. Returns false while the recipient waits for the operator's activation or Opn
+ * refuses (the next sweep retries).
+ */
+async function sendThroughOpn(inviteId: string, recipientId: string, payoutKey: string, amount: bigint): Promise<boolean> {
+  const row =
+    (await db.opnPayout.findUnique({ where: { payoutKey } })) ??
+    (await db.opnPayout.create({ data: { payoutKey, inviteId, recipientId, amount } }).catch(() => db.opnPayout.findUniqueOrThrow({ where: { payoutKey } })));
+  if (row.status === "PAID") return true;
+  try {
+    if (!(await recipient(recipientId)).active) {
+      await db.opnPayout.update({ where: { id: row.id }, data: { error: "Waiting for the payment provider to approve this bank account" } });
+      return false;
+    }
+    const claimed = await db.opnPayout.updateMany({ where: { id: row.id, status: { in: ["PENDING", "FAILED"] } }, data: { status: "SENDING" } });
+    if (claimed.count !== 1) return false;
+    const prior = await findTransfer(row.id);
+    const t = prior?.paid ? prior : await sendTransfer(recipientId, amount, row.id);
+    await db.opnPayout.update({ where: { id: row.id }, data: { status: "PAID", opnTransferId: t.id, error: null } });
+    return true;
+  } catch (err) {
+    await db.opnPayout.update({ where: { id: row.id }, data: { status: "FAILED", error: err instanceof Error ? err.message.slice(0, 300) : "Opn error" } });
+    if (err instanceof OpnError) return false;
+    throw err;
   }
 }
 
@@ -296,5 +335,18 @@ export async function inviteView(invite: SellerInvite) {
         }
       : null,
     deals: deals.filter((d) => d.role === "seller"),
+    // Bank payouts through Opn Payments: each transfer and its state.
+    opn: invite.opnRecipientId
+      ? {
+          active: await recipient(invite.opnRecipientId).then((r) => r.active).catch(() => null),
+          transfers: (await db.opnPayout.findMany({ where: { inviteId: invite.id }, orderBy: { createdAt: "desc" } })).map((p) => ({
+            amount: p.amount.toString(),
+            status: p.status,
+            id: p.opnTransferId,
+            error: p.error,
+            at: p.updatedAt,
+          })),
+        }
+      : null,
   };
 }
