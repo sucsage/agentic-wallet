@@ -1,6 +1,7 @@
 "use client";
 import { WaitingButton, useDemoWait } from "./waiting-button";
 import { useAppRouter } from "./navigation";
+import { PreDraftDeal } from "./pre-draft-deal";
 import { V08BalanceBar } from "./balance-bar";
 import { useOperation } from "./operation-loading";
 
@@ -251,10 +252,10 @@ export function CreateDealScreen() {
   const [confirmDebit, setConfirmDebit] = useState(false);
   const [agentPanelOpen, setAgentPanelOpen] = useState(true);
   const [actingAs, setActingAs] = useState("company");
-  const [activeChat, setActiveChat] = useState("logo");
+  const [activeChat, setActiveChat] = useState("draft");
   const [chatToDelete,setChatToDelete] = useState<string|null>(null);
   const [companyApproved,setCompanyApproved] = useState(false);
-  const [chats, setChats] = useState([{id:"logo",title:"Logo + PLC wiring",date:"Today · 10:36"},{id:"cad",title:"D-014 · CAD drawings review",date:"12 Oct"},{id:"dispute",title:"D-012 · dispute help",date:"8 Oct"}]);
+  const [chats, setChats] = useState([{id:"draft",title:"New deal",date:"Just now"},{id:"logo",title:"Logo + PLC wiring",date:"Today · 10:36"},{id:"cad",title:"D-014 · CAD drawings review",date:"12 Oct"},{id:"dispute",title:"D-012 · dispute help",date:"8 Oct"}]);
   const lang = useLang();
   const sendMessage = () => {
     if (!message.trim() || typing.pending) return;
@@ -273,6 +274,7 @@ export function CreateDealScreen() {
         <div className="aw-ai-messages" role="region" aria-label="Chat history" tabIndex={0}>
           <div className="aw-ai-message-meta">Agent · 10:36</div>
           <article className="aw-ai-agent-message"><p>Hi Gun. Tell me what you want to hire or sell. I will draft the deal and check your bank balance and policy before anything is debited.</p><div className="aw-ai-suggestions">{suggestions.map((prompt) => <button type="button" key={prompt} onClick={() => setMessage(translateMockupText(prompt, lang))}>{prompt}</button>)}</div></article>
+          {!["logo","cad","dispute"].includes(activeChat) && <article className="aw-ai-agent-message aw-ai-draft-wrap aw-ai-predraft-message"><PreDraftDeal key={activeChat + actingAs} account={actingAs === "personal" ? "personal" : "company"} onAddContact={() => router.push("/contacts")}/></article>}
           {activeChat === "logo" && <>
           <div className="aw-ai-user-message"><small>You · 10:38</small><p>Hire a logo designer for ฿5,000, paid in 2 milestones. The designer is Lin Wei, she is in China.</p></div>
           <div className="aw-ai-message-meta">Agent · 10:39</div>

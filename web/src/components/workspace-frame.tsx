@@ -1,5 +1,6 @@
 "use client";
 import { useState, type ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import { Header, SIDEBAR_GROUPS, SidebarIcon } from "./mockup-ui";
 import { OperationOutlet } from "./operation-loading";
 import { useAppRouter } from "./navigation";
@@ -18,12 +19,14 @@ export function routeFromPath(path: string) {
 }
 export function WorkspaceFrame({ activeRoute, children, mainClass = "" }: { activeRoute: string; children: ReactNode; mainClass?: string }) {
   const router = useAppRouter(); const lang = useLang();
+  const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const active = activeRoute.startsWith("รายละเอียดดีล ") || activeRoute === "คำตัดสิน AI" ? "ดีลทั้งหมด" : activeRoute;
   return <div className="aw-app aw-v08">
     <Header authenticated onLogin={() => router.push("/login")} onSignup={() => router.push("/login")} />
     <div className={`aw-workspace${active === "สร้างดีล" ? " aw-ai-chat-workspace" : ""}${sidebarOpen ? "" : " aw-sidebar-collapsed"}`}>
       <aside className="aw-sidebar">
+        <div className="aw-sidebar-navigation">
         <div className="aw-sidebar-menu-head"><small>{translateMockupText("MENU", lang)}</small>
           <button className={`aw-sidebar-toggle${sidebarOpen ? " is-open" : " is-closed"}`} type="button"
             aria-label={translateMockupText(sidebarOpen ? "ซ่อนเมนูด้านข้าง" : "แสดงเมนูด้านข้าง", lang)} aria-expanded={sidebarOpen}
@@ -40,11 +43,12 @@ export function WorkspaceFrame({ activeRoute, children, mainClass = "" }: { acti
             {"badge" in item && <span className="aw-nav-badge">{item.badge}</span>}
           </button>)}
         </nav>)}
+        </div>
         <button className="aw-sidebar-profile" type="button" title="Gun · Personal ···4821" onClick={() => router.push("/profile")}>
           <span className="aw-sidebar-avatar">G</span><span className="aw-profile-copy"><b>Gun</b><small>{translateMockupText("Personal · ··4821", lang)}</small></span>
         </button>
       </aside>
-      <main className={`aw-main ${mainClass}`}><div className="aw-screen"><OperationOutlet>{children}</OperationOutlet></div></main>
+      <main key={pathname} className={`aw-main ${mainClass}`}><div className="aw-screen"><OperationOutlet>{children}</OperationOutlet></div></main>
     </div>
   </div>;
 }

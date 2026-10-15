@@ -146,7 +146,8 @@
 .aw-v08 .aw-ai-agent-message a{color:#9b8bff;text-decoration:underline}
 .aw-v08 .aw-ai-suggestions{gap:8px}
 .aw-v08 .aw-ai-suggestions button{font-size:12px;padding:6px 12px;min-height:34px;text-align:left}
-.aw-v08 .aw-ai-user-message{width:min(84%,560px);margin:12px 0;gap:8px}
+.aw-v08 .aw-ai-user-message{width:min(84%,560px);margin:12px 0 12px auto;gap:8px;min-width:0}
+.aw-v08 .aw-ai-user-message p{overflow-wrap:anywhere}
 .aw-v08 .aw-ai-user-message p{font-size:14px;padding:16px 18px;line-height:1.6}
 .aw-v08 .aw-ai-tool-badges{gap:6px}
 .aw-v08 .aw-ai-tool-badges span{font-size:11px;padding:3px 9px}
@@ -553,6 +554,30 @@
  .aw-v08 .aw-ai-chat-layout,.aw-v08 .aw-ai-chat-layout.agent-panel-collapsed{max-width:none;padding-left:16px;column-gap:12px}
 }
 
+/* Keep desktop chat within the viewport; messages own the scrolling area. */
+@media(min-width:1051px){
+ .aw-v08 .aw-ai-chat-workspace{height:calc(100dvh - var(--v08-header));min-height:0;overflow:hidden}
+ .aw-v08 .aw-ai-chat-workspace>.aw-sidebar{min-height:0;height:100%;overflow-y:auto}
+ .aw-v08 .aw-main-chat,.aw-v08 .aw-main-chat>.aw-screen{height:100%;min-height:0}
+ .aw-v08 .aw-ai-chat-page{height:100%;min-height:0!important;display:flex;flex-direction:column}
+ .aw-v08 .aw-ai-chat-page>.aw-ai-balancebar{flex:0 0 auto}
+ .aw-v08 .aw-ai-chat-layout,.aw-v08 .aw-ai-chat-layout.agent-panel-collapsed{flex:1;min-height:0;width:100%;padding-top:20px;padding-bottom:20px;grid-template-rows:minmax(0,1fr)}
+ .aw-v08 .aw-ai-conversation{height:100%;min-height:0}
+ .aw-v08 .aw-v08-chats,.aw-v08 .aw-v08-agent-rail{max-height:100%;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#454545 transparent}
+ .aw-v08 .aw-v08-agent-rail:not(.expanded){overflow:hidden;scrollbar-width:none}
+ .aw-v08 .aw-v08-agent-rail:not(.expanded)::-webkit-scrollbar{display:none}
+}
+@media(min-width:1051px) and (max-width:1599px){
+ .aw-v08 .aw-ai-chat-layout{--agent-card-width:280px;grid-template-columns:210px minmax(0,1fr) var(--agent-card-width)}
+ .aw-v08 .aw-ai-chat-layout.agent-panel-collapsed{grid-template-columns:210px minmax(0,1fr) 56px}
+ .aw-v08 .aw-v08-agent-details{padding:18px}
+}
+
+/* Reserve the profile footer while long page content and navigation scroll independently. */
+.aw-app.aw-v08 .aw-workspace>.aw-sidebar{position:sticky;top:0;align-self:start;height:calc(100dvh - var(--v08-header));min-height:0;overflow:hidden}
+.aw-v08 .aw-sidebar-navigation{flex:1;min-height:0;min-width:0;display:flex;flex-direction:column;gap:18px;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:#454545 transparent}
+.aw-app.aw-v08 .aw-sidebar-profile{flex-shrink:0;margin-top:0}
+
 /* Keep the rail, labels and menu spacing on one continuous timing curve. */
 .aw-v08 .aw-workspace{--sidebar-duration:.5s;--sidebar-ease:cubic-bezier(.4,0,.2,1);transition:grid-template-columns var(--sidebar-duration) var(--sidebar-ease)}
 @media(min-width:761px){
@@ -574,3 +599,70 @@
  .aw-v08 .aw-workspace .aw-sidebar-profile{transition:width var(--sidebar-duration) var(--sidebar-ease),height var(--sidebar-duration) var(--sidebar-ease),min-height var(--sidebar-duration) var(--sidebar-ease),padding var(--sidebar-duration) var(--sidebar-ease),gap var(--sidebar-duration) var(--sidebar-ease),border-color .3s ease}
 }
 @media(prefers-reduced-motion:reduce){.aw-v08 .aw-workspace,.aw-v08 .aw-workspace *{transition:none!important}}
+
+/* CSS viewport sizes, independent of brand, OS and Retina pixel density.
+   Keep the existing phone rules below 761px unchanged. */
+@media (min-width:761px){
+ .aw-app.aw-v08{--desktop-text:clamp(15px,calc(12px + .22vw),18px);--desktop-small:clamp(13px,calc(10px + .2vw),16px);--desktop-title:clamp(30px,2.3vw,46px);--desktop-card:clamp(18px,1.4vw,32px);--v08-sidebar:clamp(208px,15vw,280px);--v08-gutter:clamp(20px,2vw,56px);font-size:var(--desktop-text)}
+ .aw-app.aw-v08 .aw-main{min-width:0}
+ .aw-app.aw-v08 :is(.aw-ai-chat-page,.aw-deals-page,.aw-summary-page,.aw-friends-page,.aw-groups-page,.aw-policy-page,.aw-profile-page,.aw-approvals-page,.aw-deal-detail-page,.aw-d012-verdict-page){width:100%;margin:0;min-width:0}
+ .aw-app.aw-v08 :is(.aw-deals-content,.aw-summary-content,.aw-friends-content,.aw-groups-content,.aw-policy-content,.aw-profile-content,.aw-approvals-content,.aw-d021-content,.aw-d012-content,.aw-d015-content,.aw-d012-verdict-content,.aw-group-wallet-page,.aw-create-group-content,.aw-v08-flow-content){width:100%;max-width:1920px;margin-left:auto;margin-right:auto;padding-left:var(--v08-gutter);padding-right:var(--v08-gutter);min-width:0}
+ .aw-app.aw-v08 :is(.aw-page-title,.aw-deals-heading,.aw-summary-heading,.aw-friends-heading,.aw-groups-heading,.aw-approvals-heading,.aw-d021-heading,.aw-d012-heading,.aw-d015-heading,.aw-create-group-heading,.aw-v08-flow-heading) h1{font-size:var(--desktop-title)}
+ .aw-app.aw-v08 :is(.aw-button,.aw-nav-item,.aw-ai-composer input,.aw-ai-composer>button[type=submit],.aw-deals-table td,.aw-deal-name b,.aw-deal-amount b,.aw-profile-passbook b,.aw-profile-passbook strong,.aw-policy-limit,.aw-policy-recipient b,.aw-approval-copy>b,.aw-group-card p,.aw-group-panel p,.aw-friends-content p,.aw-friends-content button,.aw-friends-content input,.aw-ai-agent-message p,.aw-ai-user-message p,.aw-predraft,.aw-generated-draft p){font-size:var(--desktop-text);line-height:1.55}
+ .aw-app.aw-v08 :is(.aw-page-title p,.aw-deals-heading p,.aw-summary-heading p,.aw-friends-heading p,.aw-groups-heading p,.aw-approvals-heading p,.aw-summary-metric>small,.aw-summary-metric>p,.aw-summary-ai>p,.aw-profile-setting,.aw-profile-data-card>p,.aw-profile-consent>label,.aw-profile-delete>p,.aw-policy-test>p,.aw-d012-card p,.aw-d021-key-note,.aw-d021-fingerprint,.aw-d015-delivered-note){font-size:var(--desktop-text);line-height:1.6}
+ .aw-app.aw-v08 :is(.aw-deals-table th,.aw-deal-name small,.aw-deal-amount small,.aw-profile-passbook small,.aw-approval-copy>p,.aw-approval-copy>small,.aw-friends-content small,.aw-group-card small,.aw-group-invite small,.aw-v08-chat-list small,.aw-predraft small,.aw-predraft label,.aw-predraft-options button,.aw-predraft input,.aw-predraft-known span,.aw-predraft-known b,.aw-predraft footer>span){font-size:var(--desktop-small);line-height:1.5}
+ .aw-app.aw-v08 :is(.aw-summary-metric,.aw-summary-ai,.aw-summary-chart,.aw-profile-top>.aw-card,.aw-profile-bottom>.aw-card,.aw-profile-data-card,.aw-policy-grid>.aw-card,.aw-group-card,.aw-group-panel,.aw-group-wallet-card,.aw-d012-card,.aw-d021-review,.aw-d015-delivery){padding:var(--desktop-card)}
+ .aw-app.aw-v08 .aw-sidebar .aw-nav-item{font-size:var(--desktop-text);min-height:44px}
+ .aw-app.aw-v08 .aw-profile-copy b{font-size:var(--desktop-text)}
+ .aw-app.aw-v08 .aw-profile-copy small{font-size:var(--desktop-small)}
+ .aw-app.aw-v08 .aw-ai-balancebar{gap:clamp(14px,1.5vw,32px);padding-left:var(--v08-gutter);padding-right:var(--v08-gutter)}
+ .aw-app.aw-v08 :is(.aw-ai-bank small,.aw-ai-balance-stat small,.aw-ai-bank b i){font-size:var(--desktop-small)}
+ .aw-app.aw-v08 :is(.aw-ai-bank b,.aw-ai-balance-stat b){font-size:clamp(18px,1.2vw,25px)}
+ .aw-app.aw-v08 .aw-ai-balance-actions{gap:clamp(10px,1.2vw,24px)}
+ .aw-app.aw-v08 .aw-navbar-search{width:clamp(260px,30vw,560px);max-width:36vw}
+ .aw-app.aw-v08 .aw-deals-table td{height:auto;min-height:76px;padding:18px clamp(12px,1.2vw,24px)}
+ .aw-app.aw-v08 :is(.aw-deals-table-wrap,.aw-summary-table-wrap){max-width:100%;overflow-x:auto}
+ .aw-app.aw-v08 .aw-approval-copy{min-width:0}
+ .aw-app.aw-v08 :is(.aw-approval-buttons,.aw-d021-actions,.aw-gw-actions,.aw-create-group-heading){flex-wrap:wrap}
+ .aw-app.aw-v08 :is(.aw-profile-passbook,.aw-friend-result,.aw-group-invite){min-width:0}
+ .aw-app.aw-v08 :is(.aw-profile-passbook b,.aw-approval-copy>b,.aw-friend-name b,.aw-group-invite b){overflow-wrap:anywhere}
+ .aw-app.aw-v08 .aw-predraft input{min-width:0}
+ .aw-app.aw-v08 .aw-milestone-wrap{max-width:1680px;padding-left:clamp(28px,5vw,96px);padding-right:clamp(28px,5vw,96px)}
+ .aw-app.aw-v08 .aw-milestone-hero h1{font-size:clamp(44px,4.2vw,80px);max-width:1100px}
+}
+
+
+@media(min-width:1280px){
+ .aw-app.aw-v08 .aw-ai-chat-layout{--agent-card-width:clamp(264px,17vw,380px);grid-template-columns:clamp(208px,14vw,300px) minmax(0,1fr) var(--agent-card-width)}
+ .aw-app.aw-v08 .aw-ai-chat-layout.agent-panel-collapsed{grid-template-columns:clamp(208px,14vw,300px) minmax(0,1fr) 64px}
+ .aw-app.aw-v08 .aw-ai-conversation{padding:clamp(16px,1.3vw,28px)}
+}
+@media(min-width:761px) and (max-width:1279px){
+ .aw-app.aw-v08{--v08-sidebar:200px}
+ .aw-app.aw-v08 .aw-ai-balancebar{flex-wrap:wrap}
+ .aw-app.aw-v08 .aw-ai-balance-actions{margin-left:0}
+ .aw-app.aw-v08 :is(.aw-summary-metrics,.aw-profile-data,.aw-policy-tiers,.aw-d021-metrics){grid-template-columns:repeat(2,minmax(0,1fr))}
+ .aw-app.aw-v08 :is(.aw-profile-top,.aw-profile-bottom,.aw-policy-grid,.aw-d021-columns,.aw-d012-columns,.aw-d015-columns,.aw-create-group-layout,.aw-group-wallet-top,.aw-group-wallet-bottom){grid-template-columns:minmax(0,1fr)}
+ .aw-app.aw-v08 .aw-deals-content{overflow:hidden}
+ .aw-app.aw-v08 .aw-ai-chat-workspace{height:auto;min-height:calc(100dvh - var(--v08-header));overflow:visible}
+ .aw-app.aw-v08 :is(.aw-main-chat,.aw-main-chat>.aw-screen,.aw-ai-chat-page){height:auto}
+ .aw-app.aw-v08 .aw-ai-chat-layout,.aw-app.aw-v08 .aw-ai-chat-layout.agent-panel-collapsed{display:grid;height:auto;grid-template-columns:minmax(0,1fr);grid-template-rows:auto;gap:16px;padding:20px var(--v08-gutter)}
+ .aw-app.aw-v08 .aw-v08-chats{grid-column:1;grid-row:1;max-height:220px}
+ .aw-app.aw-v08 .aw-v08-chat-list{display:flex;overflow-x:auto;gap:8px}
+ .aw-app.aw-v08 .aw-v08-chat-list>div{min-width:170px;flex:1}
+ .aw-app.aw-v08 .aw-ai-conversation{grid-column:1;grid-row:2;height:clamp(520px,72dvh,900px)}
+ .aw-app.aw-v08 .aw-v08-agent-rail{grid-column:1;grid-row:3;max-height:none}
+ .aw-app.aw-v08 .aw-v08-agent-rail.expanded{height:auto;min-height:600px}
+ .aw-app.aw-v08 .aw-v08-agent-details{width:100%}
+ .aw-app.aw-v08 .aw-v08-agent-rail:not(.expanded){width:64px}
+}
+
+
+/* One viewport-sized app shell; long data pages scroll inside main. */
+@media(min-width:761px){
+ .aw-app.aw-v08 .aw-workspace{height:calc(100dvh - var(--v08-header));min-height:0!important;overflow:hidden}
+ .aw-app.aw-v08 .aw-workspace>.aw-main{height:100%;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior-y:contain;scrollbar-width:thin;scrollbar-color:#454545 transparent}
+ .aw-app.aw-v08 :is(.aw-deals-page,.aw-summary-page,.aw-friends-page,.aw-groups-page,.aw-policy-page,.aw-profile-page,.aw-approvals-page,.aw-deal-detail-page,.aw-d012-verdict-page,.aw-group-invite-page,.aw-group-wallet-page,.aw-create-group-content){min-height:0}
+ .aw-app.aw-v08 :is(.aw-deals-content,.aw-summary-content,.aw-friends-content,.aw-groups-content,.aw-policy-content,.aw-profile-content,.aw-approvals-content,.aw-d021-content,.aw-d012-content,.aw-d015-content,.aw-d012-verdict-content,.aw-group-invite-content,.aw-group-wallet-page,.aw-create-group-content,.aw-v08-flow-content){padding-bottom:24px}
+ .aw-app.aw-v08 :is(.aw-deals-content,.aw-summary-content,.aw-friends-content,.aw-groups-content,.aw-policy-content,.aw-profile-content,.aw-approvals-content,.aw-d021-content,.aw-d012-content,.aw-d015-content,.aw-d012-verdict-content,.aw-group-invite-content,.aw-create-group-content,.aw-v08-flow-content)>:last-child{margin-bottom:0}
+}
