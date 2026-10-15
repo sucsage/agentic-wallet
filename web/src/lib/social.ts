@@ -2,13 +2,14 @@ import "server-only";
 
 import { type Address, getAddress } from "viem";
 
-import type { Currency } from "@/generated/prisma/client";
+import { Prisma, type Currency } from "@/generated/prisma/client";
 
 import { agentWalletAbi } from "./abis";
-import { approveDraft } from "./bank/drafts";
+import { type DraftMilestone, approveDraft } from "./bank/drafts";
 import { inviteLabels } from "./bank/invites";
 import { type TxOutcome, publicClient, send } from "./chain";
 import { db } from "./db";
+import { KycRequired, requireKycFor } from "./kyc";
 import { primaryWalletAddress } from "./user-wallets";
 
 /**
@@ -139,9 +140,15 @@ export async function friendLabels(userId: string): Promise<Map<string, string>>
 export async function createGroup(userId: string, currency: Currency, input: { name: string; memberIds: string[]; threshold: number }) {
   const friends = new Set((await listFriends(userId)).filter((f) => f.status === "ACCEPTED").map((f) => f.userId));
   const members = [...new Set(input.memberIds)].filter((id) => id !== userId);
+  if (members.length === 0) throw new SocialError("Add at least one friend: a group decides together");
   if (members.some((id) => !friends.has(id))) throw new SocialError("Only friends can be added to a group");
+  // Group deals are paid from a member's bank: everyone must bank in the group's currency.
+  const banks = await db.bankCustomer.findMany({ where: { userId: { in: members } }, select: { userId: true, currency: true } });
+  const other = members.filter((id) => banks.find((b) => b.userId === id)?.currency !== currency);
+  if (other.length) throw new SocialError(`Every member must bank in ${currency}; ${other.length} of the friends you chose do not`);
   const size = members.length + 1;
-  if (input.threshold < 1 || input.threshold > size) throw new SocialError(`Threshold must be between 1 and ${size}`);
+  // At least two votes: the proposer's own yes alone must never lock a group deal.
+  if (input.threshold < 2 || input.threshold > size) throw new SocialError(`Votes needed must be between 2 and ${size}`);
   return db.group.create({
     data: {
       name: input.name,
@@ -195,6 +202,9 @@ export async function groupDetail(userId: string, groupId: string) {
         yes: p.votes.filter((v) => v.approve).length,
         no: p.votes.filter((v) => !v.approve).length,
         myVote: p.votes.find((v) => v.userId === userId)?.approve ?? null,
+        voters: p.votes.map((v) => ({ name: g.members.find((m) => m.userId === v.userId)?.user.name ?? "a former member", approve: v.approve })),
+        proposer: g.members.find((m) => m.userId === p.proposerId)?.user.name ?? "a former member",
+        mine: p.proposerId === userId,
       };
     }),
   };
@@ -202,11 +212,56 @@ export async function groupDetail(userId: string, groupId: string) {
 
 /** A member puts one of their own drafts to the group's vote. Their own yes is counted at once. */
 export async function proposeToGroup(userId: string, groupId: string, draftId: string) {
-  await memberGroup(userId, groupId);
+  const group = await memberGroup(userId, groupId);
   const draft = await db.dealDraft.findFirst({ where: { id: draftId, userId, status: "DRAFT" } });
   if (!draft) throw new SocialError("Draft not found or already used");
-  const p = await db.groupProposal.create({ data: { groupId, proposerId: userId, draftId } });
-  return vote(userId, p.id, true);
+  // Only a purchase locks money; a sale offer has nothing for the group to approve.
+  if (draft.side !== "BUY") throw new SocialError("Only a purchase can be put to a group vote");
+  const customer = await db.bankCustomer.findFirst({ where: { userId }, select: { currency: true } });
+  if (customer?.currency !== group.currency) throw new SocialError(`This group pays in ${group.currency}`);
+  // Checked now, so a passing vote does not fail on the proposer's missing KYC.
+  const total = (draft.milestones as DraftMilestone[]).reduce((t, m) => t + Number(m.amount), 0);
+  await requireKycFor(userId, group.currency, total).catch((e) => {
+    throw e instanceof KycRequired ? new SocialError(e.message) : e;
+  });
+  // A draft whose earlier vote was rejected or withdrawn may be put to a vote again.
+  await db.groupProposal.deleteMany({ where: { draftId, status: { in: ["REJECTED", "FAILED"] } } });
+  try {
+    const p = await db.groupProposal.create({ data: { groupId, proposerId: userId, draftId } });
+    return await vote(userId, p.id, true);
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") throw new SocialError("This draft is already up for a vote");
+    throw err;
+  }
+}
+
+/** The proposer takes a proposal back while it is open; the draft is theirs to approve or discard again. */
+export async function withdrawProposal(userId: string, proposalId: string) {
+  const done = await db.groupProposal.updateMany({ where: { id: proposalId, proposerId: userId, status: "OPEN" }, data: { status: "REJECTED" } });
+  if (done.count !== 1) throw new SocialError("Only the proposer can withdraw an open proposal");
+}
+
+/** A member leaves; the group must still be able to reach its vote threshold without them. */
+export async function leaveGroup(userId: string, groupId: string) {
+  const g = await db.group.findFirst({ where: { id: groupId, members: { some: { userId } } }, include: { members: true } });
+  if (!g) throw new SocialError("Group not found");
+  if (g.members.length - 1 < g.threshold) {
+    throw new SocialError(`The group needs ${g.threshold} votes and would have ${g.members.length - 1} members. Ask the admin to delete it instead.`);
+  }
+  if (g.members.find((m) => m.userId === userId)?.role === "ADMIN" && !g.members.some((m) => m.userId !== userId && m.role === "ADMIN")) {
+    // Hand the admin role to the longest-standing other member.
+    const next = g.members.filter((m) => m.userId !== userId).sort((a, b) => a.joinedAt.getTime() - b.joinedAt.getTime())[0];
+    await db.groupMember.update({ where: { groupId_userId: { groupId, userId: next.userId } }, data: { role: "ADMIN" } });
+  }
+  await db.groupVote.deleteMany({ where: { userId, proposal: { groupId, status: "OPEN" } } });
+  await db.groupMember.delete({ where: { groupId_userId: { groupId, userId } } });
+}
+
+/** The admin deletes the group; open votes end and their drafts go back to their proposers. */
+export async function deleteGroup(userId: string, groupId: string) {
+  const m = await db.groupMember.findUnique({ where: { groupId_userId: { groupId, userId } } });
+  if (m?.role !== "ADMIN") throw new SocialError("Only the group's admin can delete it");
+  await db.group.delete({ where: { id: groupId } });
 }
 
 /**
@@ -234,7 +289,7 @@ export async function vote(userId: string, proposalId: string, approve: boolean)
       const wallet = await walletOf(p.proposerId);
       if (!wallet) throw new SocialError("The proposer has no agent wallet");
       try {
-        const { funding } = await approveDraft(p.proposerId, wallet, p.draftId);
+        const { funding } = await approveDraft(p.proposerId, wallet, p.draftId, { viaGroup: true });
         // PENDING stays EXECUTED: the funding resumes when the proposer retries the draft.
         if (funding.status !== "FUNDED" && funding.status !== "PENDING") {
           await db.groupProposal.update({ where: { id: p.id }, data: { status: "FAILED" } });

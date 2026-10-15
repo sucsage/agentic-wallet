@@ -1523,3 +1523,7 @@
 .aw-topup-box input{min-height:34px;padding:6px 10px;border:1px solid #333;border-radius:8px;background:#0d0d0d;color:#fff}
 .aw-topup-box button{min-height:34px;border:0;border-radius:8px;background:#559bff;color:#fff;font-weight:600;cursor:pointer}
 .aw-topup-box button:disabled{opacity:.5;cursor:not-allowed}
+
+.aw-group-card.active{border-color:#559bff;background:#141c29}
+.aw-group-card:focus-visible{outline:2px solid #559bff;outline-offset:2px}
+.aw-group-wallet-heading .aw-gw-actions{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}

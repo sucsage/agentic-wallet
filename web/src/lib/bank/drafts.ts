@@ -172,10 +172,19 @@ export async function createSellDraft(
 }
 
 /** The user approves: sign, debit the bank just in time, lock in FileEscrow. Safe to call again. */
-export async function approveDraft(userId: string, wallet: Address, draftId: string): Promise<{ draft: DealDraft; funding: FundingResult }> {
+export async function approveDraft(
+  userId: string,
+  wallet: Address,
+  draftId: string,
+  opts: { viaGroup?: boolean } = {},
+): Promise<{ draft: DealDraft; funding: FundingResult }> {
   const draft = await db.dealDraft.findFirst({ where: { id: draftId, userId, walletAddress: wallet } });
   if (!draft) throw new DraftError("Draft not found");
   if (draft.status === "CANCELLED") throw new DraftError("This draft was cancelled");
+  // A draft put to a group's vote is locked by the vote, not by its proposer alone.
+  if (!opts.viaGroup && (await db.groupProposal.findFirst({ where: { draftId, status: "OPEN" } }))) {
+    throw new DraftError("This draft is waiting for its group's vote. It is locked when enough members approve.");
+  }
   const units = await walletUnits(wallet);
   const milestones = draft.milestones as DraftMilestone[];
   if (draft.side === "SELL") return approveSellDraft(draft, wallet, units, milestones);
@@ -278,6 +287,16 @@ async function approveSellDraft(
     },
   });
   return { draft: updated, funding };
+}
+
+/** Discarding a draft also withdraws it from any group vote it was in. */
+export async function discardDraft(userId: string, wallet: Address, draftId: string): Promise<boolean> {
+  const done = await db.dealDraft.updateMany({
+    where: { id: draftId, userId, walletAddress: wallet, status: { in: ["DRAFT", "FAILED"] } },
+    data: { status: "CANCELLED" },
+  });
+  if (done.count === 1) await db.groupProposal.updateMany({ where: { draftId, status: "OPEN" }, data: { status: "REJECTED" } });
+  return done.count === 1;
 }
 
 export function listDrafts(userId: string, wallet: Address) {

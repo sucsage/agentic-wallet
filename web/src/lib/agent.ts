@@ -12,7 +12,7 @@ import {
   transfer,
 } from "./actions";
 import { friendLabels } from "./social";
-import { DraftError, type DraftView, createDraft, createSellDraft, draftView, listDrafts } from "./bank/drafts";
+import { DraftError, type DraftView, createDraft, createSellDraft, discardDraft, draftView, listDrafts } from "./bank/drafts";
 import { db } from "./db";
 import { InviteError, createInvite } from "./bank/invites";
 import { LIMITS, kycOf } from "./kyc";
@@ -597,7 +597,7 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
       const d = drafts.find((x) => x.id.slice(-6).toUpperCase() === ref);
       if (!d) return { tool: name, input, summary: `BLOCKED: no draft ${draftRef(ref)}; use list_deals for the references` };
       if (d.status !== "DRAFT" && d.status !== "FAILED") return { tool: name, input, summary: `BLOCKED: ${draftRef(d.id)} is already ${d.status.toLowerCase()} and cannot be discarded` };
-      await db.dealDraft.update({ where: { id: d.id }, data: { status: "CANCELLED" } });
+      await discardDraft(userId, wallet, d.id);
       return { tool: name, input, summary: `DISCARDED ${draftRef(d.id)} "${d.title}". Nothing had been signed or debited.` };
     }
     case "forecast_cashflow": {

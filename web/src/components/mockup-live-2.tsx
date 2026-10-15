@@ -788,7 +788,28 @@ function InviteByLink() {
 
 type GroupSummary = { id: string; name: string; currency: string; threshold: number; members: { userId: string; name: string; role: string }[]; openProposals: number };
 type GroupDetail = GroupSummary & {
-  proposals: { id: string; proposerId: string; title: string; status: string; dealId: number | null; yes: number; no: number; myVote: boolean | null; milestones: { amount: string }[] }[];
+  myRole: "ADMIN" | "MEMBER";
+  proposals: {
+    id: string;
+    proposerId: string;
+    proposer: string;
+    mine: boolean;
+    title: string;
+    status: string;
+    dealId: number | null;
+    yes: number;
+    no: number;
+    myVote: boolean | null;
+    voters: { name: string; approve: boolean }[];
+    milestones: { amount: string }[];
+  }[];
+};
+
+const PROPOSAL_STATUS: Record<string, string> = {
+  OPEN: "Voting",
+  EXECUTED: "Approved · locked from the proposer's bank",
+  REJECTED: "Rejected or withdrawn",
+  FAILED: "Approved, but locking failed · the proposer's bank was refunded or never debited",
 };
 
 export function LiveGroups({ initialCreateOpen = false }: { initialCreateOpen?: boolean }) {
@@ -806,7 +827,9 @@ export function LiveGroups({ initialCreateOpen = false }: { initialCreateOpen?: 
   const [draftId, setDraftId] = useState("");
   const currency = me?.bank.currency ?? "THB";
   const friends = (friendsData?.friends ?? []).filter((f) => f.status === "ACCEPTED");
-  const openDrafts = drafts.filter((d) => d.status === "DRAFT");
+  // Only purchases lock money, so only they go to a vote.
+  const openDrafts = drafts.filter((d) => d.status === "DRAFT" && d.side === "BUY");
+  const size = members.length + 1;
   const total = (ms: { amount: string }[]) => ms.reduce((t, m) => t + Number(m.amount), 0);
 
   return localizeMockupNode(
@@ -849,7 +872,11 @@ export function LiveGroups({ initialCreateOpen = false }: { initialCreateOpen?: 
                     <input
                       type="checkbox"
                       checked={members.includes(f.userId)}
-                      onChange={(e) => setMembers((cur) => (e.target.checked ? [...cur, f.userId] : cur.filter((x) => x !== f.userId)))}
+                      onChange={(e) => {
+                        const next = e.target.checked ? [...members, f.userId] : members.filter((x) => x !== f.userId);
+                        setMembers(next);
+                        setThreshold((t) => Math.min(Math.max(t, 2), next.length + 1));
+                      }}
                     />
                     <span>{f.name}</span>
                   </label>
@@ -857,11 +884,12 @@ export function LiveGroups({ initialCreateOpen = false }: { initialCreateOpen?: 
               </div>
               <label className="aw-create-field">
                 <span>
-                  Votes needed (of {members.length + 1} members, you included)
+                  Votes needed to lock a group deal (2 to {Math.max(2, size)} of {size} members, you included)
                 </span>
-                <input type="number" min={1} max={members.length + 1} value={threshold} onChange={(e) => setThreshold(Number(e.target.value))} />
+                <input type="number" min={2} max={Math.max(2, size)} value={threshold} onChange={(e) => setThreshold(Number(e.target.value))} />
               </label>
-              <Button type="submit" disabled={busy === "create" || !name}>
+              {members.length === 0 && <small>Choose at least one friend. Members must bank in {currency}.</small>}
+              <Button type="submit" disabled={busy === "create" || !name || members.length === 0 || threshold < 2 || threshold > size}>
                 {busy === "create" ? "…" : "Create group"}
               </Button>
             </form>
@@ -870,7 +898,17 @@ export function LiveGroups({ initialCreateOpen = false }: { initialCreateOpen?: 
         <div className="aw-group-cards">
           {data?.groups.length === 0 && <p>No groups yet.</p>}
           {data?.groups.map((g) => (
-            <article className="aw-group-card" key={g.id} onClick={() => setSelected(g.id)} role="button" tabIndex={0}>
+            <article
+              className={`aw-group-card${selected === g.id ? " active" : ""}`}
+              key={g.id}
+              onClick={() => setSelected(g.id)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") setSelected(g.id);
+              }}
+              role="button"
+              tabIndex={0}
+              aria-pressed={selected === g.id}
+            >
               <div className="aw-group-card-top">
                 <b>{g.name}</b>
                 <small>
@@ -882,17 +920,53 @@ export function LiveGroups({ initialCreateOpen = false }: { initialCreateOpen?: 
             </article>
           ))}
         </div>
+        {selected && !detail && <Loading text="Opening the group…" />}
         {selected && detail && (
           <section className="aw-group-wallet-detail">
             <header className="aw-group-wallet-heading">
               <h2>{detail.name}</h2>
               <small>
-                {detail.threshold} of {detail.members.length} members must approve a group deal
+                {detail.threshold} of {detail.members.length} members must approve a group deal ·{" "}
+                {detail.members.map((m) => `${m.name}${m.role === "ADMIN" ? " (admin)" : ""}`).join(", ")}
               </small>
+              <div className="aw-gw-actions">
+                <Button
+                  variant="outline"
+                  disabled={!!busy}
+                  onClick={() => {
+                    if (!window.confirm(`Leave "${detail.name}"?`)) return;
+                    void run("leave", () => send(`/api/groups/${detail.id}/leave`, "POST"), async () => {
+                      setSelected(null);
+                      await reload();
+                    });
+                  }}
+                >
+                  Leave group
+                </Button>
+                {detail.myRole === "ADMIN" && (
+                  <Button
+                    variant="danger"
+                    disabled={!!busy}
+                    onClick={() => {
+                      if (!window.confirm(`Delete "${detail.name}" for everyone? Open votes end; drafts stay with their proposers.`)) return;
+                      void run("delete", () => send(`/api/groups/${detail.id}`, "DELETE"), async () => {
+                        setSelected(null);
+                        await reload();
+                      });
+                    }}
+                  >
+                    Delete group
+                  </Button>
+                )}
+              </div>
             </header>
             <Card className="aw-group-wallet-card aw-group-wallet-votes">
               <h3>Put a draft to the vote</h3>
-              <p>Ask the AI in the chat to draft the deal first. It is paid from your bank once the vote passes.</p>
+              <p>
+                Ask the AI in the chat to draft a purchase first. It stays on hold while the group votes (you cannot approve it alone), and it is paid from
+                your bank once {detail.threshold} members say yes.
+              </p>
+              {openDrafts.length === 0 && <small>No purchase drafts yet.</small>}
               <select value={draftId} onChange={(e) => setDraftId(e.target.value)}>
                 <option value="">Choose one of your drafts…</option>
                 {openDrafts.map((d) => (
@@ -917,14 +991,18 @@ export function LiveGroups({ initialCreateOpen = false }: { initialCreateOpen?: 
                 <div>
                   <b>{p.title}</b>
                   <small className="aw-gw-proposal-meta">
-                    {tokenMoney(total(p.milestones), currency)} · {p.yes} yes / {p.no} no · {p.status.toLowerCase()}
+                    {tokenMoney(total(p.milestones), currency)} · proposed by {p.mine ? "you" : p.proposer} · {p.yes} yes / {p.no} no (needs {detail.threshold}) ·{" "}
+                    {PROPOSAL_STATUS[p.status] ?? p.status}
                     {p.dealId !== null ? ` · deal D-${p.dealId}` : ""}
                   </small>
+                  {p.voters.length > 0 && (
+                    <small className="aw-gw-proposal-meta">{p.voters.map((v) => `${v.approve ? "✓" : "✗"} ${v.name}`).join(" · ")}</small>
+                  )}
                 </div>
                 {p.status === "OPEN" && p.myVote === null && (
                   <div className="aw-gw-actions">
                     <Button variant="outline" disabled={!!busy} onClick={() => run(`n${p.id}`, () => send(`/api/groups/proposals/${p.id}/vote`, "POST", { approve: false }), reloadDetail)}>
-                      No
+                      {busy === `n${p.id}` ? "…" : "No"}
                     </Button>
                     <Button disabled={!!busy} onClick={() => run(`y${p.id}`, () => send(`/api/groups/proposals/${p.id}/vote`, "POST", { approve: true }), async () => {
                       await reloadDetail();
@@ -935,6 +1013,11 @@ export function LiveGroups({ initialCreateOpen = false }: { initialCreateOpen?: 
                   </div>
                 )}
                 {p.myVote !== null && p.status === "OPEN" && <small>You voted {p.myVote ? "yes" : "no"}</small>}
+                {p.mine && p.status === "OPEN" && (
+                  <Button variant="outline" disabled={!!busy} onClick={() => run(`w${p.id}`, () => send(`/api/groups/proposals/${p.id}/withdraw`, "POST"), reloadDetail)}>
+                    {busy === `w${p.id}` ? "…" : "Withdraw"}
+                  </Button>
+                )}
               </article>
             ))}
           </section>

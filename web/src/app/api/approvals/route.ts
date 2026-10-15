@@ -23,6 +23,10 @@ export async function GET() {
     const declined = new Set(
       (await db.declinedOffer.findMany({ where: { userId: user.id, escrow: config.bankContracts.fileEscrow }, select: { dealId: true } })).map((d) => d.dealId),
     );
+    // Drafts up for a group vote are decided by the group, not approved here.
+    const inVote = new Set(
+      (await db.groupProposal.findMany({ where: { status: "OPEN", draftId: { in: drafts.map((d) => d.id) } }, select: { draftId: true } })).map((p) => p.draftId),
+    );
     const titles = new Map(drafts.filter((d) => d.dealId !== null).map((d) => [d.dealId!, d.title]));
     const reviews = state.fileDeals
       .filter((d) => d.role === "buyer" && d.status === "Active")
@@ -63,7 +67,7 @@ export async function GET() {
       offers,
       sellerTodo: toDeliver,
       drafts: await Promise.all(
-        drafts.filter((d) => d.status === "DRAFT").map((d) => draftView(d, friends.get((d.side === "SELL" ? (d.buyer ?? "") : d.seller).toLowerCase()))),
+        drafts.filter((d) => d.status === "DRAFT" && !inVote.has(d.id)).map((d) => draftView(d, friends.get((d.side === "SELL" ? (d.buyer ?? "") : d.seller).toLowerCase()))),
       ),
       reviews,
       groupVotes: votes,
