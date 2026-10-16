@@ -141,6 +141,21 @@ export async function actingCompany(userId: string, companyId: string | undefine
   return db.company.findFirst({ where: { id: companyId, group: { members: { some: { userId } } } }, include: { group: true } });
 }
 
+/**
+ * Whether the user may move money or re-route payments for this company: a signer (canSign).
+ * Plain members may look and propose, nothing more. Being a member is not enough (DC-CO-01).
+ */
+export async function isCompanySigner(userId: string, groupId: string): Promise<boolean> {
+  const m = await db.groupMember.findUnique({ where: { groupId_userId: { groupId, userId } }, select: { canSign: true } });
+  return m?.canSign === true;
+}
+
+/** Whether `userId` may spend from or re-route this wallet: any user for a personal wallet, a signer for a company's. */
+export async function canSpendFrom(userId: string, wallet: Address): Promise<boolean> {
+  const company = await companyOfWallet(wallet);
+  return !company || isCompanySigner(userId, company.groupId);
+}
+
 /** The company whose wallet this is, if any. */
 export function companyOfWallet(wallet: Address) {
   return db.company.findUnique({ where: { walletAddress: getAddress(wallet) }, include: { group: true } });

@@ -11,6 +11,7 @@
     "agent-eval": "tsx --conditions=react-server --env-file=.env.local scripts/agent-eval.mts",
     "postinstall": "prisma generate",
     "bank-check": "tsx --conditions=react-server --env-file=.env.local scripts/bank-check.mts",
+    "smoke": "bash scripts/smoke/run.sh",
     "funding-check": "tsx --conditions=react-server --env-file=.env.local scripts/funding-check.mts",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",

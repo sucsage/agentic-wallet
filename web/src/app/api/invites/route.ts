@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { InviteError, createInvite, listInvites } from "@/lib/bank/invites";
-import { HttpError, errorResponse, rateLimit, requireBankWallet } from "@/lib/guard";
+import { HttpError, errorResponse, rateLimit, requireBankSigner, requireBankWallet } from "@/lib/guard";
 
 export const maxDuration = 120;
 
@@ -32,7 +32,7 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     rateLimit(req, "invite", 10, 60 * 60 * 1000);
-    const { user, wallet } = await requireBankWallet();
+    const { user, wallet } = await requireBankSigner();
     const body = z.object({ name: z.string().min(2).max(80) }).safeParse(await req.json().catch(() => null));
     if (!body.success) throw new HttpError(400, "Send { name }");
     const { invite, token, payee } = await createInvite(user.id, wallet, body.data.name).catch((e) => {

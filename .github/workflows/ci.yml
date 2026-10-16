@@ -1,0 +1,146 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+      - "team/**"
+  push:
+    branches:
+      - main
+      - "team/**"
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: contracts/package-lock.json
+      - name: Install contract dependencies
+        working-directory: contracts
+        run: npm ci
+      - name: Test contracts
+        working-directory: contracts
+        run: npm test
+
+  web-types:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/agentic_wallet
+      DIRECT_URL: postgresql://ci:ci@localhost:5432/agentic_wallet
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci
+      - name: Generate Next route types
+        working-directory: web
+        run: npx next typegen
+      - name: Type-check web
+        working-directory: web
+        run: npx tsc --noEmit
+      - name: Lint web
+        working-directory: web
+        run: npm run lint
+
+  web-security:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: agentic_wallet
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres -d agentic_wallet"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/agentic_wallet
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/agentic_wallet
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci
+      - name: Push database schema
+        working-directory: web
+        run: npx prisma db push
+      - name: Run web security checks from an ES-module copy
+        shell: bash
+        run: |
+          set -euo pipefail
+          temp_root="$(mktemp -d)"
+          temp_web="$temp_root/web"
+          trap 'rm -rf "$temp_root"' EXIT
+          rsync -a --delete --exclude node_modules --exclude .next --exclude '.env*' web/ "$temp_web/"
+          ln -s "$GITHUB_WORKSPACE/web/node_modules" "$temp_web/node_modules"
+          ln -s "$GITHUB_WORKSPACE/contracts" "$temp_root/contracts"
+          python3 - "$temp_web/package.json" <<'PY'
+          import json
+          import sys
+
+          path = sys.argv[1]
+          with open(path) as source:
+              package = json.load(source)
+          package["type"] = "module"
+          with open(path, "w") as target:
+              json.dump(package, target, indent=2)
+              target.write("\n")
+          PY
+          (
+            cd "$temp_web"
+            DATABASE_URL=postgresql://x DIRECT_URL=postgresql://x npx prisma generate
+            npx tsx --conditions=react-server scripts/security/web-security.test.mts
+          )
+
+  # Starts a Hardhat node, Postgres and the app on the runner and runs the main money flow.
+  # Non-blocking until it has been seen green on GitHub; then remove continue-on-error.
+  smoke:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            contracts/package-lock.json
+            web/package-lock.json
+      - name: Install contract dependencies
+        working-directory: contracts
+        run: npm ci
+      - name: Install web dependencies
+        working-directory: web
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+          DIRECT_URL: postgresql://ci:ci@localhost:5432/ci
+        run: npm ci
+      - name: Smoke test
+        working-directory: web
+        run: npm run smoke
