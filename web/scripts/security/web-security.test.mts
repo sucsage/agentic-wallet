@@ -10,10 +10,14 @@ import { after, describe, it } from "node:test";
 
 import { db } from "../../src/lib/db";
 import { BankError, registerCustomer, verifyCustomer } from "../../src/lib/bank/customers";
+import { actingCompany } from "../../src/lib/company";
 import { HttpError, rateLimit } from "../../src/lib/guard";
 
 const run = `sec${Date.now().toString(36)}`;
 after(async () => {
+  await db.company.deleteMany({ where: { name: { startsWith: run } } }).catch(() => undefined);
+  await db.group.deleteMany({ where: { name: { startsWith: run } } }).catch(() => undefined);
+  await db.user.deleteMany({ where: { id: { startsWith: run } } }).catch(() => undefined);
   await db.bankAccount.deleteMany({ where: { customer: { username: { startsWith: run } } } }).catch(() => undefined);
   await db.bankCustomer.deleteMany({ where: { username: { startsWith: run } } }).catch(() => undefined);
   await db.$disconnect();
@@ -83,7 +87,7 @@ describe("API routes: who must be signed in (DB route matrix)", () => {
   };
   walk(root);
 
-  const guarded = /require(User|Customer|Admin|BankWallet)\s*\(|userWallet\s*\(|demoWallet\s*\(/;
+  const guarded = /require(User|Customer|ActingCustomer|Admin|BankWallet)\s*\(|getSession\s*\(|userWallet\s*\(|demoWallet\s*\(/;
   const unguarded = routes.filter((p) => !guarded.test(readFileSync(p, "utf8"))).map((p) => p.slice(root.length + 1));
 
   // Routes that are open by design: the auth framework, the public read-only RPC, the bearer-link
@@ -92,10 +96,16 @@ describe("API routes: who must be signed in (DB route matrix)", () => {
     "auth/[...all]/route.ts",
     "rpc/route.ts",
     "samples/route.ts",
+    "auth-options/route.ts", // lists the sign-in methods the login screen shows; no data
     "invite/[token]/route.ts",
     "invite/[token]/action/route.ts",
     "invite/[token]/deliver/route.ts",
     "invite/[token]/payout/route.ts",
+    "invite/[token]/dispute/route.ts", // bearer link, like the other invite routes
+    // The mock ID provider (OIDC endpoints called server to server and by the browser redirect).
+    "mock-id/[provider]/authorize/route.ts",
+    "mock-id/[provider]/openid-configuration/route.ts",
+    "mock-id/[provider]/token/route.ts",
   ]);
 
   it("every API route calls a guard, except the ones that are open by design", () => {
@@ -135,5 +145,45 @@ describe("Account deletion (P1 in PRIVACY-DATA-MAP)", () => {
       await db.sellerInvite.deleteMany({ where: { tokenHash: `${run}-h` } });
       await db.user.deleteMany({ where: { id: user.id } });
     }
+  });
+});
+
+describe("Company accounts: who may spend the company's money (candidate DC-CO-01)", () => {
+  const user = (n: string) => db.user.create({ data: { id: `${run}-${n}`, name: n, email: `${run}-${n}@example.test` } });
+
+  async function company() {
+    const [admin, signer, member, outsider] = await Promise.all(["admin", "signer", "member", "outsider"].map(user));
+    const group = await db.group.create({
+      data: {
+        name: `${run}-co`, currency: "THB", createdById: admin.id, threshold: 2,
+        members: { create: [
+          { userId: admin.id, role: "ADMIN", canSign: true },
+          { userId: signer.id, role: "MEMBER", canSign: true },
+          { userId: member.id, role: "MEMBER", canSign: false }, // proposes only, may not vote
+        ] },
+      },
+    });
+    const co = await db.company.create({
+      data: {
+        name: `${run}-co`, maskedTaxId: "****", taxIdHash: `${run}-hash`, currency: "THB",
+        customerId: `${run}-cust`, walletAddress: `0x${"1".repeat(40)}`, groupId: group.id, createdById: admin.id,
+      },
+    });
+    return { co, member, signer, outsider };
+  }
+
+  it("a member who is not a signer can act as the company; an outsider cannot", async () => {
+    const { co, member, signer, outsider } = await company();
+    assert.equal((await actingCompany(member.id, co.id))?.id, co.id, "the non-signer was refused: the guard may check the signer role now");
+    assert.equal((await actingCompany(signer.id, co.id))?.id, co.id);
+    assert.equal(await actingCompany(outsider.id, co.id), null);
+  });
+
+  it("KNOWN GAP (candidate): the code between 'acting as' and the payment never looks at canSign or the vote threshold", () => {
+    // Code-read evidence, not an end-to-end run: it shows the signer vote is enforced only for drafts.
+    const src = (f: string) => readFileSync(join(process.cwd(), f), "utf8");
+    const moneyPath = ["src/lib/guard.ts", "src/lib/bank/deals.ts", "src/app/api/deals/[id]/action/route.ts"];
+    for (const f of moneyPath) assert.doesNotMatch(src(f), /canSign|threshold|signers?\b/i, `${f} now mentions signers: re-check, then flip this test`);
+    assert.match(src("src/lib/bank/drafts.ts"), /signers' approval|threshold/i, "control: the draft path should mention the vote");
   });
 });
