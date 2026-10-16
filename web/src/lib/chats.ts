@@ -15,7 +15,7 @@ export const MAX_CHATS = 5;
 
 export class ChatLimitError extends Error {}
 
-export type StoredStep = { tool: string; summary: string; draft?: AgentStep["draft"]; form?: AgentStep["form"]; open?: AgentStep["open"] };
+export type StoredStep = { tool: string; summary: string; draft?: AgentStep["draft"]; form?: AgentStep["form"]; open?: AgentStep["open"]; payout?: AgentStep["payout"] };
 export type StoredItem =
   | { kind: "user"; text: string; at: string }
   | { kind: "agent"; text: string; at: string; steps: StoredStep[] }
@@ -27,6 +27,7 @@ export const publicStep = (s: AgentStep): StoredStep => ({
   ...(s.draft ? { draft: s.draft } : {}),
   ...(s.form ? { form: s.form } : {}),
   ...(s.open ? { open: s.open } : {}),
+  ...(s.payout ? { payout: s.payout } : {}),
 });
 
 export function listChats(userId: string, wallet: string) {

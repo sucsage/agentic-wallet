@@ -12,7 +12,7 @@ import {
   transfer,
 } from "./actions";
 import { addressGaps } from "./address";
-import { SocialError, createGroup, friendLabels, groupDetail, listFriends, listGroups, pendingVotes, proposeToGroup } from "./social";
+import { SocialError, createGroup, payoutRecipients, friendLabels, groupDetail, listFriends, listGroups, pendingVotes, proposeToGroup } from "./social";
 import { DraftError, type DraftView, createDraft, createSellDraft, discardDraft, draftView, listDrafts } from "./bank/drafts";
 import { db } from "./db";
 import { LIMITS, kycOf } from "./kyc";
@@ -71,6 +71,16 @@ export type AgentStep = {
   form?: DealForm;
   /** A deal the user asked to open (open_deal): the chat shows a button to its page. */
   open?: { dealId: number; title: string };
+  /** A payment from a group's / company's account, shown for the user to confirm (then voted on). */
+  payout?: PayoutPreview;
+};
+
+export type PayoutPreview = {
+  groupId: string;
+  group: string;
+  threshold: number;
+  reason: string;
+  recipients: { userId: string; name: string; amount: number }[];
 };
 
 /** What the chat's "before I draft the deal" form shows: what is known, and what to ask for. */
@@ -114,6 +124,7 @@ E-money wallet. Deals are paid from the user's THB / CNY wallet balance (topped 
 - Nicknames: get_wallet_status lists the nicknames the user gave each contact, and tools accept a nickname wherever they take a name. Whenever the user refers to someone by a description or nickname that is not a contact name (e.g. "พี่เอ", "my designer", "my potter friend") and you learn which contact they mean, call remember_nickname(nickname, contact) right away, before drafting, and tell the user you will remember it. Example: user "buy from my potter friend" → you ask who → "Seller One" → remember_nickname("potter friend", "Seller One"). forget_nickname removes one.
 - Drafts the user has not approved yet are listed by list_deals with a draft_ref (DR-…). discard_draft removes one when the user asks.
 - To SELL the user's own work, a file or an item to someone, call propose_bank_sale with the buyer's name (get_wallet_status → friends). It also only shows a preview; the user presses Confirm, which puts the offer on-chain and locks nothing. The buyer pays from their wallet balance when they accept it, and must have the user as a payee by then.
+- Paying people from a group's or company's shared account (salaries, staff pay, reimbursements, sharing earnings) is NOT a deal: call propose_group_payment (one call for everyone being paid). It needs no payee allowlist: the signers' vote decides. Never use propose_bank_deal for a salary.
 - If the other party (seller or buyer) has no account on the app, draft as usual with their name and new_person true. Use new_person true whenever the user says the person is outside the app, has no account, or should get a link (e.g. "คนนอก", "ไม่มีบัญชี", "ไม่ได้อยู่ในแอป", "ส่งลิงก์ให้", "outsider", "no account", "send them a link"), EVEN IF a contact has the same or a similar name: never send it to that contact instead. If a name matches a contact and the user did not say which, ask once: "<name> in your contacts, or someone outside the app (they get a link)?" Do not invent a link: their private link is made only when the user presses Confirm, and it then appears on the deal's page for the user to send them.
 - Never say money moved, was paid or was locked because of a draft.
 - Groups: friends can form a group that decides purchases together. A member puts one of their purchase drafts to the group's vote; it is locked from the proposer's wallet only when enough members vote yes (the group's votes needed, at least 2), and nobody can approve it alone. Use list_groups to answer questions about groups (never guess), create_group when the user asks to form one (members must be accepted friends; ask how many yes votes are needed if they did not say), and propose_to_group to put a draft (DR-…) to a vote. You cannot vote for anyone: members vote in the app (on the group's page under Groups).
@@ -245,6 +256,25 @@ const BANK_TOOLS = [
       milestones: BANK_MILESTONES,
     },
     ["buyer", "kind", "ship_to", "title", "summary", "review_hours", "milestones"],
+  ),
+  tool(
+    "propose_group_payment",
+    "Pay one or several people straight from the shared account of the group or company the user is acting as (salaries, reimbursements, sharing what a sale earned). Not a deal: no escrow, no milestones. Shows a preview; when the user confirms it, it goes to the signers' vote and is paid once enough approve.",
+    {
+      payments: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            to: { type: "string", description: "The person's name: a member of the group or one of the user's contacts" },
+            amount: { type: "number", description: "Amount in the account's currency (major units, e.g. 5000)" },
+          },
+          required: ["to", "amount"],
+        },
+      },
+      reason: { type: "string", description: "Short reason, e.g. October salaries" },
+    },
+    ["payments", "reason"],
   ),
   tool(
     "open_deal",
@@ -408,6 +438,10 @@ const INPUTS: Record<string, z.ZodType> = {
   propose_bank_sale: z.object({ buyer: z.string().min(1).max(120), new_person: z.boolean().default(false), ...DEAL_FIELDS }),
   list_groups: z.object({}).passthrough(),
   open_deal: z.object({ deal: z.string().min(1).max(20) }),
+  propose_group_payment: z.object({
+    payments: z.array(z.object({ to: z.string().min(1).max(120), amount: z.number().positive().max(1_000_000) })).min(1).max(20),
+    reason: z.string().max(200).default(""),
+  }),
   create_group: z.object({ name: z.string().trim().min(1).max(80), members: z.array(z.string().min(1).max(120)).min(1).max(19), votes_needed: z.number().int().min(2).max(20) }),
   propose_to_group: z.object({ group: z.string().min(1).max(80), draft_ref: z.string().min(3).max(40) }),
   remember_nickname: z.object({ nickname: z.string().trim().min(1).max(40), contact: z.string().min(1).max(120) }),
@@ -606,6 +640,35 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
         }),
       };
     }
+    case "propose_group_payment": {
+      if (!userId) throw new Error("Payments need a signed-in user");
+      const shared = await db.company.findUnique({ where: { walletAddress: getAddress(wallet) }, include: { group: true } });
+      if (!shared) return { tool: name, input, summary: "BLOCKED: this is the user's own wallet. Paying people from a group's account works while acting as the group (Acting as). From their own wallet the user sends money on Contacts → Send money." };
+      const i = input as { payments: { to: string; amount: number }[]; reason: string };
+      const people = await payoutRecipients(userId, shared.groupId);
+      const recipients: PayoutPreview["recipients"] = [];
+      for (const p of i.payments) {
+        const ref = p.to.trim().toLowerCase();
+        const hits = people.filter((x) => x.name.toLowerCase() === ref);
+        const loose = hits.length ? hits : people.filter((x) => x.name.toLowerCase().includes(ref));
+        if (loose.length !== 1) {
+          return {
+            tool: name,
+            input,
+            summary: `BLOCKED: ${loose.length ? `several people match "${p.to}"` : `"${p.to}" is not a member of ${shared.name} or one of the user's contacts`}. People who can be paid: ${people.map((x) => x.name).join(", ") || "none"}. Ask the user who they mean, or to add them as a contact first.`,
+          };
+        }
+        recipients.push({ userId: loose[0].userId, name: loose[0].name, amount: Math.round(p.amount * 100) / 100 });
+      }
+      const payout: PayoutPreview = { groupId: shared.groupId, group: shared.name, threshold: shared.group.threshold, reason: i.reason, recipients };
+      const total = recipients.reduce((t, r) => t + r.amount, 0);
+      return {
+        tool: name,
+        input,
+        payout,
+        summary: `PAYMENT PREVIEW SHOWN (nothing proposed or paid yet): ${recipients.map((r) => `${r.name} ${r.amount}`).join(", ")} = ${total} from ${shared.name}'s account. When the user presses Confirm it goes to the signers' vote (${shared.group.threshold} needed). Never say it was paid.`,
+      };
+    }
     case "open_deal": {
       const id = Number(String(input.deal).replace(/[^0-9]/g, ""));
       const s = await readWallet(wallet);
@@ -800,7 +863,9 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
       // Someone without an account: no contact to resolve; their link and wallet come on Confirm.
       const who = i.new_person ? { name: i.seller.trim(), address: "", payee: true, invite: true } : resolveContact(await contacts(wallet, userId), i.seller);
       if (typeof who === "string") return { tool: name, input, summary: `BLOCKED: ${who}. If they have no account on the app, draft again with new_person true.` };
-      if (!who.payee) return { tool: name, input, summary: `BLOCKED: ${who.name} is not a payee yet. The user must add them to the allowlist on the Friends page first.` };
+      // A group's / company's wallet needs no allowlist entry: its signers' vote approves the seller.
+      const sharedWallet = await db.company.findUnique({ where: { walletAddress: getAddress(wallet) } });
+      if (!who.payee && !sharedWallet) return { tool: name, input, summary: `BLOCKED: ${who.name} is not a payee yet. The user must add them to the allowlist on the Friends page first.` };
       const missing = missingInfo(i);
       if (missing.length) return { tool: name, input, summary: `NEED_INFO (nothing was saved): ask the user for ${missing.join("; ")}.` };
       try {

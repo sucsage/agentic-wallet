@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { ChatMarkdown, OpenDealButton } from "./chat-markdown";
+import { PayoutCard, type PayoutPreview } from "./payout-card";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -338,7 +339,7 @@ export function BankAuthorizeLive({ bank, onCancel, onContinue }: { bank: BankCh
 // AI chat (CreateDealScreen)
 // ------------------------------------------------------------------------------------------
 
-type Step = { tool: string; summary: string; draft?: DraftView; form?: DealFormData; open?: { dealId: number; title: string } };
+type Step = { tool: string; summary: string; draft?: DraftView; form?: DealFormData; open?: { dealId: number; title: string }; payout?: PayoutPreview };
 type ChatItem =
   | { kind: "user"; text: string; at: string }
   /** `live`: still streaming; `running`: tool calls started but not finished yet. */
@@ -932,6 +933,11 @@ export function LiveChat() {
                     <div className="aw-ai-markdown">
                       <ChatMarkdown text={item.text} />
                     </div>
+                    {item.steps
+                      .filter((s) => s.payout)
+                      .map((s, k) => (
+                        <PayoutCard key={`payout-${k}`} p={s.payout!} currency={currency} />
+                      ))}
                     {item.steps
                       .filter((s) => s.open)
                       .map((s, k) => (

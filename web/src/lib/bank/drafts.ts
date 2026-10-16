@@ -6,7 +6,7 @@ import { type Address, formatUnits, getAddress, hashTypedData, parseUnits } from
 
 import type { DealDraft, Prisma } from "@/generated/prisma/client";
 
-import { publicClient, roleAddresses } from "../chain";
+import { publicClient, roleAddresses, send } from "../chain";
 import { accountOf } from "./ledger";
 import { agentWalletAbi } from "../abis";
 import { db } from "../db";
@@ -115,7 +115,10 @@ export async function createDraft(
   if (!units.currency) throw new DraftError("This wallet is not paid from a bank account");
   // A seller without an account has no wallet yet: it (and their link) is made on Confirm.
   const seller = input.inviteName ? "" : getAddress(input.seller);
-  if (seller && !(await sellerAllowed(wallet, seller as Address))) throw new DraftError(`Seller ${seller} is not in this wallet's allowlist`);
+  // A company's or group's wallet needs no allowlist entry first: its signers' vote approves the
+  // seller, who is added as payee when the vote passes (see allowSellerAfterVote).
+  const shared = await db.company.findUnique({ where: { walletAddress: getAddress(wallet) } });
+  if (seller && !shared && !(await sellerAllowed(wallet, seller as Address))) throw new DraftError(`Seller ${seller} is not in this wallet's allowlist`);
   for (const m of input.milestones) {
     if (parseUnits(m.amount, units.decimals) <= 0n) throw new DraftError(`Milestone "${m.name}" needs a positive amount`);
   }
@@ -215,6 +218,7 @@ export async function approveDraft(
     const done = (fresh.result as { funding?: FundingResult } | null)?.funding;
     if (fresh.status === "FUNDED" && done) return { draft: fresh, funding: done };
     fresh = await ensureInvite(userId, wallet, fresh);
+    if (opts.viaGroup) await allowSellerAfterVote(wallet, fresh);
     return await approveClaimed(userId, wallet, fresh);
   } finally {
     await db.dealDraft.update({ where: { id: draft.id }, data: { approvingUntil: null } });
@@ -240,6 +244,15 @@ async function ensureInvite(userId: string, wallet: Address, d: DealDraft): Prom
     throw e instanceof BuyerInviteError ? new DraftError(e.message) : e;
   });
   return db.dealDraft.update({ where: { id: d.id }, data: { buyer: invite.buyerWallet, inviteId: invite.id } });
+}
+
+/** The signers voted for this purchase: its seller becomes a payee of the shared wallet. */
+async function allowSellerAfterVote(wallet: Address, d: DealDraft) {
+  if (d.side !== "BUY" || !d.seller) return;
+  const seller = getAddress(d.seller);
+  if (await sellerAllowed(wallet, seller)) return;
+  const r = await send("owner", { address: wallet, abi: agentWalletAbi, functionName: "setRecipient", args: [seller, true] });
+  if (r.status !== "success") throw new DraftError(`Could not add the seller as a payee${"error" in r && r.error ? `: ${r.error}` : ""}`);
 }
 
 async function approveClaimed(userId: string, wallet: Address, draft: DealDraft): Promise<{ draft: DealDraft; funding: FundingResult }> {

@@ -10,10 +10,11 @@ import { useLang } from "@/lib/i18n";
 import { api, useAppData } from "./app-data";
 import { ChatMarkdown, OpenDealButton } from "./chat-markdown";
 import { DraftCard } from "./mockup-live";
+import { PayoutCard, type PayoutPreview } from "./payout-card";
 import { Button, Loading } from "./mockup-ui";
 import "./group-chat.css";
 
-type Step = { tool: string; summary: string; open?: { dealId: number; title: string }; draft?: DraftView; form?: { missing: string[] }; wallet: string; mine: boolean; inVote?: boolean };
+type Step = { tool: string; summary: string; open?: { dealId: number; title: string }; payout?: PayoutPreview; draft?: DraftView; form?: { missing: string[] }; wallet: string; mine: boolean; inVote?: boolean };
 type Message = { id: string; ai: boolean; mine: boolean; author: string; text: string; steps: Step[]; at: string };
 
 const time = (iso: string) => new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
@@ -111,6 +112,10 @@ export function GroupChat({ groupId, threshold, shared }: { groupId: string; thr
             {m.steps.map((s, i) =>
               s.open ? (
                 <OpenDealButton key={i} dealId={s.open.dealId} title={s.open.title} />
+              ) : s.payout ? (
+                <div key={i} className="aw-gchat-card">
+                  <PayoutCard p={s.payout} currency={currency} canConfirm={s.mine} />
+                </div>
               ) : s.draft ? (
                 <div key={i} className="aw-gchat-card">
                   {s.mine ? (

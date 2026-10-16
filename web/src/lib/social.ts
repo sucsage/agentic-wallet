@@ -633,8 +633,8 @@ export async function proposeDealAction(userId: string, groupId: string, act: De
  * It goes to the same N of M vote as a purchase; the proposer's own yes counts at once.
  */
 export async function proposePayout(userId: string, groupId: string, list: Recipient[]) {
-  const g = await db.group.findFirst({ where: { id: groupId, members: { some: { userId, canSign: true } } }, include: { members: true, company: true } });
-  if (!g) throw new SocialError("Only the group's signers propose a payout");
+  const g = await db.group.findFirst({ where: { id: groupId, members: { some: { userId } } }, include: { members: true, company: true } });
+  if (!g) throw new SocialError("Group not found");
   if (!g.company) throw new SocialError("This group has no shared account");
   let recipients;
   try {
@@ -642,11 +642,27 @@ export async function proposePayout(userId: string, groupId: string, list: Recip
   } catch (err) {
     throw err instanceof SendError ? new SocialError(err.message) : err;
   }
-  if (recipients.some((r) => !g.members.some((m) => m.userId === r.userId))) throw new SocialError("A payout goes to members of the group only");
+  // Members, or the proposer's accepted contacts (e.g. staff paid a salary): the vote decides.
+  const allowed = await payoutRecipients(userId, groupId);
+  if (recipients.some((r) => !allowed.some((a) => a.userId === r.userId))) throw new SocialError("A payout goes to members of the group or to your contacts");
   const p = await db.groupProposal.create({
     data: { groupId, proposerId: userId, payout: recipients.map((r) => ({ userId: r.userId, amount: r.minor.toString() })) },
   });
-  return vote(userId, p.id, true);
+  const me = g.members.find((m) => m.userId === userId);
+  if (me?.canSign) return vote(userId, p.id, true);
+  return { status: "OPEN", yes: 0, no: 0 };
+}
+
+/** Who a payout from the group's account may go to: its members and the proposer's accepted contacts. */
+export async function payoutRecipients(userId: string, groupId: string): Promise<{ userId: string; name: string; member: boolean }[]> {
+  const [members, friends] = await Promise.all([
+    db.groupMember.findMany({ where: { groupId }, include: { user: { select: { id: true, name: true } } } }),
+    listFriends(userId),
+  ]);
+  const out = new Map<string, { userId: string; name: string; member: boolean }>();
+  for (const m of members) out.set(m.userId, { userId: m.userId, name: m.user.name, member: true });
+  for (const f of friends) if (f.status === "ACCEPTED" && !out.has(f.userId)) out.set(f.userId, { userId: f.userId, name: f.name, member: false });
+  return [...out.values()];
 }
 
 // ------------------------------------------------------------------------------------------
