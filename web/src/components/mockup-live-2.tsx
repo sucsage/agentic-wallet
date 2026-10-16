@@ -980,7 +980,14 @@ export function LiveGroups({ initialCreateOpen = false, joinToken = null }: { in
   const { data: invitesData, reload: reloadInvites } = useApi<{ invites: GroupInviteView[] }>("/api/groups/invites");
   const { data: friendsData } = useApi<{ friends: Friend[] }>("/api/friends");
   const [selected, setSelected] = useState<string | null>(null);
-  const { data: detail, reload: reloadDetail } = useApi<GroupDetail>(selected ? `/api/groups/${selected}` : null, selected ? 8000 : undefined);
+  const { data: loaded, error: detailError, reload: reloadDetail } = useApi<GroupDetail>(selected ? `/api/groups/${selected}` : null, selected ? 8000 : undefined);
+  // Only the selected group's wallet: right after switching, the previous one is still loaded.
+  const detail = loaded?.id === selected ? loaded : null;
+  const detailShown = Boolean(selected && detail);
+  // The wallet opens below the cards and panels, out of view: bring it up when it opens.
+  useEffect(() => {
+    if (selected) document.getElementById("aw-group-wallet")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [selected, detailShown]);
   const { busy, run, note } = useAction();
   const [creating, setCreating] = useState(initialCreateOpen);
   const [joining, setJoining] = useState<string | null>(joinToken);
@@ -1191,9 +1198,11 @@ export function LiveGroups({ initialCreateOpen = false, joinToken = null }: { in
             </section>
           </div>
         )}
-        {selected && !detail && <Loading text="Opening the group…" />}
+        {selected && !detail && (
+          <div id="aw-group-wallet">{detailError ? <p className="aw-bank-error">{detailError}</p> : <Loading text="Opening the group…" />}</div>
+        )}
         {selected && detail && (
-          <section className="aw-group-live">
+          <section className="aw-group-live" id="aw-group-wallet">
             <header className="aw-group-live-head">
               <div>
                 <small className="aw-gr-eyebrow">GROUP WALLET · {roleOf({ role: detail.myRole, canSign: detail.iSign }).toUpperCase()}</small>
