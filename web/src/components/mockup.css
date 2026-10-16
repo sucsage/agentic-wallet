@@ -1698,3 +1698,20 @@
 .aw-linked-invites{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin:0 0 14px;padding:10px 14px;border:1px solid #2b3d5c;border-radius:12px;background:#121a27;font-size:13px}
 .aw-linked-invites b{color:#cfe0ff}
 .aw-linked-invites a{color:#8fb8ff}
+.aw-wallet-switch{position:relative}
+.aw-wallet-switch-button{height:34px;max-width:240px;display:flex;align-items:center;gap:7px;padding:0 10px;border:1px solid #333;border-radius:9px;background:#141414;color:#eee;font-size:13px;cursor:pointer}
+.aw-wallet-switch-button:hover{border-color:#4c6a9d}
+.aw-wallet-switch-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.aw-wallet-switch-button small{color:#8a8a8a;font-size:11px}
+.aw-wallet-switch-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:60;width:280px;display:flex;flex-direction:column;gap:2px;padding:8px;border:1px solid #333;border-radius:12px;background:#121212;box-shadow:0 12px 32px rgba(0,0,0,.5)}
+.aw-wallet-switch-menu>small{padding:4px 8px 6px;color:#777;font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+.aw-wallet-switch-menu>button{display:flex;align-items:center;gap:10px;padding:8px;border:0;border-radius:9px;background:transparent;color:#eee;text-align:left;cursor:pointer}
+.aw-wallet-switch-menu>button:hover:not(:disabled){background:#1e1e1e}
+.aw-wallet-switch-menu>button[aria-checked="true"]{background:#18202d}
+.aw-wallet-switch-menu>button span:nth-child(2){flex:1;display:flex;flex-direction:column;min-width:0}
+.aw-wallet-switch-menu b{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.aw-wallet-switch-menu button small{color:#888;font-size:11px}
+.aw-wallet-switch-menu i{font-style:normal;color:#7fb2ff}
+.aw-wallet-switch-menu p{margin:4px 8px;color:#888;font-size:12px;line-height:1.45}
+.aw-wallet-switch-menu .aw-wallet-switch-more{justify-content:center;margin-top:4px;color:#9fc2ff;font-size:12px}
+@media(max-width:650px){.aw-wallet-switch-button small,.aw-wallet-switch-name{display:none}.aw-wallet-switch-menu{position:fixed;left:12px;right:12px;top:60px;width:auto}}

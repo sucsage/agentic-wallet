@@ -189,3 +189,101 @@ export function SearchBox({ placeholder }: { placeholder: string }) {
     </div>
   );
 }
+
+type MeLite = {
+  user: { name: string };
+  bank: { currency: "THB" | "CNY" };
+  acting: { companyId: string; kind: "COMPANY" | "GROUP"; name: string } | null;
+  companies?: { id: string; kind: "COMPANY" | "GROUP"; name: string; role: string; balance: string }[];
+  accounts: { isDefault: boolean; balance: string }[];
+};
+
+const fmt = (minor: string, c: "THB" | "CNY") =>
+  `${c === "THB" ? "฿" : "¥"}${(Number(minor) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+/**
+ * Which wallet the app works on: your own, or a company's / group's shared wallet you belong to.
+ * Switching sets the "Acting as" cookie and reloads, so every page shows that wallet.
+ */
+export function WalletSwitcher() {
+  const router = useAppRouter();
+  const [me, setMe] = useState<MeLite | null>(null);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    void get<MeLite>("/api/me").then(setMe);
+  }, []);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => !box.current?.contains(e.target as Node) && setOpen(false);
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [open]);
+  if (!me) return null;
+  const current = me.acting?.companyId ?? null;
+  const own = me.acting ? null : (me.accounts.find((a) => a.isDefault) ?? me.accounts[0]);
+  const pick = async (id: string | null) => {
+    if (id === current) return setOpen(false);
+    setBusy(id ?? "me");
+    const r = await fetch("/api/companies/acting", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ companyId: id }) }).catch(() => null);
+    if (!r?.ok) return setBusy(null);
+    // Every page reads the acting wallet from the server: reload so nothing shows the old one.
+    window.location.reload();
+  };
+  const label = me.acting ? me.acting.name : `${me.user.name}`;
+  const icon = (kind?: string) => (kind === "GROUP" ? "♧" : kind === "COMPANY" ? "♟" : "♙");
+  return (
+    <div className="aw-wallet-switch" ref={box}>
+      <button type="button" className="aw-wallet-switch-button" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((v) => !v)} title="Switch wallet">
+        <span aria-hidden>{icon(me.acting?.kind)}</span>
+        <span className="aw-wallet-switch-name">{label}</span>
+        <small>{me.acting ? (me.acting.kind === "GROUP" ? "Group" : "Company") : "Personal"}</small>
+        <span aria-hidden>▾</span>
+      </button>
+      {open && (
+        <div className="aw-wallet-switch-menu" role="menu">
+          <small>Switch wallet</small>
+          <button type="button" role="menuitemradio" aria-checked={current === null} disabled={busy !== null} onClick={() => void pick(null)}>
+            <span aria-hidden>♙</span>
+            <span>
+              <b>{me.user.name}</b>
+              <small>Personal{own ? ` · ${fmt(own.balance, me.bank.currency)}` : ""}</small>
+            </span>
+            {current === null && <i>✓</i>}
+            {busy === "me" && <i>…</i>}
+          </button>
+          {(me.companies ?? []).map((c) => (
+            <button type="button" role="menuitemradio" aria-checked={current === c.id} key={c.id} disabled={busy !== null} onClick={() => void pick(c.id)}>
+              <span aria-hidden>{icon(c.kind)}</span>
+              <span>
+                <b>{c.name}</b>
+                <small>
+                  {c.kind === "GROUP" ? "Group wallet" : "Company"} · {c.role} · {fmt(c.balance, me.bank.currency)}
+                </small>
+              </span>
+              {current === c.id && <i>✓</i>}
+              {busy === c.id && <i>…</i>}
+            </button>
+          ))}
+          {(me.companies ?? []).length === 0 && <p>No shared wallets yet. A group&apos;s owner can open one, or register a company on Profile.</p>}
+          <button
+            type="button"
+            className="aw-wallet-switch-more"
+            onClick={() => {
+              setOpen(false);
+              router.push("/groups");
+            }}
+          >
+            Manage groups →
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}

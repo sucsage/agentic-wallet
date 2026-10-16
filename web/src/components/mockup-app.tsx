@@ -112,7 +112,7 @@ function SidebarProfile({ onOpen }: { onOpen: () => void }) {
   // Acting as a company: the sidebar says so, with the company's account.
   const name = me?.acting ? me.acting.name : (me?.user.name ?? "…");
   const account = me?.accounts.find((a) => a.isDefault) ?? me?.accounts[0];
-  const kind = me?.acting ? `Company · ${me.user.name}` : me?.bank.customerType === "COMPANY" ? "Company" : "Personal";
+  const kind = me?.acting ? `${me.acting.kind === "GROUP" ? "Group" : "Company"} · ${me.user.name}` : me?.bank.customerType === "COMPANY" ? "Company" : "Personal";
   return <button className="aw-sidebar-profile" type="button" title={`${name} · ${kind} ${account?.accountNo ?? ""}`} onClick={onOpen}><span className="aw-sidebar-avatar">{name.slice(0, 1).toUpperCase()}</span><span className="aw-profile-copy"><b>{name}</b><small>{translateMockupText(`${kind} · ${account?.accountNo ?? ""}`, lang)}</small></span></button>;
 }
 
