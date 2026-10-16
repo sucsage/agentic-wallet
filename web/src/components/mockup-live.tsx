@@ -1136,6 +1136,7 @@ const STATUS_TONE: Record<string, string> = {
   Proposed: "blue",
   Active: "violet",
   Cancelled: "red",
+  PREVIEW: "yellow",
   DRAFT: "yellow",
   FAILED: "red",
 };
@@ -1195,11 +1196,12 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
 
   const rows = [
     ...drafts
-      .filter((d) => d.status === "DRAFT" || d.status === "FAILED")
+      // The AI's previews too: they are confirmed (or discarded) here, not only in the chat.
+      .filter((d) => d.status === "PREVIEW" || d.status === "DRAFT" || d.status === "FAILED")
       .map((d) => ({
         key: `draft-${d.id}`,
         draftId: d.id,
-        id: "Draft",
+        id: d.status === "PREVIEW" ? "Preview" : "Draft",
         title: d.title,
         kind: d.kind,
         type: deliveryType(d),
@@ -1207,7 +1209,14 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
         role: d.side === "SELL" ? ("Selling" as const) : ("Buying" as const),
         milestones: `0 / ${d.milestones.length}`,
         amount: tokenMoney(d.total, currency),
-        status: d.status === "DRAFT" ? "Awaiting your approval" : d.side === "SELL" ? "Failed · not offered" : "Failed · refunded",
+        status:
+          d.status === "PREVIEW"
+            ? "AI preview · confirm to create"
+            : d.status === "DRAFT"
+              ? "Awaiting your approval"
+              : d.side === "SELL"
+                ? "Failed · not offered"
+                : "Failed · refunded",
         tone: STATUS_TONE[d.status],
       })),
     ...(wallet?.fileDeals ?? []).map((d) => {
@@ -1341,7 +1350,7 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
         </div>
         {draftMsg && <p className={draftMsg.ok ? "aw-live-ok" : "aw-bank-error"}>{draftMsg.text}</p>}
         {(() => {
-          const d = drafts.find((x) => x.id === openDraft && (x.status === "DRAFT" || x.status === "FAILED"));
+          const d = drafts.find((x) => x.id === openDraft && (x.status === "PREVIEW" || x.status === "DRAFT" || x.status === "FAILED"));
           if (!d) return null;
           return (
             <div className="aw-deals-draft">
