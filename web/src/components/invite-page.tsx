@@ -34,6 +34,7 @@ type Deal = {
   summary: string | null;
   canAccept: boolean;
   milestones: Milestone[];
+  notes?: { kind: string; index: number | null; text: string; at: string }[];
 };
 
 type View = {
@@ -176,6 +177,13 @@ function DealCard({ base, deal, money, onDone }: { base: string; deal: Deal; mon
         {deal.title} · {money(deal.total)}
       </h2>
       {deal.summary && <p className="inv-muted">{deal.summary}</p>}
+      {deal.notes
+        ?.filter((n) => n.kind === "REVISION")
+        .map((n, i) => (
+          <p key={i} className="inv-step">
+            ✎ The buyer asks for a revised offer: “{n.text}”
+          </p>
+        ))}
       {deal.canAccept && (
         <div className="inv-accept">
           <p>
@@ -197,6 +205,13 @@ function DealCard({ base, deal, money, onDone }: { base: string; deal: Deal; mon
             <span>{money(m.amount)}</span>
           </div>
           {m.acceptance && <small className="inv-muted">To be approved: {m.acceptance}</small>}
+          {deal.notes
+            ?.filter((n) => n.kind === "CHANGES" && n.index === m.index)
+            .map((n, i) => (
+              <small key={i} className="inv-step">
+                ✎ The buyer asks for changes: “{n.text}” · deliver the fixed version below
+              </small>
+            ))}
           <small className={m.status === "Released" ? "inv-ok" : "inv-step"}>{deal.status === "Active" ? STEP[m.status] ?? m.status : "Starts once you accept"}</small>
           {m.delivery && (
             <small className="inv-muted">

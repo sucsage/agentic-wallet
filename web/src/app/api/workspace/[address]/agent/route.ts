@@ -1,3 +1,4 @@
+import { prefsOf } from "@/lib/prefs";
 import { extractText, getDocumentProxy } from "unpdf";
 import { z } from "zod";
 
@@ -43,6 +44,8 @@ export async function POST(req: Request, ctx: RouteContext<"/api/workspace/[addr
     if (!llmConfigured()) throw new HttpError(503, "The AI agent is not configured (missing API key).");
     const wallet = await userWallet((await ctx.params).address);
     const user = await requireUser();
+    // The user can switch the AI off on Profile & Privacy: then nothing is sent to a model.
+    if (!(await prefsOf(user.id)).aiChat) throw new HttpError(403, "The AI chat is off. Turn it on in Profile & Privacy to use it.");
     const parsed = Body.safeParse(await req.json());
     if (!parsed.success) throw new HttpError(400, "Invalid request body");
     const { message, attachment, lang, chatId } = parsed.data;

@@ -12,6 +12,8 @@ import { localizeMockupNode, useLang } from "@/lib/i18n";
 import { type AccountView, api, download, lockedInDeals, money, tokenMoney, useAppData } from "./app-data";
 import { Button, Card, Loading, PageTitle } from "./mockup-ui";
 import { ActingSwitch, CompaniesPanel, FundCompany } from "./company";
+import { DealFormCard, type DealFormData } from "./deal-form";
+import { PreferencesCard, alsoIn, usePrefs } from "./prefs";
 import { TopUpSheet } from "./topup-sheet";
 import type { BankChoice } from "./mockup-screens";
 
@@ -76,6 +78,7 @@ export function BalanceBar() {
   const currency = me?.bank.currency ?? "THB";
   const [funding, setFunding] = useState(false);
   const acting = me?.acting ?? null;
+  const [prefs] = usePrefs();
   return (
     <>
     {status === "creating-wallet" && <Loading text="Creating your agent wallet and its keys on-chain (about 10 s)…" />}
@@ -90,6 +93,7 @@ export function BalanceBar() {
           </small>
           <b>
             {account ? money(account.balance, currency) : "…"} <i>Available</i>
+            {account && prefs?.showAlso && <i className="also">{alsoIn(Number(account.balance) / 100, currency, prefs.showAlso)}</i>}
           </b>
         </span>
       </div>
@@ -333,7 +337,7 @@ export function BankAuthorizeLive({ bank, onCancel, onContinue }: { bank: BankCh
 // AI chat (CreateDealScreen)
 // ------------------------------------------------------------------------------------------
 
-type Step = { tool: string; summary: string; draft?: DraftView };
+type Step = { tool: string; summary: string; draft?: DraftView; form?: DealFormData };
 type ChatItem =
   | { kind: "user"; text: string; at: string }
   /** `live`: still streaming; `running`: tool calls started but not finished yet. */
@@ -348,6 +352,7 @@ const TOOL_LABEL: Record<string, string> = {
   propose_bank_sale: "Drafting the sale offer",
   invite_seller: "Creating a wallet and invite link",
   remember_nickname: "Remembering the nickname",
+  ask_deal_details: "Preparing a form for the missing details",
   list_groups: "Reading your groups",
   create_group: "Creating the group",
   propose_to_group: "Putting the draft to the group's vote",
@@ -563,6 +568,14 @@ export function LiveChat() {
   const [chatId, setChatId] = useState<string | null>(null);
   const [loadingChat, setLoadingChat] = useState(false);
   const [agentOpen, setAgentOpen] = useState(true);
+  const [chatPrefs] = usePrefs();
+  const aiOff = chatPrefs?.aiChat === false;
+  // "New deal" on a contact opens the chat with a message started for them.
+  useEffect(() => {
+    const d = new URLSearchParams(window.location.search).get("draft");
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (d) setMessage(d.slice(0, 300));
+  }, []);
   // On a phone the agent panel sits above the chat: start it collapsed there.
   useEffect(() => {
     if (window.matchMedia("(max-width: 900px)").matches) setAgentOpen(false);
@@ -838,6 +851,7 @@ export function LiveChat() {
             <span className="aw-policy-pill">Policy guard on</span>
           </header>
           <ActingSwitch />
+          {aiOff && <p className="aw-bank-error">The AI chat is off (Profile &amp; Privacy → Preferences). Turn it on to draft deals with the agent.</p>}
           <div className="aw-ai-messages">
             <div className="aw-ai-message-meta">Agent</div>
             <article className="aw-ai-agent-message">
@@ -896,6 +910,13 @@ export function LiveChat() {
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.text}</ReactMarkdown>
                     </div>
                     {item.steps
+                      .filter((s) => s.form)
+                      .map((s, k) => (
+                        <div className="aw-ai-predraft-message" key={`form-${k}`}>
+                          <DealFormCard form={s.form!} currency={currency} disabled={busy || item !== items[items.length - 1]} onSubmit={(text) => void send(text)} />
+                        </div>
+                      ))}
+                    {item.steps
                       .filter((s) => s.draft)
                       .map((s) => (
                         <DraftCard
@@ -926,7 +947,7 @@ export function LiveChat() {
             <button type="button" aria-label="Attach file" disabled>
               ＋
             </button>
-            <input value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Message AI agent…" disabled={!address} />
+            <input value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Message AI agent…" disabled={!address || aiOff} />
             <button type="submit" aria-label="Send message" disabled={!address || busy}>
               ↑
             </button>
@@ -1115,7 +1136,7 @@ function deliveryType(d: DraftView): "Physical" | "Digital" | "Report" {
 export function LiveDeals({ go }: { go: (screen: string) => void }) {
   const lang = useLang();
   const { wallet, drafts, me } = useAppData();
-  const [filter, setFilter] = useState<"All" | "Buying" | "Selling">("All");
+  const [filter, setFilter] = useState<"All" | "Buying" | "Selling" | "Dispute">("All");
   const currency = me?.bank.currency ?? "THB";
   const explorer = wallet?.explorer?.replace(/\/address\/.*/, "") ?? null;
 
@@ -1154,8 +1175,13 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
       };
     }),
   ];
-  const visible = rows.filter((r) => filter === "All" || r.role === filter);
-  const counts = { All: rows.length, Buying: rows.filter((r) => r.role === "Buying").length, Selling: rows.filter((r) => r.role === "Selling").length };
+  const visible = rows.filter((r) => filter === "All" || (filter === "Dispute" ? r.status === "Dispute" : r.role === filter));
+  const counts = {
+    All: rows.length,
+    Buying: rows.filter((r) => r.role === "Buying").length,
+    Selling: rows.filter((r) => r.role === "Selling").length,
+    Dispute: rows.filter((r) => r.status === "Dispute").length,
+  };
 
   return localizeMockupNode(
     <div className="aw-deals-page">
@@ -1169,7 +1195,7 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
           <Button onClick={() => go("สร้างดีล")}>New deal with AI</Button>
         </header>
         <div className="aw-deals-tabs" role="tablist" aria-label="Filter deals">
-          {(["All", "Buying", "Selling"] as const).map((item) => (
+          {(["All", "Buying", "Selling", "Dispute"] as const).map((item) => (
             <button type="button" role="tab" key={item} aria-selected={filter === item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>
               {item} <span>{counts[item]}</span>
             </button>
@@ -1495,6 +1521,7 @@ export function LivePrivacy() {
             <p className="aw-profile-passbook-note">E-money (test money) held by Agentic Wallet. Top up with the button above; deals lock money from here and pay out back here.</p>
           </Card>
         </div>
+        <PreferencesCard currency={currency} />
         <CompaniesPanel />
         <section className="aw-profile-bottom">
           <Card className="aw-profile-consent">

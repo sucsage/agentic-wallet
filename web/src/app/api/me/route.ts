@@ -28,7 +28,8 @@ export async function GET() {
       ? all.filter((w) => w.walletAddress.toLowerCase() === company.walletAddress.toLowerCase())
       : all.filter((w) => !companyWallets.has(w.walletAddress.toLowerCase()));
     return Response.json({
-      user: { id: user.id, name: user.name },
+      // username: how contacts find this person (their "My code" QR).
+      user: { id: user.id, name: user.name, username: customer.username },
       bank: {
         name: customer.currency === "THB" ? "Agentic Wallet · THB e-money" : "Agentic Wallet · CNY e-money",
         currency: shown.currency,

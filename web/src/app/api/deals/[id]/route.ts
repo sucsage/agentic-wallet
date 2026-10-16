@@ -44,6 +44,7 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/deals/[id]">) {
     const terms = draft ? await draftView(draft) : null;
     const demoSeller = deal.role === "buyer" && deal.counterparty === roleAddresses().contractor;
     const declines = deal.status === "Proposed" ? await db.declinedOffer.findMany({ where: { escrow: config.fileEscrowOf(id), dealId: id } }) : [];
+    const notes = await db.dealNote.findMany({ where: { escrow: config.fileEscrowOf(id), dealId: id }, orderBy: { createdAt: "desc" }, take: 20 });
     const [deliveries, friends, disputes] = await Promise.all([
       Promise.all(deal.milestones.map((m) => deliveryInfo(id, m.index))),
       friendLabels(user.id),
@@ -62,6 +63,8 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/deals/[id]">) {
       canCancel: deal.status === "Proposed" && deal.offeredBy === "me",
       canAccept: deal.status === "Proposed" && deal.offeredBy === "them",
       // "me": this user turned the offer down; "them": the other side did (the creator should withdraw it).
+      // Requests from the buyer: changes to a delivery, or a revised offer.
+      notes: notes.map((n) => ({ kind: n.kind, index: n.index, text: n.text, at: n.createdAt })),
       declined: declines.some((d) => d.userId === user.id) ? "me" : declines.length > 0 ? "them" : null,
       milestones: deal.milestones.map((m, i) => ({
         ...m,

@@ -1640,3 +1640,49 @@
 .aw-gr-activity time{flex:none;width:52px;color:#777}
 .aw-gr-join p{margin:4px 0}
 @media(max-width:800px){.aw-groups-bottom,.aw-gr-columns,.aw-gr-stats{grid-template-columns:1fr}}
+
+/* Deal page v0.8: stat row, notes, parcel checklist, evidence */
+.aw-dd-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:8px 0 16px}
+.aw-dd-stats>div{display:flex;flex-direction:column;gap:4px;padding:14px 16px;border:1px solid #333;border-radius:14px;background:#111;min-width:0}
+.aw-dd-stats small{color:#888;font-size:12px}
+.aw-dd-stats b{font-size:18px;overflow-wrap:anywhere}
+.aw-dd-stats b.amber{color:#ffb000}.aw-dd-stats b.green{color:#16c76c}.aw-dd-stats b.blue{color:#5aa2ff}
+.aw-dd-note{margin:8px 0;padding:10px 12px;border-radius:10px;border:1px solid #4a3a12;background:#1a1408;color:#ffd27a;font-size:13px}
+.aw-dd-items{display:flex;flex-direction:column;gap:6px;margin:10px 0;padding:12px;border:1px solid #333;border-radius:12px}
+.aw-dd-items legend{font-size:13px;padding:0 4px}
+.aw-dd-items label{display:flex;gap:8px;align-items:center;font-size:13px}
+.aw-dd-items small{color:#888;font-size:12px}
+.aw-dd-address button{margin-left:6px;border:0;background:transparent;color:#a493ff;cursor:pointer;font-size:12px;padding:0}
+.aw-dd-address small{display:block;color:#777;font-size:11px}
+.aw-dd-evidence{margin:12px 0}
+.aw-dd-evidence>button{border:1px solid #333;background:#111;color:#ddd;border-radius:10px;padding:8px 12px;cursor:pointer;font-size:13px}
+.aw-dd-evidence ul{margin:8px 0;padding-left:18px;color:#aaa;font-size:12px;display:flex;flex-direction:column;gap:4px}
+.aw-dd-evidence a{color:#a493ff}
+@media(max-width:900px){.aw-dd-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.aw-summary-chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.aw-summary-chips span{padding:4px 10px;border-radius:14px;font-size:12px}
+.aw-summary-chips .warn{background:#36290b;color:#ffb000}.aw-summary-chips .ok{background:#0b3020;color:#16c76c}.aw-summary-chips .info{background:#102747;color:#5aa2ff}
+.aw-pref-card{display:flex;flex-direction:column;gap:4px}
+.aw-pref-card h2{margin:0 0 6px;font-size:16px}
+.aw-pref-row{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:10px 0;border-top:1px solid #222}
+.aw-pref-row>span:first-child{display:flex;flex-direction:column;gap:2px;min-width:0}
+.aw-pref-row small{color:#888;font-size:12px}
+.aw-pref-row select{padding:7px 10px;border-radius:9px;border:1px solid #333;background:#1a1a1a;color:#eee}
+.aw-pref-row input[role=switch]{width:40px;height:22px;accent-color:#8b78ff;flex:none}
+.aw-pref-lang{display:flex;gap:6px}
+.aw-pref-lang button{padding:5px 10px;border-radius:16px;border:1px solid #333;background:transparent;color:#999;cursor:pointer}
+.aw-pref-lang button[aria-pressed=true]{border-color:#8b78ff;color:#d2caff;background:#242033}
+.aw-ai-bank i.also{margin-left:6px;color:#888;font-style:normal;font-size:12px}
+.aw-hdr-pop{position:relative}
+.aw-hdr-search{flex:1;max-width:520px}
+.aw-hdr-search .aw-navbar-search{width:100%}
+.aw-hdr-menu{position:absolute;top:calc(100% + 8px);right:0;z-index:900;min-width:320px;max-width:min(420px,90vw);display:flex;flex-direction:column;gap:4px;padding:10px;border:1px solid #333;border-radius:14px;background:#111;box-shadow:0 12px 40px #000a}
+.aw-hdr-search .aw-hdr-menu{left:0;right:auto;width:100%}
+.aw-hdr-menu>b{font-size:13px;padding:2px 6px 6px}
+.aw-hdr-menu small{color:#888;font-size:12px;padding:4px 6px}
+.aw-hdr-menu button{text-align:left;border:0;background:transparent;color:#ddd;padding:8px;border-radius:9px;font-size:13px;cursor:pointer}
+.aw-hdr-menu button:hover{background:#1d1d1d}
+.aw-hdr-menu button.warn{border-left:3px solid #ffb000}.aw-hdr-menu button.info{border-left:3px solid #5aa2ff}
+.aw-hdr-menu button small{padding:0 6px 0 0;color:#9380ff}
+.aw-notification-button{position:relative}
+.aw-hdr-dot{position:absolute;top:-4px;right:-6px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:#ff4c52;color:#fff;font-size:10px;line-height:16px;text-align:center}

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { db } from "../db";
+import { prefsOf } from "../prefs";
 import { accountOf, transfer } from "./ledger";
 import { TopupError, checkTopup, stripe, topupLimit } from "./topup";
 
@@ -83,6 +84,8 @@ export async function coverShortfall(wallet: string, amount: bigint, key: string
   const customer = await db.bankCustomer.findUnique({ where: { id: account.customerId }, select: { userId: true } });
   const link = customer?.userId ? await linkOf(customer.userId) : null;
   if (!link || !customer?.userId) return null;
+  // The user turned card cover off (Policy): a short balance is refused instead of charged.
+  if (!(await prefsOf(customer.userId)).cardCover) return null;
   const short = amount - account.balance;
   const charge = short < MIN_CHARGE[account.currency] ? MIN_CHARGE[account.currency] : short;
   const limit = BigInt(await topupLimit(customer.userId, account.currency)) * 100n;

@@ -67,6 +67,17 @@ export type AgentStep = {
   result?: ActionResult;
   /** A bank-deal draft the user can approve in the chat (propose_bank_deal). */
   draft?: DraftView;
+  /** A short form for the details a deal still needs (ask_deal_details). */
+  form?: DealForm;
+};
+
+/** What the chat's "before I draft the deal" form shows: what is known, and what to ask for. */
+export type DealForm = {
+  side: "buy" | "sell";
+  known: { counterparty?: string; kind?: string; work?: string; price?: string; milestones?: string; acceptance?: string; ship_to?: string };
+  missing: ("counterparty" | "kind" | "work" | "price" | "milestones" | "deadline" | "acceptance" | "ship_to")[];
+  /** Contact names the user can pick for the other party. */
+  contacts: string[];
 };
 
 const SYSTEM = `You are the AI agent of "Agentic Wallet", a smart-contract wallet that pays SME contractors milestone by milestone (deposit, delivery, FAT, SAT, retention) in the wallet's settlement token: mUSDC, or wallet e-money mTHB / mCNY, a stablecoin backed one to one by the user's THB / CNY balance (see token.symbol in the wallet status). All are test tokens with no value, on a testnet.
@@ -94,7 +105,7 @@ Style: concise, professional, plain English (reply in the user's language if the
 const BANK_SYSTEM = `
 E-money wallet. Deals are paid from the user's THB / CNY wallet balance (topped up by PromptPay, card or counter service); the on-chain wallet holds no idle money (its balance is normally 0, and that is fine).
 - Two kinds of deal, keep them apart: HIRE (kind "hire") pays a person for work or a service (design, code, writing, repairs); BUY (kind "buy") pays for a thing: a digital file (delivery "file") or a physical item shipped by post (delivery "parcel", tracked with a tracking number). Say which one you drafted.
-- Before drafting, make sure you have the minimum: (1) who the other party is, (2) hire or buy, and for goods whether it is a file or a physical item, (3) what exactly is delivered, (4) the price of each milestone, (5) acceptance criteria for each milestone, (6) for a parcel, the delivery address. If any of these is missing or unclear, do NOT call the tool: ask ONE short question that lists only what is missing, and offer a sensible default where there is one (e.g. "one milestone, paid on delivery?"). Never invent prices, criteria or addresses. Due dates are optional; review_hours defaults to 72 without asking. If a tool answers NEED_INFO, ask the user exactly that.
+- Before drafting, make sure you have the minimum: (1) who the other party is, (2) hire or buy, and for goods whether it is a file or a physical item, (3) what exactly is delivered, (4) the price of each milestone, (5) acceptance criteria for each milestone, (6) for a parcel, the delivery address. If any of these is missing or unclear, do NOT call the draft tool: call ask_deal_details with what you know and what is missing (the user gets a form), or, if only one small thing is missing, ask ONE short question that lists only what is missing, and offer a sensible default where there is one (e.g. "one milestone, paid on delivery?"). Never invent prices, criteria or addresses. Due dates are optional; review_hours defaults to 72 without asking. If a tool answers NEED_INFO, ask the user exactly that.
 - To buy work, call propose_bank_deal. It ONLY saves a draft: nothing is signed or debited. The user then presses "Approve & lock" in the chat; only then is the offer's total taken from their wallet balance, which is locked in the file escrow until each milestone is approved.
 - Amounts are plain numbers in the wallet's currency (THB or CNY), e.g. 5000 means 5,000 baht. Never call them mUSDC.
 - People are referred to by name. The seller must be one of the payees in get_wallet_status (people the wallet may pay). If the user names a friend who is not a payee, say they must add that person to the allowlist first (Friends page).
@@ -268,6 +279,26 @@ const BANK_TOOLS = [
   ),
   tool("forget_nickname", "Forget a nickname the user no longer uses.", { nickname: { type: "string" } }, ["nickname"]),
   tool(
+    "ask_deal_details",
+    "When the user wants a deal but required details are missing, call this INSTEAD of asking in text: it shows the user a short form for exactly the missing details (they answer by filling it in). Pass what you already know. After calling it, reply with one short sentence and wait.",
+    {
+      side: { type: "string", enum: ["buy", "sell"], description: "buy: the user hires or buys; sell: the user sells" },
+      counterparty: { type: "string", description: "The other party's name if known, else empty" },
+      kind: { type: "string", description: "hire, file or parcel if known, else empty" },
+      work: { type: "string", description: "What is delivered, if known, else empty" },
+      price: { type: "string", description: "The price if known (with currency), else empty" },
+      milestones: { type: "string", description: "How it is paid (e.g. one payment, 2 milestones) if known, else empty" },
+      acceptance: { type: "string", description: "The acceptance criteria if known, else empty" },
+      ship_to: { type: "string", description: "The delivery address if known (parcels only), else empty" },
+      missing: {
+        type: "array",
+        items: { type: "string", enum: ["counterparty", "kind", "work", "price", "milestones", "deadline", "acceptance", "ship_to"] },
+        description: "Which details the user must still give",
+      },
+    },
+    ["side", "missing"],
+  ),
+  tool(
     "discard_draft",
     "Delete a draft the user has not approved yet (nothing was signed or debited for it).",
     { draft_ref: { type: "string", description: "The draft's reference from list_deals, e.g. DR-4F2K9A" } },
@@ -374,6 +405,19 @@ const INPUTS: Record<string, z.ZodType> = {
   create_group: z.object({ name: z.string().trim().min(1).max(80), members: z.array(z.string().min(1).max(120)).min(1).max(19), votes_needed: z.number().int().min(2).max(20) }),
   propose_to_group: z.object({ group: z.string().min(1).max(80), draft_ref: z.string().min(3).max(40) }),
   remember_nickname: z.object({ nickname: z.string().trim().min(1).max(40), contact: z.string().min(1).max(120) }),
+  ask_deal_details: z
+    .object({
+      side: z.enum(["buy", "sell"]).default("buy"),
+      counterparty: z.string().max(120).optional(),
+      kind: z.string().max(20).optional(),
+      work: z.string().max(300).optional(),
+      price: z.string().max(60).optional(),
+      milestones: z.string().max(120).optional(),
+      acceptance: z.string().max(600).optional(),
+      ship_to: z.string().max(300).optional(),
+      missing: z.array(z.enum(["counterparty", "kind", "work", "price", "milestones", "deadline", "acceptance", "ship_to"])).min(1).max(8),
+    })
+    .passthrough(),
   forget_nickname: z.object({ nickname: z.string().trim().min(1).max(40) }),
 };
 
@@ -661,6 +705,20 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
         if (err instanceof SocialError) return { tool: name, input, summary: `BLOCKED: ${err.message}` };
         throw err;
       }
+    }
+    case "ask_deal_details": {
+      const list = userId ? await contacts(wallet, userId) : [];
+      const pick = (k: string) => {
+        const v = String((input as Record<string, unknown>)[k] ?? "").trim();
+        return v ? v : undefined;
+      };
+      const form: DealForm = {
+        side: input.side === "sell" ? "sell" : "buy",
+        known: { counterparty: pick("counterparty"), kind: pick("kind"), work: pick("work"), price: pick("price"), milestones: pick("milestones"), acceptance: pick("acceptance"), ship_to: pick("ship_to") },
+        missing: input.missing as DealForm["missing"],
+        contacts: list.map((c) => c.name).slice(0, 12),
+      };
+      return { tool: name, input, summary: `FORM SHOWN: the user fills in ${form.missing.join(", ")}. Wait for their answer.`, form };
     }
     case "remember_nickname": {
       if (!userId) throw new Error("Nicknames need a signed-in user");

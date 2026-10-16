@@ -9,6 +9,7 @@ import { localizeMockupNode, useLang } from "@/lib/i18n";
 
 import { api, download, tokenMoney, useAppData } from "./app-data";
 import { DisputeFlow, type DisputeFlowData, isStagedDispute } from "./dispute-flow";
+import { usePrefs } from "./prefs";
 import { BalanceBar } from "./mockup-live";
 import { Button, Card, Loading, PageTitle } from "./mockup-ui";
 
@@ -302,6 +303,7 @@ type AuditEntry = { block: string; event: string; detail: string; txHash: string
 export function LivePolicy() {
   const lang = useLang();
   const { me } = useAppData();
+  const [prefs, savePrefs] = usePrefs();
   const { data, error, reload } = useApi<Policy>("/api/policy");
   const address = me?.wallets[0]?.address;
   const { data: state, reload: reloadState } = useApi<{ audit: AuditEntry[] }>(address ? `/api/workspace/${address}` : null);
@@ -386,6 +388,14 @@ export function LivePolicy() {
                 </div>
               </>
             )}
+            <div className="aw-policy-limit">
+              <span>Check balance before approval</span>
+              <b className="aw-green">Always on</b>
+            </div>
+            <label className="aw-policy-limit">
+              <span>A linked card covers a short balance</span>
+              <input type="checkbox" role="switch" checked={prefs?.cardCover ?? true} disabled={!prefs} onChange={(e) => void savePrefs({ cardCover: e.target.checked })} />
+            </label>
             <div className="aw-policy-limit">
               <span>Wallet</span>
               <b className={data?.paused ? "aw-red" : "aw-green"}>{data ? (data.paused ? "Paused" : "Active") : "…"}</b>
@@ -534,7 +544,17 @@ export function LiveFriends() {
   const { busy, run, note } = useAction();
   const [username, setUsername] = useState("");
   const [found, setFound] = useState<{ username: string; name: string }[]>([]);
+  const [tab, setTab] = useState<"all" | "group" | "allow">("all");
+  const [myQr, setMyQr] = useState<{ image: string; url: string } | null>(null);
+  const { me } = useAppData();
+  const { data: groupsData } = useApi<{ groups: { members: { userId: string }[] }[] }>("/api/groups");
   const friends = data?.friends ?? [];
+  // Someone scanned your "My code" QR: their page opens with your username ready to add.
+  useEffect(() => {
+    const add = new URLSearchParams(window.location.search).get("add");
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (add) setUsername(add);
+  }, []);
   // Search as the user types: part of a username or a display name is enough.
   useEffect(() => {
     const q = username.trim();
@@ -556,6 +576,14 @@ export function LiveFriends() {
   const incoming = friends.filter((f) => f.direction === "incoming");
   const outgoing = friends.filter((f) => f.direction === "outgoing");
   const mutual = friends.filter((f) => f.status === "ACCEPTED");
+  const inMyGroups = new Set((groupsData?.groups ?? []).flatMap((g) => g.members.map((m) => m.userId)));
+  const shown = mutual.filter((f) => (tab === "group" ? inMyGroups.has(f.userId) : tab === "allow" ? f.allowlisted : true));
+  async function showMyCode() {
+    const username = me?.user.username;
+    if (!username) return;
+    const url = `${window.location.origin}/contacts?add=${encodeURIComponent(username)}`;
+    setMyQr({ url, image: await QRCode.toDataURL(url, { margin: 1, width: 200 }) });
+  }
 
   return localizeMockupNode(
     <div className="aw-friends-page">
@@ -573,7 +601,7 @@ export function LiveFriends() {
         <div className="aw-friends-top">
           <section className="aw-friends-panel aw-find-friends">
             <h2>Add a contact</h2>
-            <p>Type part of their name or username. Only wallets in your currency are found.</p>
+            <p>Type part of their name or username, or their exact email. Only wallets in your currency are found.</p>
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -587,7 +615,7 @@ export function LiveFriends() {
               }}
             >
               <label className="aw-friends-search">
-                <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="name or bank username" />
+                <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="name, username or email" />
               </label>
               <Button type="submit" disabled={!username || busy === "add"}>
                 {busy === "add" ? "…" : "Send request"}
@@ -622,6 +650,21 @@ export function LiveFriends() {
               ))}
             </div>
           </section>
+          <section className="aw-friends-panel aw-my-code">
+            <h2>My code</h2>
+            <p>Contacts scan this QR to add you{me?.user.username ? ` (@${me.user.username})` : ""}.</p>
+            {myQr ? (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={myQr.image} alt="Your contact QR code" width={160} height={160} className="aw-gr-qr" />
+                <small>{myQr.url}</small>
+              </>
+            ) : (
+              <Button variant="outline" disabled={!me?.user.username} onClick={() => void showMyCode()}>
+                Show my QR
+              </Button>
+            )}
+          </section>
         </div>
         <InviteByLink />
         <Nicknames />
@@ -652,10 +695,24 @@ export function LiveFriends() {
         <section className="aw-friends-panel aw-my-friends">
           <header>
             <h2>My contacts · {mutual.length}</h2>
+            <div className="aw-deals-tabs" role="tablist" aria-label="Filter contacts">
+              {(
+                [
+                  ["all", `All ${mutual.length}`],
+                  ["group", `Same group ${mutual.filter((f) => inMyGroups.has(f.userId)).length}`],
+                  ["allow", `Allowlisted ${mutual.filter((f) => f.allowlisted).length}`],
+                ] as const
+              ).map(([k, label]) => (
+                <button type="button" role="tab" key={k} aria-selected={tab === k} className={tab === k ? "active" : ""} onClick={() => setTab(k)}>
+                  {label}
+                </button>
+              ))}
+            </div>
           </header>
           <div className="aw-friend-policy">ⓘ &nbsp; A contact is not automatically in your allowlist. Making someone a payee is an on-chain action you approve.</div>
           <div className="aw-friend-cards">
-            {mutual.map((f) => (
+            {shown.length === 0 && <small>No contacts here.</small>}
+            {shown.map((f) => (
               <article key={f.friendshipId}>
                 <div className="aw-friend-card-head">
                   <span className="aw-friend-avatar violet">{initials(f.name)}</span>
@@ -666,6 +723,7 @@ export function LiveFriends() {
                 </div>
                 <div className="aw-friend-tags">{f.allowlisted && <span className="allow">allowlist</span>}</div>
                 <div className="aw-friend-card-actions">
+                  <Button onClick={() => (window.location.href = `/chat?draft=${encodeURIComponent(`Hire ${f.name} for `)}`)}>New deal</Button>
                   <Button
                     variant="outline"
                     disabled={!!busy || !f.wallet}
@@ -1416,7 +1474,7 @@ type Summary = {
 
 export function LiveSummary() {
   const lang = useLang();
-  const { wallet } = useAppData();
+  const { wallet, drafts } = useAppData();
   const { data, error } = useApi<Summary>("/api/summary");
   const [ai, setAi] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
@@ -1490,6 +1548,25 @@ export function LiveSummary() {
             <p>Ask the AI to explain your spending, income and tax estimate. It never sees names or account numbers.</p>
           )}
           {aiError && <p className="aw-bank-error">{aiError}</p>}
+          {data &&
+            (() => {
+              // Quick facts from the totals, like Napat's chips: month-on-month spending, failures, refunds.
+              const ms = data.months;
+              const [prev, cur] = [ms[ms.length - 2], ms[ms.length - 1]];
+              const change = prev && cur && prev.spent > 0 ? Math.round(((cur.spent - prev.spent) / prev.spent) * 100) : null;
+              const failed = drafts.filter((d) => d.status === "FAILED").length;
+              const refunds = data.deals.filter((d) => d.refunded > 0).length;
+              return (
+                <div className="aw-summary-chips">
+                  {change !== null && <span className={change > 0 ? "warn" : "ok"}>Spending {change > 0 ? "↑" : "↓"} {Math.abs(change)}% vs last month</span>}
+                  <span className={failed ? "warn" : "ok"}>{failed ? `${failed} failed payment${failed > 1 ? "s" : ""} (refunded)` : "No failed payments"}</span>
+                  <span className="info">
+                    {refunds} refund{refunds === 1 ? "" : "s"}
+                  </span>
+                  <span className="info">{tokenMoney(locked, c)} still locked</span>
+                </div>
+              );
+            })()}
           <div>
             <Button onClick={explain} disabled={aiBusy}>
               {aiBusy ? "Thinking…" : ai ? "Refresh" : "Explain with AI"}
@@ -1604,12 +1681,14 @@ type DealDetail = {
   canAccept: boolean;
   declined: "me" | "them" | null;
   escrow: string | null;
+  notes?: { kind: "CHANGES" | "REVISION"; index: number | null; text: string; at: string }[];
   milestones: {
     index: number;
     name: string;
     acceptance: string | null;
     amount: string;
     status: string;
+    split?: { toSeller: string; toBuyer: string };
     deadline: number;
     moves: string[];
     delivers: "file" | "parcel" | "note";
@@ -1794,9 +1873,14 @@ function DeliverForm({ dealId, index, parcel, onDone }: { dealId: number; index:
           <input value={tracking} onChange={(e) => setTracking(e.target.value.toUpperCase())} placeholder="EF123456785TH" maxLength={30} required={carrier !== "MOCK_POST"} />
         </label>
         <label>
+          <span>Shipping receipt photo (optional · the buyer sees a watermarked preview)</span>
+          <input type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+        </label>
+        <label>
           <span>Note for the buyer (optional)</span>
           <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} maxLength={4000} />
         </label>
+        <p className="aw-gr-muted">Money is paid to you only after the buyer confirms the item arrived as agreed.</p>
         <Button type="submit" disabled={busy || (carrier !== "MOCK_POST" && !tracking.trim())}>
           {busy ? (booking ? "Booking with Mock Post…" : "Recording the shipment…") : booking ? "Book pickup & ship" : "Mark as shipped"}
         </Button>
@@ -1847,7 +1931,7 @@ function ParcelPanel({ p, shipTo, role, reviewing }: { p: Parcel; shipTo: string
           <b className={p.delivered ? "green" : "blue"}>{p.delivered ? "Delivered" : p.tracked ? (p.events[0]?.status ?? p.status) : p.status}</b>
         </span>
       </div>
-      {shipTo && <p>Ship to: {shipTo}</p>}
+      {shipTo && <p>Ship to: {role === "seller" ? <MaskedAddress text={shipTo} /> : shipTo}</p>}
       {p.tracked && (
         <ol className="aw-v08-tracking">
           {events.map((e, i) => {
@@ -1906,6 +1990,72 @@ const STEP: Record<string, string> = {
   Split: "Split by the arbiter · your share refunded",
 };
 
+/** The agreed items of a parcel milestone, one per line of its acceptance criteria. */
+const itemsOf = (acceptance: string | null) =>
+  (acceptance ?? "")
+    .split(/[\n;]|,(?![^(]*\))|\s\+\s/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 1)
+    .slice(0, 8);
+
+/** An address with the house number and road partly hidden (PDPA), until the seller shows it. */
+function MaskedAddress({ text }: { text: string }) {
+  const [shown, setShown] = useState(false);
+  const masked = text.replace(/\d+(\/\d+)?/, (n) => `${n[0]}${"•".repeat(Math.max(1, n.length - 1))}`).replace(/(Rd|Road|Soi|ถนน|ซอย)\s*([^,]+)/i, (_m, k) => `${k} •••`);
+  return (
+    <span className="aw-dd-address">
+      {shown ? text : masked}{" "}
+      <button type="button" onClick={() => setShown((v) => !v)}>
+        {shown ? "Hide" : "Show full address"}
+      </button>
+      <small>Partly hidden on screen (PDPA). Only you, the seller, can see it.</small>
+    </span>
+  );
+}
+
+/** Buyer's request for changes to a delivery (off-chain; the review window keeps running). */
+function NoteForm({ dealId, kind, index, deadline, onDone, onCancel }: { dealId: number; kind: "CHANGES" | "REVISION"; index?: number; deadline?: number; onDone: () => Promise<void>; onCancel: () => void }) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  return (
+    <form
+      className="aw-deliver-form"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setBusy(true);
+        setErr(null);
+        try {
+          await send(`/api/deals/${dealId}/notes`, "POST", { kind, index, text });
+          await onDone();
+        } catch (e2) {
+          setErr((e2 as Error).message);
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <label>
+        <span>{kind === "CHANGES" ? "What should the seller change?" : "What should the seller change in the offer?"}</span>
+        <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} maxLength={1000} placeholder={kind === "CHANGES" ? "e.g. Add the top-risks section and export as PDF" : "e.g. Split it into 2 milestones, ฿2,500 each"} />
+      </label>
+      {kind === "CHANGES" && deadline ? (
+        <small>Your review window still ends {when(deadline)}: if the fix does not arrive by then, dispute before it ends.</small>
+      ) : null}
+      {kind === "REVISION" && <small>The seller sees your note, withdraws this offer and sends a new one. Nothing is paid until you accept.</small>}
+      <div className="aw-actions">
+        <Button type="submit" disabled={busy || text.trim().length < 5}>
+          {busy ? "Sending…" : kind === "CHANGES" ? "Send request" : "Ask for a revision"}
+        </Button>
+        <Button type="button" variant="outline" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+      {err && <p className="aw-bank-error">{err}</p>}
+    </form>
+  );
+}
+
 export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: string) => void }) {
   const lang = useLang();
   const { me, refresh } = useAppData();
@@ -1918,6 +2068,9 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
     await refresh();
   };
   const [disputing, setDisputing] = useState<number | null>(null);
+  const [asking, setAsking] = useState<number | "offer" | null>(null);
+  const [checked, setChecked] = useState<Record<string, boolean>>({});
+  const [evidence, setEvidence] = useState(false);
   const act = (action: string, index: number) => run(`${action}${index}`, () => send(`/api/deals/${id}/action`, "POST", { action, index }), after);
 
   return localizeMockupNode(
@@ -1949,7 +2102,53 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
         {error && <p className="aw-bank-error">{error}</p>}
         {!data && !error && <Loading block text="Reading the deal from the chain…" />}
         {note}
+        {data &&
+          (() => {
+            const ms = data.milestones;
+            const paid = ms.reduce((t, m) => t + (m.status === "Released" ? Number(m.amount) : m.split ? Number(m.split.toSeller) : 0), 0);
+            const back = ms.reduce((t, m) => t + (m.status === "Refunded" ? Number(m.amount) : m.split ? Number(m.split.toBuyer) : 0), 0);
+            const locked = data.status === "Active" || (data.status === "Proposed" && data.role === "buyer" && data.canCancel) ? Number(data.total) - paid - back : 0;
+            const open = ms.filter((m) => ["Delivered", "Approved", "KeyReleased"].includes(m.status) && m.deadline > 0).sort((a, b) => a.deadline - b.deadline)[0];
+            const next = open
+              ? {
+                  label: open.status === "Delivered" ? (data.role === "buyer" ? "Your review ends" : "Buyer's review ends") : open.status === "Approved" ? "Key due by" : "Paid automatically after",
+                  value: when(open.deadline),
+                  hint: open.status === "Delivered" ? (data.role === "buyer" ? "Silence lets the seller be paid" : "Then you can be paid") : "No action needed",
+                }
+              : { label: "Next step", value: data.status === "Proposed" ? "Waiting for acceptance" : ms.every((m) => ["Released", "Refunded", "Split"].includes(m.status)) ? "Done" : "Waiting for delivery", hint: "" };
+            return (
+              <div className="aw-dd-stats">
+                <div>
+                  <small>Total</small>
+                  <b>{tokenMoney(data.total, c)}</b>
+                  <small>{ms.length} milestone{ms.length === 1 ? "" : "s"}</small>
+                </div>
+                <div>
+                  <small>Locked now</small>
+                  <b className="amber">{tokenMoney(locked, c)}</b>
+                  <small>{locked > 0 ? "In escrow · nobody can move it alone" : "Nothing locked"}</small>
+                </div>
+                <div>
+                  <small>{data.role === "seller" ? "Paid to you" : "Paid to the seller"}</small>
+                  <b className="green">{tokenMoney(paid, c)}</b>
+                  <small>{back > 0 ? `${tokenMoney(back, c)} returned to the buyer` : data.role === "seller" ? `Into your ${me?.acting ? "company " : ""}wallet ${me?.accounts[0]?.accountNo ?? ""}` : "After you approve each delivery"}</small>
+                </div>
+                <div>
+                  <small>{next.label}</small>
+                  <b className="blue">{next.value}</b>
+                  <small>{next.hint}</small>
+                </div>
+              </div>
+            );
+          })()}
         {data?.summary && <p>{data.summary}</p>}
+        {data?.notes
+          ?.filter((n) => n.kind === "REVISION")
+          .map((n, i) => (
+            <p className="aw-dd-note" key={i}>
+              ✎ {data.role === "seller" ? "The buyer asks for a revised offer" : "You asked for a revised offer"}: “{n.text}”
+            </p>
+          ))}
         <div className="aw-d012-columns">
           {data?.milestones.map((m) => (
             <section className="aw-d012-card" key={m.index}>
@@ -1991,7 +2190,44 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
                 </div>
               )}
               {m.delivery?.parcel && <ParcelPanel p={m.delivery.parcel} shipTo={data.shipTo} role={data.role} reviewing={m.status === "Delivered"} />}
-              {!m.delivery?.parcel && m.delivers === "parcel" && data.shipTo && data.role === "seller" && <p>📦 Ship to: {data.shipTo}</p>}
+              {!m.delivery?.parcel && m.delivers === "parcel" && data.shipTo && data.role === "seller" && (
+                <p>
+                  📦 Ship to: <MaskedAddress text={data.shipTo} />
+                </p>
+              )}
+              {data.notes
+                ?.filter((n) => n.kind === "CHANGES" && n.index === m.index)
+                .map((n, i) => (
+                  <p className="aw-dd-note" key={i}>
+                    ✎ {data.role === "seller" ? "The buyer asks for changes" : "You asked for changes"} ({new Date(n.at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}): “{n.text}”
+                    {data.role === "seller" && m.moves.includes("deliver") ? " · deliver the fixed version below" : ""}
+                  </p>
+                ))}
+              {asking === m.index && (
+                <NoteForm
+                  dealId={id}
+                  kind="CHANGES"
+                  index={m.index}
+                  deadline={m.deadline}
+                  onCancel={() => setAsking(null)}
+                  onDone={async () => {
+                    setAsking(null);
+                    await after();
+                  }}
+                />
+              )}
+              {data.role === "buyer" && m.delivers === "parcel" && m.status === "Delivered" && itemsOf(m.acceptance).length > 0 && (
+                <fieldset className="aw-dd-items">
+                  <legend>Open the box and tick each agreed item before you pay</legend>
+                  {itemsOf(m.acceptance).map((it, k) => (
+                    <label key={k}>
+                      <input type="checkbox" checked={Boolean(checked[`${m.index}:${k}`])} onChange={(e) => setChecked((c2) => ({ ...c2, [`${m.index}:${k}`]: e.target.checked }))} />
+                      {it}
+                    </label>
+                  ))}
+                  <small>There is no automatic confirmation from you: report a problem (dispute) if anything is missing or damaged.</small>
+                </fieldset>
+              )}
               {m.moves.includes("deliver") && <DeliverForm dealId={id} index={m.index} parcel={m.delivers === "parcel"} onDone={after} />}
               {disputing === m.index && m.moves.includes("dispute") && (
                 <DisputeForm
@@ -2028,13 +2264,24 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
               {m.moves.length > 0 && (
                 <div className="aw-d012-actions">
                   {m.moves.includes("approve") && (
-                    <Button disabled={!!busy} onClick={() => act("approve", m.index)}>
+                    <Button
+                      disabled={
+                        !!busy ||
+                        (data.role === "buyer" && m.delivers === "parcel" && m.status === "Delivered" && itemsOf(m.acceptance).some((_, k) => !checked[`${m.index}:${k}`]))
+                      }
+                      onClick={() => act("approve", m.index)}
+                    >
                       {busy === `approve${m.index}` ? "…" : m.delivers === "parcel" ? "I received it · pay the seller" : data.kind === "GOODS" ? "Approve & unlock file" : "Approve work"}
+                    </Button>
+                  )}
+                  {data.role === "buyer" && m.status === "Delivered" && m.delivers !== "parcel" && asking !== m.index && (
+                    <Button variant="outline" disabled={!!busy} onClick={() => setAsking(m.index)}>
+                      Request changes
                     </Button>
                   )}
                   {m.moves.includes("dispute") && disputing !== m.index && (
                     <Button variant="outline" disabled={!!busy} onClick={() => setDisputing(m.index)}>
-                      Dispute
+                      {m.delivers === "parcel" ? "Report a problem" : "Dispute"}
                     </Button>
                   )}
                   {m.moves.includes("reclaim") && (
@@ -2063,7 +2310,23 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
             <Button variant="outline" disabled={!!busy} onClick={() => run("decline", () => send(`/api/deals/${id}/decline`, "POST"), after)}>
               Decline
             </Button>
+            {data.role === "buyer" && asking !== "offer" && (
+              <Button variant="outline" disabled={!!busy} onClick={() => setAsking("offer")}>
+                Request revision
+              </Button>
+            )}
           </div>
+        )}
+        {asking === "offer" && (
+          <NoteForm
+            dealId={id}
+            kind="REVISION"
+            onCancel={() => setAsking(null)}
+            onDone={async () => {
+              setAsking(null);
+              await after();
+            }}
+          />
         )}
         {data?.canAccept && (
           <div className="aw-d012-actions">
@@ -2082,6 +2345,33 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
               {data.role === "buyer" ? "Cancel offer · refund to bank" : "Withdraw offer"}
             </Button>
           </div>
+        )}
+        {data && (
+          <section className="aw-dd-evidence">
+            <button type="button" onClick={() => setEvidence((v) => !v)} aria-expanded={evidence}>
+              ♧ Evidence (for audit) {evidence ? "▴" : "▾"}
+            </button>
+            {evidence && (
+              <ul>
+                <li>Deal D-{data.id} · {data.status} · escrow {data.escrow ? <a href={data.escrow} target="_blank" rel="noreferrer">contract ↗</a> : "—"}</li>
+                {data.milestones.map((m) => (
+                  <li key={m.index}>
+                    Milestone {m.index + 1} · {m.status}
+                    {m.delivery ? ` · work hash sha256 ${m.delivery.sha256.slice(0, 16)}… (anchored on-chain at delivery)` : " · not delivered yet"}
+                    {m.dispute?.txHash ? (
+                      <>
+                        {" · ruling "}
+                        <a href={`/explorer/tx/${m.dispute.txHash}`} target="_blank" rel="noreferrer">
+                          tx ↗
+                        </a>
+                      </>
+                    ) : null}
+                  </li>
+                ))}
+                <li>Only hashes and amounts are on-chain; terms, notes and files stay off-chain and can be deleted (PDPA).</li>
+              </ul>
+            )}
+          </section>
         )}
         {data?.escrow && (
           <small>

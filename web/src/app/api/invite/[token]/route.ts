@@ -4,6 +4,8 @@ import { getAddress } from "viem";
 import { disputeOf, disputeView } from "@/lib/bank/arbiter";
 import { dealTerms, deliveryInfo, syncDeal } from "@/lib/bank/deals";
 import { InviteError, inviteByToken, inviteView, sweepInvite } from "@/lib/bank/invites";
+import { config } from "@/lib/config";
+import { db } from "@/lib/db";
 import { HttpError, errorResponse, rateLimit } from "@/lib/guard";
 
 
@@ -38,6 +40,7 @@ export async function GET(req: Request, ctx: RouteContext<"/api/invite/[token]">
           title: terms?.title ?? `Deal #${d.id}`,
           summary: terms?.summary ?? null,
           canAccept: d.status === "Proposed" && d.offeredBy === "them",
+          notes: (await db.dealNote.findMany({ where: { escrow: config.fileEscrowOf(d.id), dealId: d.id }, orderBy: { createdAt: "desc" }, take: 20 })).map((n) => ({ kind: n.kind, index: n.index, text: n.text, at: n.createdAt })),
           milestones: await Promise.all(
             d.milestones.map(async (m, i) => ({
               ...m,

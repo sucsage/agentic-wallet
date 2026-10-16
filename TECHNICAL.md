@@ -335,6 +335,13 @@ Internally the e-money account is a ledger account. The funding saga, the reserv
 
 ---
 
+### 3.11 Groups and company accounts
+
+- **Groups** decide together. Members are invited from contacts and join by accepting, or join by a link / QR as non-signers. Only **signers** vote; a payment locks after N of M signers approve. Rule changes (make or stop a signer, remove someone, change the votes needed) use the same vote. A plain group pays from the proposer's wallet; an approved payment that failed to lock can be executed again.
+- **Company accounts** (`web/src/lib/company.ts`): a company is a group of signers with its own e-money account and agent wallet. The registration id is checked by its check digit (Thai juristic id, Chinese unified social credit code) and stored masked plus an HMAC; the registry lookup is mocked. Members switch **Acting as** (cookie `aw_acting`); deals, approvals, policy, payees and the summary then follow the company. A company purchase is submitted to its signers and locks from the company account after N of M approve; no single member can approve it (`approveDraft` refuses). Members fund it from their own wallet (ledger `TRANSFER`).
+- **Deal notes**: the buyer can ask for changes to a delivery or a revised offer. Off-chain only: the on-chain review window keeps running.
+- **Before drafting**, the agent calls `ask_deal_details` when details are missing; the chat shows a form, and the answers go back to the agent.
+
 ## 4. The AI agent
 
 `web/src/lib/agent.ts`: an LLM tool-use loop (max 12 turns) over any Anthropic-compatible API

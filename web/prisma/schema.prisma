@@ -875,5 +875,7 @@ model UserPreference {
   /// Keep deal terms, chats and evidence for disputes; off deletes chats after a deal settles.
   keepDealDocs Boolean  @default(true)
   emailNotify  Boolean  @default(false)
+  /// A linked card covers a short balance when a deal is approved.
+  cardCover    Boolean  @default(true)
   updatedAt    DateTime @updatedAt
 }

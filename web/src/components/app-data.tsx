@@ -37,7 +37,7 @@ export type CompanyView = {
 };
 
 export type Me = {
-  user: { id: string; name: string };
+  user: { id: string; name: string; username?: string };
   bank: { name: string; currency: "THB" | "CNY"; token: string; customerType: "PERSONAL" | "COMPANY"; consentedAt: string | null };
   accounts: AccountView[];
   wallets: { address: string; role: string; label: string | null; openProposals: number; createdAt: string }[];
