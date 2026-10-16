@@ -3,6 +3,7 @@ import { after } from "next/server";
 import { disputeOf, disputeView } from "@/lib/bank/arbiter";
 import { DealError, dealForWallet, dealTerms, deliveryInfo, demoDeliverable, syncDeal } from "@/lib/bank/deals";
 import { deliveryOf, draftView } from "@/lib/bank/drafts";
+import { inviteLinkFor } from "@/lib/bank/invites";
 import { roleAddresses } from "@/lib/chain";
 import { config, explorerAddress } from "@/lib/config";
 import { db } from "@/lib/db";
@@ -30,7 +31,7 @@ function moves(role: "buyer" | "seller", dealStatus: string, status: string, dea
 }
 
 /** One deal, from either side: milestones, deadlines, moves, deliveries and its off-chain terms. */
-export async function GET(_req: Request, ctx: RouteContext<"/api/deals/[id]">) {
+export async function GET(req: Request, ctx: RouteContext<"/api/deals/[id]">) {
   try {
     const { user, wallet } = await requireBankWallet();
     const id = Number((await ctx.params).id);
@@ -45,14 +46,17 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/deals/[id]">) {
     const demoSeller = deal.role === "buyer" && deal.counterparty === roleAddresses().contractor;
     const declines = deal.status === "Proposed" ? await db.declinedOffer.findMany({ where: { escrow: config.fileEscrowOf(id), dealId: id } }) : [];
     const notes = await db.dealNote.findMany({ where: { escrow: config.fileEscrowOf(id), dealId: id }, orderBy: { createdAt: "desc" }, take: 20 });
-    const [deliveries, friends, disputes] = await Promise.all([
+    const [deliveries, friends, disputes, invite] = await Promise.all([
       Promise.all(deal.milestones.map((m) => deliveryInfo(id, m.index))),
       friendLabels(user.id),
       Promise.all(deal.milestones.map((m) => disputeOf(id, m.index))),
+      // The other side has no account and this user invited them: their private link.
+      inviteLinkFor(user.id, deal.counterparty, new URL(req.url).origin),
     ]);
     return Response.json({
       ...deal,
       counterpartyLabel: friends.get(deal.counterparty.toLowerCase()) ?? deal.counterpartyLabel,
+      invite,
       title: terms?.title ?? `File deal #${id}`,
       summary: terms?.summary ?? null,
       kind: terms?.kind ?? "HIRE",

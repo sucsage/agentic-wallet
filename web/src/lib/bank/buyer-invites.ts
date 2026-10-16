@@ -10,6 +10,7 @@ import { createWorkspace } from "../actions";
 import { agentWalletAbi } from "../abis";
 import { type TxOutcome, send } from "../chain";
 import { db } from "../db";
+import { sealToken } from "../link-seal";
 import { readFileDeals } from "../state";
 import { accountOf, openAccount, transfer } from "./ledger";
 import { acceptAndPay, buyerAction, dealTerms, deliveryInfo, syncDeal } from "./deals";
@@ -46,9 +47,20 @@ export async function createBuyerInvite(userId: string, sellerWallet: Address, n
   const payee = await send("owner", { address: buyerWallet, abi: agentWalletAbi, functionName: "setRecipient", args: [sellerWallet, true] });
   const token = randomBytes(24).toString("base64url");
   const invite = await db.buyerInvite.create({
-    data: { tokenHash: hashToken(token), userId, sellerWallet, buyerWallet, name: clean, currency, expiresAt: new Date(Date.now() + LINK_DAYS * 86_400_000) },
+    data: { tokenHash: hashToken(token), tokenEnc: sealToken(token), userId, sellerWallet, buyerWallet, name: clean, currency, expiresAt: new Date(Date.now() + LINK_DAYS * 86_400_000) },
   });
   return { invite, token, payee };
+}
+
+/** A new link for a buyer invite (the old one stops working). */
+export async function rotateBuyerInviteLink(userId: string, inviteId: string): Promise<string> {
+  const token = randomBytes(24).toString("base64url");
+  const updated = await db.buyerInvite.updateMany({
+    where: { id: inviteId, userId },
+    data: { tokenHash: hashToken(token), tokenEnc: sealToken(token), expiresAt: new Date(Date.now() + LINK_DAYS * 86_400_000) },
+  });
+  if (updated.count !== 1) throw new BuyerInviteError("Invite not found");
+  return token;
 }
 
 export async function buyerInviteByToken(token: string): Promise<BuyerInvite> {

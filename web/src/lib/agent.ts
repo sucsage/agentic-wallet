@@ -12,11 +12,9 @@ import {
   transfer,
 } from "./actions";
 import { addressGaps } from "./address";
-import { BuyerInviteError, createBuyerInvite } from "./bank/buyer-invites";
 import { SocialError, createGroup, friendLabels, groupDetail, listFriends, listGroups, pendingVotes, proposeToGroup } from "./social";
 import { DraftError, type DraftView, createDraft, createSellDraft, discardDraft, draftView, listDrafts } from "./bank/drafts";
 import { db } from "./db";
-import { InviteError, createInvite } from "./bank/invites";
 import { LIMITS, kycOf } from "./kyc";
 import { type WalletState, readWallet, walletUnits } from "./state";
 
@@ -116,8 +114,7 @@ E-money wallet. Deals are paid from the user's THB / CNY wallet balance (topped 
 - Nicknames: get_wallet_status lists the nicknames the user gave each contact, and tools accept a nickname wherever they take a name. Whenever the user refers to someone by a description or nickname that is not a contact name (e.g. "พี่เอ", "my designer", "my potter friend") and you learn which contact they mean, call remember_nickname(nickname, contact) right away, before drafting, and tell the user you will remember it. Example: user "buy from my potter friend" → you ask who → "Seller One" → remember_nickname("potter friend", "Seller One"). forget_nickname removes one.
 - Drafts the user has not approved yet are listed by list_deals with a draft_ref (DR-…). discard_draft removes one when the user asks.
 - To SELL the user's own work, a file or an item to someone, call propose_bank_sale with the buyer's name (get_wallet_status → friends). It also only shows a preview; the user presses Confirm, which puts the offer on-chain and locks nothing. The buyer pays from their wallet balance when they accept it, and must have the user as a payee by then.
-- If the user wants to hire someone who is not a friend on the app (no account), first ask "Shall I invite <name>?" and call invite_seller only after the user says yes (it creates a wallet and a payee at once), then give the user the link it returns, then draft the deal with propose_bank_deal to the seller address it returns.
-- If the user wants to SELL to someone who is not on the app (no account), first ask "Shall I invite <name> as a buyer?" and call invite_buyer only after the user says yes, give the user the link it returns, then draft the sale with propose_bank_sale to "<name> (invited buyer)".
+- If the other party (seller or buyer) has no account on the app, draft as usual with their name and new_person true. Do not invent a link: their private link is made only when the user presses Confirm, and it then appears on the deal's page for the user to send them.
 - Never say money moved, was paid or was locked because of a draft.
 - Groups: friends can form a group that decides purchases together. A member puts one of their purchase drafts to the group's vote; it is locked from the proposer's wallet only when enough members vote yes (the group's votes needed, at least 2), and nobody can approve it alone. Use list_groups to answer questions about groups (never guess), create_group when the user asks to form one (members must be accepted friends; ask how many yes votes are needed if they did not say), and propose_to_group to put a draft (DR-…) to a vote. You cannot vote for anyone: members vote in the app (on the group's page under Groups).
 - KYC: if get_wallet_status shows identity_verified false and a deal's total is above unverified_deal_limit, you may still draft it, but tell the user they must verify their identity first (Profile page: ThaID for Thai banks, National Network Identity for Chinese banks) before "Approve & lock" will work.`;
@@ -223,7 +220,8 @@ const BANK_TOOLS = [
     "propose_bank_deal",
     "Show the user a PREVIEW of a deal paid from their wallet balance. It creates nothing: only when the user presses Confirm on the preview is the total taken from the balance and locked in escrow.",
     {
-      seller: { type: "string", description: "The seller's name (or a nickname) from get_wallet_status → payees" },
+      seller: { type: "string", description: "The seller's name (or a nickname) from get_wallet_status → payees, or the name of someone without an account (with new_person true)" },
+      new_person: { type: "boolean", description: "true when the other party has NO account on the app (not in the contacts): then give their name; their private link is made when the user confirms" },
       kind: KIND,
       ship_to: SHIP_TO,
       title: { type: "string", description: "Short project title" },
@@ -237,7 +235,8 @@ const BANK_TOOLS = [
     "propose_bank_sale",
     "Show the user a PREVIEW of an offer to SELL work or a file to a buyer (a friend's wallet). It creates nothing: the offer is sent only when the user presses Confirm. Nothing is locked until the buyer accepts and pays.",
     {
-      buyer: { type: "string", description: "The buyer's name (or a nickname) from get_wallet_status → friends" },
+      buyer: { type: "string", description: "The buyer's name (or a nickname) from get_wallet_status → friends, or the name of someone without an account (with new_person true)" },
+      new_person: { type: "boolean", description: "true when the other party has NO account on the app (not in the contacts): then give their name; their private link is made when the user confirms" },
       kind: KIND,
       ship_to: SHIP_TO,
       title: { type: "string", description: "Short project title" },
@@ -248,22 +247,10 @@ const BANK_TOOLS = [
     ["buyer", "kind", "ship_to", "title", "summary", "review_hours", "milestones"],
   ),
   tool(
-    "invite_seller",
-    "Hire someone who has no account: creates a wallet for them, makes it a payee of this wallet (the user asked, so this is their approval) and returns a private link for the user to send them. Then draft the deal with propose_bank_deal using the returned seller name.",
-    { name: { type: "string", description: "The seller's name as the user wrote it" } },
-    ["name"],
-  ),
-  tool(
     "open_deal",
     "Open one of the user's deals: shows a button to its page (milestones, deliveries, approve, dispute). Use when the user asks to open, see, check or act on a specific deal.",
     { deal: { type: "string", description: "The deal's number, e.g. D-12 (from list_deals)" } },
     ["deal"],
-  ),
-  tool(
-    "invite_buyer",
-    "Sell to someone who has no account: creates a wallet for them (allowing this wallet as its payee) and returns a private link the user sends them; on it they see the offer, pay by card and approve deliveries. Then draft the sale with propose_bank_sale using the returned buyer name. Only after the user said yes to inviting them.",
-    { name: { type: "string", description: "The buyer's name as the user wrote it" } },
-    ["name"],
   ),
   tool("list_groups", "The user's groups: members, votes needed, open votes and recent proposals (by name and draft reference).", {}, []),
   tool(
@@ -416,13 +403,11 @@ const INPUTS: Record<string, z.ZodType> = {
   }),
   transfer: z.object({ to: address, amount_usdc: z.number().positive(), reason: z.string() }),
   pause_wallet: z.object({ reason: z.string() }),
-  invite_seller: z.object({ name: z.string().min(2).max(80) }),
   discard_draft: z.object({ draft_ref: z.string().min(3).max(40) }),
-  propose_bank_deal: z.object({ seller: z.string().min(1).max(120), ...DEAL_FIELDS }),
-  propose_bank_sale: z.object({ buyer: z.string().min(1).max(120), ...DEAL_FIELDS }),
+  propose_bank_deal: z.object({ seller: z.string().min(1).max(120), new_person: z.boolean().default(false), ...DEAL_FIELDS }),
+  propose_bank_sale: z.object({ buyer: z.string().min(1).max(120), new_person: z.boolean().default(false), ...DEAL_FIELDS }),
   list_groups: z.object({}).passthrough(),
   open_deal: z.object({ deal: z.string().min(1).max(20) }),
-  invite_buyer: z.object({ name: z.string().min(2).max(80) }),
   create_group: z.object({ name: z.string().trim().min(1).max(80), members: z.array(z.string().min(1).max(120)).min(1).max(19), votes_needed: z.number().int().min(2).max(20) }),
   propose_to_group: z.object({ group: z.string().min(1).max(80), draft_ref: z.string().min(3).max(40) }),
   remember_nickname: z.object({ nickname: z.string().trim().min(1).max(40), contact: z.string().min(1).max(120) }),
@@ -810,16 +795,18 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
     }
     case "propose_bank_deal": {
       if (!userId) throw new Error("Drafts need a signed-in user");
-      const i = input as DealInput & { seller: string };
+      const i = input as DealInput & { seller: string; new_person?: boolean };
       const units = await walletUnits(wallet);
-      const who = resolveContact(await contacts(wallet, userId), i.seller);
-      if (typeof who === "string") return { tool: name, input, summary: `BLOCKED: ${who}` };
+      // Someone without an account: no contact to resolve; their link and wallet come on Confirm.
+      const who = i.new_person ? { name: i.seller.trim(), address: "", payee: true, invite: true } : resolveContact(await contacts(wallet, userId), i.seller);
+      if (typeof who === "string") return { tool: name, input, summary: `BLOCKED: ${who}. If they have no account on the app, draft again with new_person true.` };
       if (!who.payee) return { tool: name, input, summary: `BLOCKED: ${who.name} is not a payee yet. The user must add them to the allowlist on the Friends page first.` };
       const missing = missingInfo(i);
       if (missing.length) return { tool: name, input, summary: `NEED_INFO (nothing was saved): ask the user for ${missing.join("; ")}.` };
       try {
         const d = await createDraft(userId, wallet, {
           seller: who.address,
+          inviteName: i.new_person ? who.name : null,
           kind: i.kind === "buy" ? "GOODS" : "HIRE",
           shipTo: i.ship_to.trim() || null,
           title: i.title,
@@ -827,12 +814,12 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
           reviewHours: i.review_hours,
           milestones: draftMilestones(i, units.decimals),
         });
-        const draft = await draftView(d, who.name);
+        const draft = await draftView(d, i.new_person ? "" : who.name);
         return {
           tool: name,
           input,
           draft: cardDraft(draft),
-          summary: `PREVIEW SHOWN (no deal exists yet, nothing debited): ${i.kind === "buy" ? "BUY (goods)" : "HIRE (service)"} ${draftRef(d.id)} to ${who.name}, total ${draft.total} ${units.currency}. Nothing is created until the user presses Confirm on the card. Ask them to check it and confirm; never say the deal was made.`,
+          summary: `${i.new_person ? "(No account yet: their private link is made when the user confirms, and shown on the deal's page.) " : ""}PREVIEW SHOWN (no deal exists yet, nothing debited): ${i.kind === "buy" ? "BUY (goods)" : "HIRE (service)"} ${draftRef(d.id)} to ${who.name}, total ${draft.total} ${units.currency}. Nothing is created until the user presses Confirm on the card. Ask them to check it and confirm; never say the deal was made.`,
         };
       } catch (err) {
         if (err instanceof DraftError) return { tool: name, input, summary: `BLOCKED: ${err.message}` };
@@ -841,15 +828,16 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
     }
     case "propose_bank_sale": {
       if (!userId) throw new Error("Drafts need a signed-in user");
-      const i = input as DealInput & { buyer: string };
+      const i = input as DealInput & { buyer: string; new_person?: boolean };
       const units = await walletUnits(wallet);
-      const who = resolveContact(await contacts(wallet, userId), i.buyer);
-      if (typeof who === "string") return { tool: name, input, summary: `BLOCKED: ${who}` };
+      const who = i.new_person ? { name: i.buyer.trim(), address: "" } : resolveContact(await contacts(wallet, userId), i.buyer);
+      if (typeof who === "string") return { tool: name, input, summary: `BLOCKED: ${who}. If they have no account on the app, draft again with new_person true.` };
       const missing = missingInfo(i);
       if (missing.length) return { tool: name, input, summary: `NEED_INFO (nothing was saved): ask the user for ${missing.join("; ")}.` };
       try {
         const d = await createSellDraft(userId, wallet, {
           buyer: who.address,
+          inviteName: i.new_person ? who.name : null,
           kind: i.kind === "buy" ? "GOODS" : "HIRE",
           shipTo: i.ship_to.trim() || null,
           title: i.title,
@@ -857,7 +845,7 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
           reviewHours: i.review_hours,
           milestones: draftMilestones(i, units.decimals),
         });
-        const draft = await draftView(d, who.name);
+        const draft = await draftView(d, i.new_person ? "" : who.name);
         return {
           tool: name,
           input,
@@ -866,40 +854,6 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
         };
       } catch (err) {
         if (err instanceof DraftError) return { tool: name, input, summary: `BLOCKED: ${err.message}` };
-        throw err;
-      }
-    }
-    case "invite_buyer": {
-      if (!userId) throw new Error("Invites need a signed-in user");
-      try {
-        const { invite, token } = await createBuyerInvite(userId, wallet, String(input.name));
-        const origin =
-          process.env.BETTER_AUTH_URL ??
-          (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "http://localhost:3000");
-        return {
-          tool: name,
-          input,
-          summary: `INVITED BUYER ${invite.name}: now a contact named "${invite.name} (invited buyer)". Private link for the user to send them (show it exactly once, as a link): ${origin}/pay/${token} . They see the offer there, pay by card (test mode) and approve deliveries without signing up. Now draft the sale with propose_bank_sale, buyer "${invite.name} (invited buyer)".`,
-        };
-      } catch (err) {
-        if (err instanceof BuyerInviteError) return { tool: name, input, summary: `BLOCKED: ${err.message}` };
-        throw err;
-      }
-    }
-    case "invite_seller": {
-      if (!userId) throw new Error("Invites need a signed-in user");
-      try {
-        const { invite, token } = await createInvite(userId, wallet, String(input.name));
-        const origin =
-          process.env.BETTER_AUTH_URL ??
-          (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "http://localhost:3000");
-        return {
-          tool: name,
-          input,
-          summary: `INVITED ${invite.name}: now a payee named "${invite.name} (invited)". Private link for the user to send them (show it exactly once, as a link): ${origin}/invite/${token} . They accept, deliver and choose PromptPay or a bank account there without signing up. Draft the deal with propose_bank_deal, seller "${invite.name} (invited)".`,
-        };
-      } catch (err) {
-        if (err instanceof InviteError) return { tool: name, input, summary: `BLOCKED: ${err.message}` };
         throw err;
       }
     }

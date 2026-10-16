@@ -360,7 +360,10 @@ Internally the e-money account is a ledger account. The funding saga, the reserv
 
 ### 3.13 Buyers without an account, group powers, and test helpers
 
-- **Selling to someone without an account** (`web/src/lib/bank/buyer-invites.ts`): the seller creates a buyer link (on Contacts, or the AI's `invite_buyer`).
+- **Deals with someone without an account** (`web/src/lib/bank/buyer-invites.ts`, `invites.ts`): the AI drafts the deal with their name (`new_person`).
+  - The draft is a preview; nothing is created until the user presses Confirm.
+  - Confirm makes the other person's wallet and private link: a seller link for a hire, a buyer link for a sale.
+  - The link is shown right away and kept on the deal's page. It is stored as a hash plus a sealed copy (AES-GCM), and the user can replace it, which stops the old one.
   - The server runs a wallet for that buyer, with the seller allowed as its payee.
   - On `/pay/<token>` the buyer sees the offer and pays it by card. Payment goes through Stripe Checkout in test mode, is credited to the wallet's account, and is then locked in escrow by the normal accept flow.
   - The buyer then approves the delivery, which pays the seller, and downloads the file.

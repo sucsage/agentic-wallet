@@ -71,7 +71,9 @@ async function sellerAllowed(wallet: Address, seller: Address): Promise<boolean>
 }
 
 export async function draftView(d: DealDraft, sellerLabel = ""): Promise<DraftView> {
-  if (!sellerLabel && getAddress(d.seller) === roleAddresses().contractor) sellerLabel = "Demo contractor";
+  // Someone without an account: their wallet and link are made on Confirm.
+  if (!sellerLabel && d.inviteName) sellerLabel = d.inviteId ? `${d.inviteName} (invited)` : `${d.inviteName} (new · link made on Confirm)`;
+  if (!sellerLabel && d.seller && getAddress(d.seller) === roleAddresses().contractor) sellerLabel = "Demo contractor";
   const units = await walletUnits(getAddress(d.walletAddress));
   const milestones = d.milestones as DraftMilestone[];
   const total = milestones.reduce((t, m) => t + parseUnits(m.amount, units.decimals), 0n);
@@ -107,12 +109,13 @@ function termsOf(input: { kind?: string; shipTo?: string | null; title: string; 
 export async function createDraft(
   userId: string,
   wallet: Address,
-  input: { seller: string; kind?: "HIRE" | "GOODS"; shipTo?: string | null; title: string; summary: string; reviewHours: number; milestones: DraftMilestone[] },
+  input: { seller: string; inviteName?: string | null; kind?: "HIRE" | "GOODS"; shipTo?: string | null; title: string; summary: string; reviewHours: number; milestones: DraftMilestone[] },
 ): Promise<DealDraft> {
   const units = await walletUnits(wallet);
   if (!units.currency) throw new DraftError("This wallet is not paid from a bank account");
-  const seller = getAddress(input.seller);
-  if (!(await sellerAllowed(wallet, seller))) throw new DraftError(`Seller ${seller} is not in this wallet's allowlist`);
+  // A seller without an account has no wallet yet: it (and their link) is made on Confirm.
+  const seller = input.inviteName ? "" : getAddress(input.seller);
+  if (seller && !(await sellerAllowed(wallet, seller as Address))) throw new DraftError(`Seller ${seller} is not in this wallet's allowlist`);
   for (const m of input.milestones) {
     if (parseUnits(m.amount, units.decimals) <= 0n) throw new DraftError(`Milestone "${m.name}" needs a positive amount`);
   }
@@ -124,6 +127,7 @@ export async function createDraft(
       status: "PREVIEW",
       walletAddress: wallet,
       seller,
+      inviteName: input.inviteName?.trim().slice(0, 80) || null,
       kind: input.kind ?? "HIRE",
       shipTo: input.shipTo || null,
       title: input.title,
@@ -142,15 +146,18 @@ export async function createDraft(
 export async function createSellDraft(
   userId: string,
   wallet: Address,
-  input: { buyer: string; kind?: "HIRE" | "GOODS"; shipTo?: string | null; title: string; summary: string; reviewHours: number; milestones: DraftMilestone[] },
+  input: { buyer: string; inviteName?: string | null; kind?: "HIRE" | "GOODS"; shipTo?: string | null; title: string; summary: string; reviewHours: number; milestones: DraftMilestone[] },
 ): Promise<DealDraft> {
   const units = await walletUnits(wallet);
   if (!units.currency) throw new DraftError("This wallet is not paid from a bank account");
-  const buyer = getAddress(input.buyer);
-  if (buyer === wallet) throw new DraftError("You cannot sell to yourself");
-  const buyerAccount = await accountOf(buyer);
-  if (!buyerAccount) throw new DraftError(`Buyer ${buyer} has no Mock Bank wallet`);
-  if (buyerAccount.currency !== units.currency) throw new DraftError(`The buyer banks in ${buyerAccount.currency}, this wallet in ${units.currency}`);
+  // A buyer without an account has no wallet yet: it (and their link) is made on Confirm.
+  const buyer = input.inviteName ? null : getAddress(input.buyer);
+  if (buyer) {
+    if (buyer === wallet) throw new DraftError("You cannot sell to yourself");
+    const buyerAccount = await accountOf(buyer);
+    if (!buyerAccount) throw new DraftError(`Buyer ${buyer} has no Mock Bank wallet`);
+    if (buyerAccount.currency !== units.currency) throw new DraftError(`The buyer banks in ${buyerAccount.currency}, this wallet in ${units.currency}`);
+  }
   for (const m of input.milestones) {
     if (parseUnits(m.amount, units.decimals) <= 0n) throw new DraftError(`Milestone "${m.name}" needs a positive amount`);
   }
@@ -164,6 +171,7 @@ export async function createSellDraft(
       walletAddress: wallet,
       seller: wallet,
       buyer,
+      inviteName: input.inviteName?.trim().slice(0, 80) || null,
       kind: input.kind ?? "HIRE",
       shipTo: input.shipTo || null,
       title: input.title,
@@ -203,13 +211,35 @@ export async function approveDraft(
   if (claimed.count !== 1) throw new DraftError("This draft is already being approved. Wait a few seconds: it is never charged twice.");
   try {
     // Re-read: an approval that just finished may have funded it or stored its mandate.
-    const fresh = await db.dealDraft.findUniqueOrThrow({ where: { id: draft.id } });
+    let fresh = await db.dealDraft.findUniqueOrThrow({ where: { id: draft.id } });
     const done = (fresh.result as { funding?: FundingResult } | null)?.funding;
     if (fresh.status === "FUNDED" && done) return { draft: fresh, funding: done };
+    fresh = await ensureInvite(userId, wallet, fresh);
     return await approveClaimed(userId, wallet, fresh);
   } finally {
     await db.dealDraft.update({ where: { id: draft.id }, data: { approvingUntil: null } });
   }
+}
+
+/**
+ * Confirming a deal with someone who has no account makes their link now (not when the AI drafted
+ * it): a seller link for a purchase, a buyer link for a sale. Their wallet allows this one as payee,
+ * and the draft then points at it. Done once; a retry reuses the invite.
+ */
+async function ensureInvite(userId: string, wallet: Address, d: DealDraft): Promise<DealDraft> {
+  if (!d.inviteName || d.inviteId) return d;
+  if (d.side === "BUY") {
+    const { InviteError, createInvite } = await import("./invites");
+    const { invite } = await createInvite(userId, wallet, d.inviteName).catch((e) => {
+      throw e instanceof InviteError ? new DraftError(e.message) : e;
+    });
+    return db.dealDraft.update({ where: { id: d.id }, data: { seller: invite.sellerWallet, inviteId: invite.id } });
+  }
+  const { BuyerInviteError, createBuyerInvite } = await import("./buyer-invites");
+  const { invite } = await createBuyerInvite(userId, wallet, d.inviteName).catch((e) => {
+    throw e instanceof BuyerInviteError ? new DraftError(e.message) : e;
+  });
+  return db.dealDraft.update({ where: { id: d.id }, data: { buyer: invite.buyerWallet, inviteId: invite.id } });
 }
 
 async function approveClaimed(userId: string, wallet: Address, draft: DealDraft): Promise<{ draft: DealDraft; funding: FundingResult }> {

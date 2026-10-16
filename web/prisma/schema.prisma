@@ -382,6 +382,10 @@ model DealDraft {
   fundingId      String?
   /// Set while one request approves the draft: a second click waits instead of funding it twice (DB-01).
   approvingUntil DateTime?
+  /// The other side has no account yet: their name. Their link (and wallet) is made on Confirm.
+  inviteName     String?
+  /// The SellerInvite (a purchase) or BuyerInvite (a sale) made for them on Confirm.
+  inviteId       String?
   dealId         Int?
   /// Last funding result (steps, tx hashes, error), for the UI.
   result         Json?
@@ -646,6 +650,8 @@ model SellerInvite {
   id              String        @id @default(cuid())
   /// sha256 of the link's secret; the secret itself is shown to the buyer once.
   tokenHash       String        @unique
+  /// The link's secret, encrypted for the inviter (shown again on the deal's page).
+  tokenEnc        String?
   /// The buyer who invited them.
   userId          String
   buyerWallet     String
@@ -923,6 +929,8 @@ model UserPreference {
 model BuyerInvite {
   id           String   @id @default(cuid())
   tokenHash    String   @unique
+  /// The link's secret, encrypted for the inviter (shown again on the deal's page).
+  tokenEnc     String?
   /// The seller who invited them, and the wallet that sells.
   userId       String
   sellerWallet String

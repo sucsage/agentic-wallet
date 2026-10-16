@@ -10,6 +10,7 @@ import { createWorkspace } from "../actions";
 import { agentWalletAbi } from "../abis";
 import { type TxOutcome, send } from "../chain";
 import { db } from "../db";
+import { openToken, sealToken } from "../link-seal";
 import { readFileDeals } from "../state";
 import { accountOf, openAccount, transfer } from "./ledger";
 import { OpnError, createRecipient, findTransfer, opnEnabled, recipient, sendTransfer } from "./opn";
@@ -67,6 +68,7 @@ export async function createInvite(
   const invite = await db.sellerInvite.create({
     data: {
       tokenHash: hashToken(token),
+      tokenEnc: sealToken(token),
       userId,
       buyerWallet,
       sellerWallet,
@@ -83,7 +85,7 @@ export async function rotateInviteLink(userId: string, inviteId: string): Promis
   const token = randomBytes(24).toString("base64url");
   const updated = await db.sellerInvite.updateMany({
     where: { id: inviteId, userId },
-    data: { tokenHash: hashToken(token), expiresAt: new Date(Date.now() + LINK_DAYS * 86_400_000) },
+    data: { tokenHash: hashToken(token), tokenEnc: sealToken(token), expiresAt: new Date(Date.now() + LINK_DAYS * 86_400_000) },
   });
   if (updated.count !== 1) throw new InviteError("Invite not found");
   return token;
@@ -149,6 +151,26 @@ export async function renameInvite(invite: SellerInvite, name: string): Promise<
   const clean = name.trim().replace(/\s+/g, " ").slice(0, 80);
   if (clean.length < 2) throw new InviteError("Enter your name");
   return db.sellerInvite.update({ where: { id: invite.id }, data: { name: clean } });
+}
+
+/**
+ * The private link for the other side of a deal, if this user invited them (a seller or a buyer
+ * without an account): shown on the deal's page. Older invites kept no sealed copy: `link` is
+ * null then, and the user makes a new one (the old one stops working).
+ */
+export async function inviteLinkFor(userId: string, counterparty: string, origin: string) {
+  const wallet = getAddress(counterparty);
+  const seller = await db.sellerInvite.findFirst({ where: { userId, sellerWallet: wallet } });
+  if (seller) {
+    const token = openToken(seller.tokenEnc);
+    return { kind: "seller" as const, id: seller.id, name: seller.name, link: token ? `${origin}/invite/${token}` : null, expiresAt: seller.expiresAt, linked: !!seller.claimedByUserId };
+  }
+  const buyer = await db.buyerInvite.findFirst({ where: { userId, buyerWallet: wallet } });
+  if (buyer) {
+    const token = openToken(buyer.tokenEnc);
+    return { kind: "buyer" as const, id: buyer.id, name: buyer.name, link: token ? `${origin}/pay/${token}` : null, expiresAt: buyer.expiresAt, linked: false };
+  }
+  return null;
 }
 
 /** Invites linked to this seller's account, for their Deals page. */

@@ -112,57 +112,6 @@ const when = (unix: number) =>
   unix ? new Date(unix * 1000).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
 
 // ------------------------------------------------------------------------------------------
-/** A seller sells to someone without an account: a private buyer link (pay by card, approve delivery). */
-function BuyerLinkPanel() {
-  const [name, setName] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [made, setMade] = useState<{ name: string; link: string } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  return (
-    <section className="aw-friends-panel">
-      <h2>Sell to someone without an account</h2>
-      <p>Get a private link for them: they see your offer, pay by card (test mode) and approve the delivery without signing up. Then ask the AI to draft the sale to “name (invited buyer)”.</p>
-      {made ? (
-        <div className="aw-buyer-link">
-          <b>{made.name}</b>
-          <input readOnly value={made.link} onFocus={(e) => e.currentTarget.select()} />
-          <div>
-            <Button variant="outline" onClick={() => void navigator.clipboard.writeText(made.link)}>
-              Copy link
-            </Button>
-            <Button variant="outline" onClick={() => (setMade(null), setName(""))}>
-              Another
-            </Button>
-          </div>
-          <small>Shown once: send it to them privately. It works for 30 days.</small>
-        </div>
-      ) : (
-        <form
-          onSubmit={async (e) => {
-            e.preventDefault();
-            setBusy(true);
-            setError(null);
-            try {
-              setMade(await send<{ name: string; link: string }>("/api/buyer-invites", "POST", { name }));
-            } catch (err) {
-              setError((err as Error).message);
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          <label className="aw-friends-search">
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Buyer's name" maxLength={80} />
-          </label>
-          <Button type="submit" disabled={busy || name.trim().length < 2}>
-            {busy ? "Creating (about 10 s)…" : "Create buyer link"}
-          </Button>
-        </form>
-      )}
-      {error && <p className="aw-bank-error">{error}</p>}
-    </section>
-  );
-}
 
 // Approvals
 // ------------------------------------------------------------------------------------------
@@ -740,7 +689,6 @@ export function LiveFriends() {
               ))}
             </div>
           </section>
-          <BuyerLinkPanel />
           <section className="aw-friends-panel aw-my-code">
             <h2>My code</h2>
             <p>Contacts scan this QR to add you{me?.user.username ? ` (@${me.user.username})` : ""}.</p>
@@ -757,7 +705,13 @@ export function LiveFriends() {
             )}
           </section>
         </div>
-        <InviteByLink />
+        <section className="aw-friends-panel">
+          <h2>Someone without an account?</h2>
+          <p>
+            Ask the AI to draft the deal with their name (hiring them, or selling to them). Nothing is sent yet: when you press Confirm, their private link is made, shown to you,
+            and kept on the deal&apos;s page to send them. They need no sign-up.
+          </p>
+        </section>
         <Nicknames />
         <section className="aw-friends-panel aw-friend-requests">
           <header>
@@ -836,101 +790,7 @@ export function LiveFriends() {
   );
 }
 
-type InviteRow = { id: string; name: string; wallet: string; payoutSet: boolean; expiresAt: string };
 
-/**
- * Hire someone without an account: their wallet is made and allowlisted at once, and they get a
- * link (also as a QR code) to accept, deliver and choose a PromptPay id or bank account for payment.
- */
-function InviteByLink() {
-  const { data, reload } = useApi<{ invites: InviteRow[] }>("/api/invites");
-  const { busy, run, note } = useAction();
-  const [name, setName] = useState("");
-  const [shown, setShown] = useState<{ name: string; link: string; qr: string } | null>(null);
-  const [copied, setCopied] = useState(false);
-
-  const show = async (who: string, link: string) => {
-    setCopied(false);
-    setShown({ name: who, link, qr: await QRCode.toDataURL(link, { margin: 1, width: 220 }) });
-  };
-
-  return (
-    <section className="aw-friends-panel aw-invite-panel">
-      <h2>Hire someone without an account</h2>
-      <p>They get a link: no sign-up, they accept, deliver and are paid to PromptPay or any bank account. Creating the link makes them a payee.</p>
-      {note}
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void run(
-            "invite",
-            async () => {
-              const r = await send<{ link: string; invite: { name: string } }>("/api/invites", "POST", { name });
-              await show(r.invite.name, r.link);
-              return r;
-            },
-            async () => {
-              setName("");
-              await reload();
-            },
-          );
-        }}
-      >
-        <label className="aw-friends-search">
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Seller's name, e.g. Somchai Jaidee" maxLength={80} />
-        </label>
-        <Button type="submit" disabled={name.trim().length < 2 || !!busy}>
-          {busy === "invite" ? "Creating wallet…" : "Create link"}
-        </Button>
-      </form>
-      {shown && (
-        <div className="aw-invite-link">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={shown.qr} alt={`QR code of the link for ${shown.name}`} width={140} height={140} />
-          <div>
-            <b>Link for {shown.name}</b>
-            <code>{shown.link}</code>
-            <small>Send it privately (LINE, email). Anyone with it acts as the seller; it is shown only now.</small>
-            <Button
-              variant="outline"
-              onClick={() => {
-                void navigator.clipboard.writeText(shown.link).then(() => setCopied(true));
-              }}
-            >
-              {copied ? "Copied ✓" : "Copy link"}
-            </Button>
-          </div>
-        </div>
-      )}
-      {(data?.invites.length ?? 0) > 0 && (
-        <div className="aw-invite-list">
-          {data!.invites.map((i) => (
-            <div key={i.id} className="aw-friend-result">
-              <span className="aw-friend-avatar blue">{initials(i.name)}</span>
-              <span className="aw-friend-name">
-                <b>{i.name}</b>
-                <small>{i.payoutSet ? "payout account set" : "no payout account yet"} · allowlisted</small>
-              </span>
-              <Button
-                variant="outline"
-                disabled={!!busy}
-                onClick={() =>
-                  run(`l${i.id}`, async () => {
-                    const r = await send<{ link: string }>(`/api/invites/${i.id}/link`, "POST");
-                    await show(i.name, r.link);
-                    return r;
-                  })
-                }
-              >
-                {busy === `l${i.id}` ? "…" : "New link"}
-              </Button>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
 
 // ------------------------------------------------------------------------------------------
 // Groups
@@ -1853,6 +1713,8 @@ export function LiveSummary() {
 
 type DealDetail = {
   id: number;
+  /** The other side has no account and this user invited them: their private link. */
+  invite: { kind: "seller" | "buyer"; name: string; link: string | null; expiresAt: string; linked: boolean } | null;
   title: string;
   summary: string | null;
   kind: "HIRE" | "GOODS";
@@ -2248,6 +2110,70 @@ function NoteForm({ dealId, kind, index, deadline, onDone, onCancel }: { dealId:
   );
 }
 
+/** The private link for the other side of the deal (made when the deal was confirmed). */
+function InviteLinkCard({ dealId, invite, onDone }: { dealId: number; invite: NonNullable<DealDetail["invite"]>; onDone: () => Promise<void> }) {
+  const [link, setLink] = useState<string | null>(invite.link);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const shown = link ?? invite.link;
+  return (
+    <section className="aw-invite-link-card">
+      <div>
+        <b>
+          {invite.kind === "seller" ? "Seller link" : "Buyer link"} for {invite.name}
+        </b>
+        <small>
+          {invite.linked
+            ? "They opened it signed in: the deal is linked to their account."
+            : invite.kind === "seller"
+              ? "No account needed: they accept, deliver and get paid on this page. Send it to them privately."
+              : "No account needed: they pay by card and approve the delivery on this page. Send it to them privately."}{" "}
+          Works until {new Date(invite.expiresAt).toLocaleDateString()}.
+        </small>
+      </div>
+      {shown ? (
+        <div className="aw-invite-link-row">
+          <input readOnly value={shown} onFocus={(e) => e.currentTarget.select()} aria-label="Private link" />
+          <Button
+            variant="outline"
+            onClick={() => {
+              void navigator.clipboard.writeText(shown);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            }}
+          >
+            {copied ? "Copied" : "Copy"}
+          </Button>
+        </div>
+      ) : (
+        <small>This link was made before links were kept here: make a new one below.</small>
+      )}
+      <button
+        type="button"
+        className="aw-invite-link-new"
+        disabled={busy}
+        onClick={async () => {
+          if (shown && !window.confirm("Make a new link? The old one stops working.")) return;
+          setBusy(true);
+          setErr(null);
+          try {
+            setLink((await send<{ link: string }>(`/api/deals/${dealId}/invite-link`, "POST")).link);
+            await onDone();
+          } catch (e) {
+            setErr((e as Error).message);
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        {busy ? "…" : shown ? "Make a new link (the old one stops working)" : "Make a new link"}
+      </button>
+      {err && <p className="aw-bank-error">{err}</p>}
+    </section>
+  );
+}
+
 export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: string) => void }) {
   const lang = useLang();
   const { me, refresh } = useAppData();
@@ -2291,6 +2217,7 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
             ← All deals
           </Button>
         </header>
+        {data?.invite && <InviteLinkCard dealId={id} invite={data.invite} onDone={reload} />}
         {error && <p className="aw-bank-error">{error}</p>}
         {!data && !error && <Loading block text="Reading the deal from the chain…" />}
         {note}

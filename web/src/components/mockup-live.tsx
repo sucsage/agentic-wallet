@@ -747,10 +747,25 @@ export function LiveChat() {
     setDebiting(true);
     setDebitResult(null);
     try {
-      const res = await api<{ draft: DraftView; funding?: FundingResult; companyVote?: { status: string; yes: number; threshold: number; company: string } }>(
-        `/api/workspace/${address}/drafts/${d.id}/approve`,
-        { method: "POST" },
-      );
+      const res = await api<{
+        draft: DraftView;
+        funding?: FundingResult;
+        companyVote?: { status: string; yes: number; threshold: number; company: string };
+        invite?: { kind: "seller" | "buyer"; name: string; link: string | null } | null;
+      }>(`/api/workspace/${address}/drafts/${d.id}/approve`, { method: "POST" });
+      if (res.invite?.link) {
+        const inv = res.invite;
+        const dealNo = res.draft.dealId;
+        setItems((cur) => [
+          ...cur,
+          {
+            kind: "agent",
+            at: now(),
+            steps: [],
+            text: `Private ${inv.kind} link for **${inv.name}** (send it to them; it is also on the deal's page${dealNo !== null ? `, D-${dealNo}` : ""}):\n\n${inv.link}`,
+          },
+        ]);
+      }
       if (res.companyVote) {
         const v = res.companyVote;
         setItems((cur) => [

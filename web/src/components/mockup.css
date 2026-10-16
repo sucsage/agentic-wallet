@@ -1733,3 +1733,10 @@
 .aw-buyer-link input{width:100%;padding:9px 12px;border:1px solid #333;border-radius:10px;background:#0c0c0c;color:#cfe0ff;font-size:13px}
 .aw-buyer-link>div{display:flex;gap:8px}
 .aw-buyer-link small{color:#888;font-size:12px}
+.aw-invite-link-card{display:flex;flex-direction:column;gap:10px;margin:0 0 16px;padding:14px 16px;border:1px solid #2b3d5c;border-radius:14px;background:#111a28}
+.aw-invite-link-card>div:first-child{display:flex;flex-direction:column;gap:4px}
+.aw-invite-link-card b{color:#e5eeff;font-size:14px}
+.aw-invite-link-card small{color:#9fb0c8;font-size:12px;line-height:1.5}
+.aw-invite-link-row{display:flex;gap:8px}
+.aw-invite-link-row input{flex:1;min-width:0;padding:9px 12px;border:1px solid #334;border-radius:10px;background:#0b0f16;color:#cfe0ff;font-size:13px}
+.aw-invite-link-new{align-self:flex-start;padding:0;border:0;background:none;color:#8fb8ff;font-size:12px;text-decoration:underline;cursor:pointer}

@@ -1,4 +1,5 @@
 import { DraftError, approveDraft, draftView } from "@/lib/bank/drafts";
+import { inviteLinkFor } from "@/lib/bank/invites";
 import { companyOfWallet } from "@/lib/company";
 import { db } from "@/lib/db";
 import { SocialError, proposeToGroup } from "@/lib/social";
@@ -34,7 +35,10 @@ export async function POST(req: Request, ctx: RouteContext<"/api/workspace/[addr
     const { draft, funding } = await approveDraft(user.id, wallet, id).catch((e) => {
       throw e instanceof DraftError ? new HttpError(400, e.message) : e;
     });
-    const body = { draft: await draftView(draft), funding };
+    // Confirming a deal with someone who has no account made their private link: show it now too.
+    const other = draft.side === "SELL" ? draft.buyer : draft.seller;
+    const invite = draft.inviteId && other ? await inviteLinkFor(user.id, other, new URL(req.url).origin) : null;
+    const body = { draft: await draftView(draft), funding, invite };
     return new Response(JSON.stringify(body, (_k, v) => (typeof v === "bigint" ? v.toString() : v)), {
       headers: { "content-type": "application/json" },
     });
