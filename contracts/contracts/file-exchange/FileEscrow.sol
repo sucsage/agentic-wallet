@@ -243,10 +243,17 @@ contract FileEscrow is ReentrancyGuard {
     }
 
     /// @notice Gives a milestone's payment back to the buyer at any point before it is settled.
+    /// @dev Allowed only while the escrow still holds the money. A list of the settled states would
+    ///      miss any status added later (Split was, DC-H-02: a split milestone was refunded a second time
+    ///      out of other deals' funds), so the states that hold money are listed instead.
     function refund(uint256 dealId, uint256 index) external nonReentrant {
         (Deal storage d, Milestone storage m) = _active(dealId, index);
         if (msg.sender != d.seller) revert NotAllowed();
-        if (m.status == Status.Released || m.status == Status.Refunded) revert WrongStatus(m.status);
+        Status s = m.status;
+        if (
+            s != Status.Pending && s != Status.Delivered && s != Status.Approved && s != Status.KeyReleased
+                && s != Status.Disputed
+        ) revert WrongStatus(s);
 
         _payBack(dealId, index, d, m);
     }

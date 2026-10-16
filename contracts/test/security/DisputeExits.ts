@@ -94,18 +94,16 @@ describe("Disputed funds: who can move them, and what happens when nobody rules"
       await assert.rejects(c.fArbiter.write.resolve([0n, 0n, true]));
     });
 
-    it("KNOWN GAP (DC-H-02): after a split, the seller's refund pays the buyer again out of other deals' money", async () => {
+    it("DC-H-02 fixed: a settled milestone, split or otherwise, cannot be refunded again", async () => {
       const c = await disputedFileDeal(); // deal 0, 1,000
       // A second, unrelated deal keeps 1,500 of someone else's money in the same escrow.
       await c.fBuyer.write.offerToBuy([stranger.account.address, arbiter.account.address, c.usdc.address, [file(1_500)], REVIEW, "other"]);
       assert.equal(await c.usdc.read.balanceOf([c.fileEscrow.address]), usd(2_500));
       await c.fArbiter.write.resolveSplit([0n, 0n, 3_000]); // seller 300, buyer 700, deal 0 is settled
       assert.equal(await c.usdc.read.balanceOf([c.fileEscrow.address]), usd(1_500));
-      // refund only refuses Released and Refunded, not Split, so it pays the full 1,000 a second time.
-      await c.fSeller.write.refund([0n, 0n]);
-      assert.equal((await c.fileEscrow.read.getMilestone([0n, 0n])).status, STATUS.Refunded);
-      // The escrow now holds 500 although deal 1 is owed 1,500: 1,000 of its money went to the buyer.
-      assert.equal(await c.usdc.read.balanceOf([c.fileEscrow.address]), usd(500));
+      await viem.assertions.revertWithCustomErrorWithArgs(c.fSeller.write.refund([0n, 0n]), c.fileEscrow, "WrongStatus", [STATUS.Split]);
+      assert.equal((await c.fileEscrow.read.getMilestone([0n, 0n])).status, STATUS.Split);
+      assert.equal(await c.usdc.read.balanceOf([c.fileEscrow.address]), usd(1_500)); // the other deal's money is untouched
     });
 
     it("a stranger cannot call refund on someone else's disputed deal", async () => {

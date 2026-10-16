@@ -10,6 +10,7 @@ import { after, describe, it } from "node:test";
 
 import { db } from "../../src/lib/db";
 import { BankError, registerCustomer, verifyCustomer } from "../../src/lib/bank/customers";
+import { refuseSettled } from "../../src/lib/bank/deals";
 import { actingCompany } from "../../src/lib/company";
 import { HttpError, rateLimit } from "../../src/lib/guard";
 
@@ -185,5 +186,27 @@ describe("Company accounts: who may spend the company's money (candidate DC-CO-0
     const moneyPath = ["src/lib/guard.ts", "src/lib/bank/deals.ts", "src/app/api/deals/[id]/action/route.ts"];
     for (const f of moneyPath) assert.doesNotMatch(src(f), /canSign|threshold|signers?\b/i, `${f} now mentions signers: re-check, then flip this test`);
     assert.match(src("src/lib/bank/drafts.ts"), /signers' approval|threshold/i, "control: the draft path should mention the vote");
+  });
+});
+
+describe("Settled milestones refuse every move (DC-H-02, web side)", () => {
+  const deal = (status: string) => ({ milestones: [{ status }] }) as unknown as Parameters<typeof refuseSettled>[0];
+
+  it("refuses refund, claim, approve, dispute and reclaim on Released, Refunded and Split", () => {
+    for (const status of ["Released", "Refunded", "Split"]) {
+      for (const action of ["refund", "claim", "approve", "dispute", "reclaim"]) {
+        assert.throws(() => refuseSettled(deal(status), action, 0), /already settled/, `${action} on ${status}`);
+      }
+    }
+  });
+
+  it("lets moves through on a milestone that still holds money, and deal-level moves on any", () => {
+    for (const status of ["Pending", "Delivered", "Approved", "KeyReleased", "Disputed"]) refuseSettled(deal(status), "refund", 0);
+    refuseSettled(deal("Split"), "accept", 0);
+    refuseSettled(deal("Split"), "cancel", 0);
+  });
+
+  it("refuses a milestone that does not exist", () => {
+    assert.throws(() => refuseSettled(deal("Delivered"), "approve", 3), /not found/);
   });
 });

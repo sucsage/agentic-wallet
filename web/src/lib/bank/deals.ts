@@ -74,6 +74,20 @@ export async function dealForWallet(wallet: Address, dealId: number): Promise<Fi
   return deal;
 }
 
+const SETTLED_STATUSES: readonly string[] = ["Released", "Refunded", "Split"];
+
+/**
+ * A move on a milestone that is already settled is refused here, whatever the caller (route, agent
+ * tool or script), instead of being left to the contract and a hidden button. DC-H-02: the contract
+ * once let a seller refund a Split milestone a second time. Deal-level moves (accept, cancel) pass.
+ */
+export function refuseSettled(deal: FileDealView, action: string, index: number) {
+  if (action === "accept" || action === "cancel") return;
+  const m = deal.milestones[index];
+  if (!m) throw new DealError("Milestone not found");
+  if (SETTLED_STATUSES.includes(m.status)) throw new DealError(`This milestone is already settled (${m.status}); nothing more can be done on it`);
+}
+
 /** Sends one call from the wallet (to FileEscrow unless `target` says otherwise), approved by the
  *  owner's signature (the user's click). The wallet checks it against its policy either way. */
 async function viaMandate(wallet: Address, data: Hex, reason: string, target: Address): Promise<TxOutcome> {
@@ -116,6 +130,7 @@ export async function buyerAction(
 ): Promise<{ tier: 1 | 2; outcome: TxOutcome }> {
   const deal = await dealForWallet(wallet, dealId);
   if (deal.role !== "buyer") throw new DealError("Only the buyer can do this");
+  refuseSettled(deal, action, index);
 
   // The agent approves only a fresh delivery. Wallets made before the DC-H-01 fix do not check
   // this on-chain, so the server checks it for them: confirming a released key is the buyer's click.
@@ -143,6 +158,7 @@ export type SellerAction = "accept" | "claim" | "refund" | "cancel";
 export async function sellerAction(wallet: Address, dealId: number, action: SellerAction, index = 0): Promise<{ tier: 1; outcome: TxOutcome }> {
   const deal = await dealForWallet(wallet, dealId);
   if (deal.role !== "seller") throw new DealError("Only the seller can do this");
+  refuseSettled(deal, action, index);
   const data = action === "accept" || action === "cancel" ? dealCall(action, dealId) : milestoneCall(action, dealId, index);
   return { tier: 1, outcome: await viaMandate(wallet, data, `${action} deal ${dealId} milestone ${index}`, escrow(dealId)) };
 }
