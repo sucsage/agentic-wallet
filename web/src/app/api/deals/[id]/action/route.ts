@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { openDispute } from "@/lib/bank/arbiter";
 import { DealError, acceptAndPay, buyerAction, dealForWallet, sellerAction, syncDeal } from "@/lib/bank/deals";
-import { HttpError, errorResponse, rateLimit, requireBankWallet } from "@/lib/guard";
+import { HttpError, assertCompanySigner, errorResponse, rateLimit, requireBankWallet } from "@/lib/guard";
 import { KycRequired, requireKycFor } from "@/lib/kyc";
 
 export const maxDuration = 120;
@@ -24,11 +24,13 @@ const Body = z.object({
 export async function POST(req: Request, ctx: RouteContext<"/api/deals/[id]/action">) {
   try {
     rateLimit(req, "deal-action", 30, 60 * 60 * 1000);
-    const { user, customer, wallet } = await requireBankWallet();
+    const { user, customer, wallet, company } = await requireBankWallet();
     const id = Number((await ctx.params).id);
     const parsed = Body.safeParse(await req.json().catch(() => null));
     if (!Number.isInteger(id) || !parsed.success) throw new HttpError(400, "Invalid request");
     const { action, index, reason } = parsed.data;
+    // A company's deals are moved by its signers; any member may still dispute a delivery.
+    if (action !== "dispute") await assertCompanySigner(user.id, company);
     const deal = await dealForWallet(wallet, id).catch((e) => {
       throw e instanceof DealError ? new HttpError(404, e.message) : e;
     });

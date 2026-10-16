@@ -13,6 +13,7 @@ import {
 } from "./actions";
 import { SocialError, createGroup, friendLabels, groupDetail, listFriends, listGroups, pendingVotes, proposeToGroup } from "./social";
 import { DraftError, type DraftView, createDraft, createSellDraft, discardDraft, draftView, listDrafts } from "./bank/drafts";
+import { canSpendFrom } from "./company";
 import { db } from "./db";
 import { InviteError, createInvite } from "./bank/invites";
 import { LIMITS, kycOf } from "./kyc";
@@ -562,7 +563,13 @@ function resolveContact(list: Contact[], ref: string): Contact | string {
 /** The draft as the chat card needs it, without addresses. */
 const cardDraft = (d: DraftView): DraftView => ({ ...d, wallet: "", seller: "", counterparty: "", result: null });
 
+/** Tools that spend, release or re-route money: for a company wallet only its signers may use them. */
+const SIGNER_ONLY_TOOLS = new Set(["release_milestone", "transfer", "invite_seller"]);
+
 async function runTool(wallet: Address, name: string, rawInput: unknown, userId?: string): Promise<AgentStep> {
+  if (userId && SIGNER_ONLY_TOOLS.has(name) && !(await canSpendFrom(userId, wallet))) {
+    throw new Error("Only a company signer can do this: ask a signer, or draft it for the signers' vote.");
+  }
   const schema = INPUTS[name];
   if (!schema) throw new Error(`Unknown tool ${name}`);
   const parsed = schema.safeParse(rawInput ?? {});

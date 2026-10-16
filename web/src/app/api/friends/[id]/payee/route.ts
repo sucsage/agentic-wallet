@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { HttpError, errorResponse, rateLimit, requireBankWallet } from "@/lib/guard";
+import { HttpError, errorResponse, rateLimit, requireBankSigner } from "@/lib/guard";
 import { SocialError, setFriendPayee } from "@/lib/social";
 
 export const maxDuration = 120;
@@ -13,7 +13,7 @@ export async function PUT(req: Request, ctx: RouteContext<"/api/friends/[id]/pay
   try {
     rateLimit(req, "payee", 20, 60 * 60 * 1000);
     // Acting as a company: the payee is added to the company wallet.
-    const { user, wallet } = await requireBankWallet();
+    const { user, wallet } = await requireBankSigner();
     const body = z.object({ allowed: z.boolean() }).safeParse(await req.json().catch(() => null));
     if (!body.success) throw new HttpError(400, "Send { allowed: true | false }");
     const outcome = await setFriendPayee(user.id, (await ctx.params).id, body.data.allowed, wallet).catch((e) => {

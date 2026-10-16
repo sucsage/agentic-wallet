@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { agentWalletAbi } from "@/lib/abis";
 import { send } from "@/lib/chain";
-import { HttpError, errorResponse, rateLimit, requireBankWallet } from "@/lib/guard";
+import { HttpError, errorResponse, rateLimit, requireBankSigner } from "@/lib/guard";
 
 export const maxDuration = 120;
 
@@ -14,7 +14,7 @@ export const maxDuration = 120;
 export async function DELETE(req: Request) {
   try {
     rateLimit(req, "payee", 20, 60 * 60 * 1000);
-    const { wallet } = await requireBankWallet();
+    const { wallet } = await requireBankSigner();
     const body = z.object({ address: z.string().regex(/^0x[0-9a-fA-F]{40}$/) }).safeParse(await req.json().catch(() => null));
     if (!body.success) throw new HttpError(400, "Send { address }");
     const outcome = await send("owner", {

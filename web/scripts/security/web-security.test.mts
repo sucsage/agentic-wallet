@@ -11,7 +11,7 @@ import { after, describe, it } from "node:test";
 import { db } from "../../src/lib/db";
 import { BankError, registerCustomer, verifyCustomer } from "../../src/lib/bank/customers";
 import { refuseSettled } from "../../src/lib/bank/deals";
-import { actingCompany } from "../../src/lib/company";
+import { actingCompany, canSpendFrom } from "../../src/lib/company";
 import { HttpError, rateLimit } from "../../src/lib/guard";
 
 const run = `sec${Date.now().toString(36)}`;
@@ -88,7 +88,7 @@ describe("API routes: who must be signed in (DB route matrix)", () => {
   };
   walk(root);
 
-  const guarded = /require(User|Customer|ActingCustomer|Admin|BankWallet)\s*\(|getSession\s*\(|userWallet\s*\(|demoWallet\s*\(/;
+  const guarded = /require(User|Customer|ActingCustomer|Admin|BankWallet|BankSigner|ActingSigner)\s*\(|getSession\s*\(|userWallet\s*\(|demoWallet\s*\(/;
   const unguarded = routes.filter((p) => !guarded.test(readFileSync(p, "utf8"))).map((p) => p.slice(root.length + 1));
 
   // Routes that are open by design: the auth framework, the public read-only RPC, the bearer-link
@@ -150,13 +150,15 @@ describe("Account deletion (P1 in PRIVACY-DATA-MAP)", () => {
 });
 
 describe("Company accounts: who may spend the company's money (candidate DC-CO-01)", () => {
-  const user = (n: string) => db.user.create({ data: { id: `${run}-${n}`, name: n, email: `${run}-${n}@example.test` } });
+  let seq = 0;
 
   async function company() {
+    const tag = `${run}-${++seq}`; // one fresh set of rows per call
+    const user = (n: string) => db.user.create({ data: { id: `${tag}-${n}`, name: n, email: `${tag}-${n}@example.test` } });
     const [admin, signer, member, outsider] = await Promise.all(["admin", "signer", "member", "outsider"].map(user));
     const group = await db.group.create({
       data: {
-        name: `${run}-co`, currency: "THB", createdById: admin.id, threshold: 2,
+        name: `${tag}-co`, currency: "THB", createdById: admin.id, threshold: 2,
         members: { create: [
           { userId: admin.id, role: "ADMIN", canSign: true },
           { userId: signer.id, role: "MEMBER", canSign: true },
@@ -166,8 +168,8 @@ describe("Company accounts: who may spend the company's money (candidate DC-CO-0
     });
     const co = await db.company.create({
       data: {
-        name: `${run}-co`, maskedTaxId: "****", taxIdHash: `${run}-hash`, currency: "THB",
-        customerId: `${run}-cust`, walletAddress: `0x${"1".repeat(40)}`, groupId: group.id, createdById: admin.id,
+        name: `${tag}-co`, maskedTaxId: "****", taxIdHash: `${tag}-hash`, currency: "THB",
+        customerId: `${tag}-cust`, walletAddress: `0x${String(seq).repeat(40)}`, groupId: group.id, createdById: admin.id,
       },
     });
     return { co, member, signer, outsider };
@@ -180,12 +182,33 @@ describe("Company accounts: who may spend the company's money (candidate DC-CO-0
     assert.equal(await actingCompany(outsider.id, co.id), null);
   });
 
-  it("KNOWN GAP (candidate): the code between 'acting as' and the payment never looks at canSign or the vote threshold", () => {
-    // Code-read evidence, not an end-to-end run: it shows the signer vote is enforced only for drafts.
+  it("DC-CO-01 fixed: only a signer may spend from, or re-route, the company wallet", async () => {
+    const { co, member, signer, outsider } = await company();
+    const wallet = co.walletAddress as `0x${string}`;
+    assert.equal(await canSpendFrom(signer.id, wallet), true);
+    assert.equal(await canSpendFrom(member.id, wallet), false, "a non-signer can spend: DC-CO-01 is back");
+    assert.equal(await canSpendFrom(outsider.id, wallet), false);
+    assert.equal(await canSpendFrom(member.id, `0x${"9".repeat(40)}`), true, "a personal wallet has no signers");
+  });
+
+  it("every route that moves money or changes who can be paid uses the signer guard", () => {
+    // Source check, so a new route copied from an old one cannot quietly skip it. The list comes from the
+    // route map of 2026-10-16 (every route reachable while acting as a company that spends, releases,
+    // re-routes payees, changes caps, unpauses or re-links the bank account).
     const src = (f: string) => readFileSync(join(process.cwd(), f), "utf8");
-    const moneyPath = ["src/lib/guard.ts", "src/lib/bank/deals.ts", "src/app/api/deals/[id]/action/route.ts"];
-    for (const f of moneyPath) assert.doesNotMatch(src(f), /canSign|threshold|signers?\b/i, `${f} now mentions signers: re-check, then flip this test`);
-    assert.match(src("src/lib/bank/drafts.ts"), /signers' approval|threshold/i, "control: the draft path should mention the vote");
+    const mustGuard: Record<string, RegExp> = {
+      "src/app/api/deals/[id]/action/route.ts": /assertCompanySigner\(/,
+      "src/app/api/friends/[id]/payee/route.ts": /requireBankSigner\(/,
+      "src/app/api/policy/recipients/route.ts": /requireBankSigner\(/,
+      "src/app/api/policy/limits/route.ts": /requireBankSigner\(/,
+      "src/app/api/policy/pause/route.ts": /assertCompanySigner\(/,
+      "src/app/api/invites/route.ts": /requireBankSigner\(/,
+      "src/app/api/bank/accounts/route.ts": /requireActingSigner\(/,
+      "src/lib/agent.ts": /SIGNER_ONLY_TOOLS[\s\S]*canSpendFrom/,
+    };
+    for (const [f, re] of Object.entries(mustGuard)) assert.match(src(f), re, `${f} lost its signer guard`);
+    // The agent's spending tools are all on the signer-only list.
+    assert.match(src("src/lib/agent.ts"), /SIGNER_ONLY_TOOLS = new Set\(\[[^\]]*"release_milestone"[^\]]*"transfer"[^\]]*"invite_seller"/);
   });
 });
 

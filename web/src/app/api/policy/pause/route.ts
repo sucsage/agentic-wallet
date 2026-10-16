@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { pause, unpause } from "@/lib/actions";
-import { HttpError, errorResponse, rateLimit, requireBankWallet } from "@/lib/guard";
+import { HttpError, assertCompanySigner, errorResponse, rateLimit, requireBankWallet } from "@/lib/guard";
 
 export const maxDuration = 120;
 
@@ -9,9 +9,11 @@ export const maxDuration = 120;
 export async function POST(req: Request) {
   try {
     rateLimit(req, "pause", 20, 60 * 60 * 1000);
-    const { wallet } = await requireBankWallet();
+    const { user, wallet, company } = await requireBankWallet();
     const body = z.object({ paused: z.boolean(), reason: z.string().max(200).optional() }).safeParse(await req.json().catch(() => null));
     if (!body.success) throw new HttpError(400, "Send { paused: true | false }");
+    // Anyone in the company may stop the wallet; starting it again is a signer's decision.
+    if (!body.data.paused) await assertCompanySigner(user.id, company);
     const result = body.data.paused ? await pause(wallet, "owner", body.data.reason) : await unpause(wallet);
     return Response.json(result);
   } catch (err) {
