@@ -31,6 +31,9 @@ const attempt = async (call: () => Promise<unknown>) => {
 };
 
 const SEEDS = [1, 2, 3, 4];
+// More sequences for the FileEscrow machine: a split milestone is rare, and a settled one must refuse every move.
+const FILE_SEEDS = Array.from({ length: 16 }, (_, i) => i + 1);
+let splitSequences = 0;
 const STEPS = 150;
 const HOUR = 3600n;
 const DAY = 24n * HOUR;
@@ -123,7 +126,7 @@ describe("FileEscrow properties", async function () {
   const plain = (n: bigint) => ({ amount: n * 1_000_000n, hasFile: false, workHash: zeroHash });
   const committed = (n: bigint) => ({ amount: n * 1_000_000n, hasFile: true, workHash: FILE_HASH });
 
-  for (const seed of SEEDS) {
+  for (const seed of FILE_SEEDS) {
     it(`seed ${seed}: tokens are conserved and the escrow always holds exactly the unsettled milestones`, async () => {
       const usdc = await viem.deployContract("MockUSDC");
       const escrow = await viem.deployContract("FileEscrow", [0n]);
@@ -141,10 +144,11 @@ describe("FileEscrow properties", async function () {
         const count = Number(await escrow.read.dealCount());
         const dealId = BigInt(count === 0 ? 0 : Math.floor(r() * count));
         const index = BigInt(Math.floor(r() * 2));
-        const anyAction = pick(r, [
+        const ALL = [
           "offerToBuy", "offerToSell", "accept", "cancel", "deliver", "approve", "releaseKey",
           "claim", "refund", "dispute", "reclaim", "resolve", "resolveSplit", "time",
-        ] as const);
+        ] as const;
+        const anyAction = pick(r, ALL);
         // Mostly take a move that is valid for the milestone's current state, so the sequences get deep
         // into the state machine; sometimes take a random (usually invalid) move to test the refusals.
         let action: typeof anyAction = anyAction;
@@ -159,7 +163,9 @@ describe("FileEscrow properties", async function () {
               1: ["approve", "approve", "dispute", "claim", "time", "refund"],
               2: ["releaseKey", "releaseKey", "time", "reclaim"],
               3: ["approve", "dispute", "claim", "time"],
-              5: ["resolve", "resolveSplit"],
+              5: ["resolve", "resolveSplit", "refund"],
+              // A settled milestone must refuse every move, whoever tries it (DC-H-02: refund after a split).
+              4: ALL, 6: ALL, 7: ALL,
             };
             action = pick(r, next[ms.status] ?? ["time"]);
           } else if (count < 4 && r() < 0.5) action = r() < 0.5 ? "offerToBuy" : "offerToSell";
@@ -190,7 +196,7 @@ describe("FileEscrow properties", async function () {
         } else if (action === "claim") {
           await attempt(() => s.write.claim([dealId, index]));
         } else if (action === "refund") {
-          if (r() < 0.5) await attempt(() => s.write.refund([dealId, index]));
+          await attempt(() => s.write.refund([dealId, index]));
         } else if (action === "dispute") {
           await attempt(() => b.write.dispute([dealId, index]));
         } else if (action === "reclaim") {
@@ -222,8 +228,13 @@ describe("FileEscrow properties", async function () {
         const sum = held + (await usdc.read.balanceOf([buyer.account.address])) + (await usdc.read.balanceOf([seller.account.address])) + (await usdc.read.balanceOf([arbiter.account.address]));
         assert.equal(sum, START, `${where}: tokens were created or destroyed`);
       }
+      if (seen.has(7)) splitSequences++;
       console.log(`      seed ${seed}: ${succeeded} calls succeeded, milestone statuses reached: ${[...seen].sort().join(",")}`);
       assert.ok(succeeded >= 20 && (seen.has(4) || seen.has(6) || seen.has(7)), `seed ${seed}: the sequence never settled a milestone`);
     });
   }
+
+  it("vacuity guard: some sequences reached a split milestone and then tried every move on it", () => {
+    assert.ok(splitSequences >= 2, `only ${splitSequences} sequences reached a Split milestone`);
+  });
 });
