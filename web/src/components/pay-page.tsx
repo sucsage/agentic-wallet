@@ -18,7 +18,7 @@ type Milestone = {
   name: string;
   acceptance: string | null;
   canApprove: boolean;
-  delivery: { note: string; fileName: string | null; parcel: { carrierLabel: string; tracking: string; status: string; delivered: boolean | null } | null } | null;
+  delivery: { note: string; fileName: string | null; mime: string | null; parcel: { carrierLabel: string; tracking: string; status: string; delivered: boolean | null } | null } | null;
 };
 type Deal = { id: number; status: string; total: string; title: string; summary: string | null; shipTo: string | null; canPay: boolean; milestones: Milestone[] };
 type View = { name: string; sellerName: string; currency: "THB" | "CNY"; expiresAt: string; balance: string; deals: Deal[] };
@@ -169,6 +169,16 @@ export function PayPage({ token }: { token: string }) {
                   <small>
                     {m.delivery.parcel.carrierLabel} · {m.delivery.parcel.tracking} · {m.delivery.parcel.status}
                   </small>
+                )}
+                {m.delivery?.mime?.startsWith("image/") && !["KeyReleased", "Released"].includes(m.status) && (
+                  <div className="inv-preview">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={`${base}/preview/${d.id}/${m.index}`} alt={`Watermarked preview of ${m.delivery.fileName ?? "the delivery"}`} loading="lazy" />
+                    <small>Watermarked, reduced preview. The original file unlocks once you approve.</small>
+                  </div>
+                )}
+                {m.delivery?.fileName && !m.delivery.mime?.startsWith("image/") && !["KeyReleased", "Released"].includes(m.status) && (
+                  <small>File delivered: {m.delivery.fileName} (no preview for this file type; it unlocks once you approve)</small>
                 )}
                 {m.hasFile && ["KeyReleased", "Released"].includes(m.status) && (
                   <a className="inv-download" href={`${base}/files/${d.id}/${m.index}`}>
