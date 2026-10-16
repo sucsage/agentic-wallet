@@ -118,14 +118,29 @@ jobs:
             npx tsx --conditions=react-server scripts/security/web-security.test.mts
           )
 
-  # smoke:
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - uses: actions/setup-node@v4
-  #       with:
-  #         node-version: 22
-  #         cache: npm
-  #         cache-dependency-path: web/package-lock.json
-  #     - working-directory: web
-  #       run: npm ci && npm run smoke
+  # Starts a Hardhat node, Postgres and the app on the runner and runs the main money flow.
+  # Non-blocking until it has been seen green on GitHub; then remove continue-on-error.
+  smoke:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            contracts/package-lock.json
+            web/package-lock.json
+      - name: Install contract dependencies
+        working-directory: contracts
+        run: npm ci
+      - name: Install web dependencies
+        working-directory: web
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+          DIRECT_URL: postgresql://ci:ci@localhost:5432/ci
+        run: npm ci
+      - name: Smoke test
+        working-directory: web
+        run: npm run smoke
