@@ -1,9 +1,10 @@
+import { getSession } from "@/lib/auth";
 import { after } from "next/server";
 import { getAddress } from "viem";
 import { z } from "zod";
 
 import { DealError, sellerAction, syncDeal } from "@/lib/bank/deals";
-import { InviteError, inviteByToken } from "@/lib/bank/invites";
+import { InviteError, inviteForRequest } from "@/lib/bank/invites";
 import { HttpError, errorResponse, rateLimit } from "@/lib/guard";
 
 export const maxDuration = 120;
@@ -12,7 +13,7 @@ export const maxDuration = 120;
 export async function POST(req: Request, ctx: RouteContext<"/api/invite/[token]/action">) {
   try {
     rateLimit(req, "invite-action", 30, 60 * 60 * 1000);
-    const invite = await inviteByToken((await ctx.params).token).catch((e) => {
+    const invite = await inviteForRequest((await ctx.params).token, (await getSession())?.user.id ?? null).catch((e) => {
       throw e instanceof InviteError ? new HttpError(404, e.message) : e;
     });
     const body = z.object({ action: z.literal("accept"), dealId: z.number().int().min(0) }).safeParse(await req.json().catch(() => null));

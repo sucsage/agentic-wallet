@@ -1,6 +1,7 @@
+import { getSession } from "@/lib/auth";
 import { z } from "zod";
 
-import { InviteError, PAYOUT_BANKS, inviteByToken, setPayout } from "@/lib/bank/invites";
+import { InviteError, PAYOUT_BANKS, inviteForRequest, setPayout } from "@/lib/bank/invites";
 import { HttpError, errorResponse, rateLimit } from "@/lib/guard";
 
 const Body = z.discriminatedUnion("method", [
@@ -19,7 +20,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/invite/[token]/
   try {
     // Tight: a name check must not become a way to look up who owns an account number.
     rateLimit(req, "invite-payout", 8, 60 * 60 * 1000);
-    const invite = await inviteByToken((await ctx.params).token).catch((e) => {
+    const invite = await inviteForRequest((await ctx.params).token, (await getSession())?.user.id ?? null).catch((e) => {
       throw e instanceof InviteError ? new HttpError(404, e.message) : e;
     });
     const body = Body.safeParse(await req.json().catch(() => null));

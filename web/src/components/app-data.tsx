@@ -23,8 +23,10 @@ export type AccountView = {
 
 export type CompanyView = {
   id: string;
+  /** COMPANY: a registered company; GROUP: a group of friends' shared wallet. */
+  kind: "COMPANY" | "GROUP";
   name: string;
-  maskedTaxId: string;
+  maskedTaxId: string | null;
   currency: "THB" | "CNY";
   wallet: string;
   groupId: string;

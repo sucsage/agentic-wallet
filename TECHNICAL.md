@@ -342,6 +342,22 @@ Internally the e-money account is a ledger account. The funding saga, the reserv
 - **Deal notes**: the buyer can ask for changes to a delivery or a revised offer. Off-chain only: the on-chain review window keeps running.
 - **Before drafting**, the agent calls `ask_deal_details` when details are missing; the chat shows a form, and the answers go back to the agent.
 
+### 3.12 Group wallets, payouts, the group chat and invite links
+
+- **Group wallet.** A group's owner can open a shared wallet for it (`createGroupWallet`): the same account and agent wallet as a company, without a registration id (`Company.kind = GROUP`). Members then act as the group to hire or to sell in its name. Both go to the N-of-M signer vote, and `approveDraft` refuses either one without the vote. Purchases are paid from the group account and sales are paid into it.
+- **Payouts.** A signer proposes paying members from the shared account (`GroupProposal.payout`). It goes to the same vote as a deal, and all members are paid in one database transaction or nobody is.
+- **Send money.** On Contacts, a user sends to one or several contacts at once (`/api/transfers`). It is a single all-or-nothing transaction, idempotent per request id, with the same KYC limit as deals.
+- **The group's owner** cannot be removed and cannot lose signing by a vote. This is checked when the change is proposed and again when it executes.
+- **AI previews.** What the agent drafts is a `PREVIEW`. It is listed nowhere and nothing exists until the user presses Confirm on the card. For a company or group wallet, Confirm puts the draft to the vote. The agent cannot confirm, or put a preview to a vote, for the user.
+- **Group chat.** Members talk in the group chat, and "Ask AI" runs the agent with the group's context.
+  - It works on the group wallet if the group has one; otherwise it works on the asking member's own wallet.
+  - Only the member who asked can confirm a preview.
+  - The chat keeps the last 200 messages, and the last 20 go to the model.
+- **Invite links for people with an account.** When a signed-in user opens a seller invite, the invite is linked to their account (`claimInvite`):
+  - Their earnings go to their own wallet account.
+  - The buyer becomes a contact.
+  - The deals are listed on their Deals page and open at `/invite/id.<id>`, which only that account can open.
+
 ## 4. The AI agent
 
 `web/src/lib/agent.ts`: an LLM tool-use loop (max 12 turns) over any Anthropic-compatible API

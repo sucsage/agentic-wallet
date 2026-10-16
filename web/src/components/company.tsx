@@ -11,7 +11,7 @@ import "./company.css";
  * with its signers, and move money from your wallet into it.
  */
 
-async function setActing(companyId: string | null) {
+export async function setActing(companyId: string | null) {
   await api("/api/companies/acting", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ companyId }) });
   // Every page reads the acting account from the server: reload so nothing shows the old one.
   window.location.reload();
@@ -38,7 +38,7 @@ export function ActingSwitch() {
         </button>
         {companies.map((c) => (
           <button type="button" key={c.id} className={`aw-acting-option${current === c.id ? " selected" : ""}`} onClick={() => pick(c.id)} disabled={busy !== null}>
-            ♟ Company · {c.name}
+            {c.kind === "GROUP" ? "♧ Group" : "♟ Company"} · {c.name}
           </button>
         ))}
         {busy && <small>Switching…</small>}
@@ -48,7 +48,7 @@ export function ActingSwitch() {
 }
 
 /** Moves money from the member's own wallet into the company account. */
-export function FundCompany({ company, onDone, onClose }: { company: { id: string; name: string; currency: "THB" | "CNY" }; onDone?: () => void; onClose: () => void }) {
+export function FundCompany({ company, onDone, onClose }: { company: { id: string; name: string; currency: "THB" | "CNY"; kind?: "COMPANY" | "GROUP" }; onDone?: () => void; onClose: () => void }) {
   const [amount, setAmount] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -80,7 +80,7 @@ export function FundCompany({ company, onDone, onClose }: { company: { id: strin
             ×
           </button>
         </header>
-        <p>From your own wallet. Company money is spent only by deals its signers approve.</p>
+        <p>From your own wallet. {company.kind === "GROUP" ? "Group" : "Company"} money is spent only by deals and payouts its signers approve.</p>
         <label>
           Amount ({company.currency})
           <input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ""))} placeholder="e.g. 5000" autoFocus />
@@ -101,7 +101,7 @@ export function CompaniesPanel() {
   const { me, refresh } = useAppData();
   const [open, setOpen] = useState(false);
   const [funding, setFunding] = useState<CompanyView | null>(null);
-  const companies = me?.companies ?? [];
+  const companies = (me?.companies ?? []).filter((c) => c.kind !== "GROUP");
   return (
     <Card className="aw-co-panel">
       <header>

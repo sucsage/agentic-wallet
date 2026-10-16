@@ -1,9 +1,10 @@
+import { getSession } from "@/lib/auth";
 import { after } from "next/server";
 import { getAddress } from "viem";
 
 import { disputeOf, disputeView } from "@/lib/bank/arbiter";
 import { dealTerms, deliveryInfo, syncDeal } from "@/lib/bank/deals";
-import { InviteError, inviteByToken, inviteView, sweepInvite } from "@/lib/bank/invites";
+import { InviteError, claimInvite, inviteForRequest, inviteView, sweepInvite } from "@/lib/bank/invites";
 import { config } from "@/lib/config";
 import { db } from "@/lib/db";
 import { HttpError, errorResponse, rateLimit } from "@/lib/guard";
@@ -13,14 +14,25 @@ import { HttpError, errorResponse, rateLimit } from "@/lib/guard";
 export const maxDuration = 300;
 /**
  * The invited seller's page data, for whoever holds the link (no sign-in): the buyer's offers,
- * each milestone's state and delivery, earnings and the payout destination (masked).
+ * each milestone's state and delivery, earnings and the payout destination (masked). Opened by a
+ * signed-in user, the invite is linked to their account (claimInvite).
  */
 export async function GET(req: Request, ctx: RouteContext<"/api/invite/[token]">) {
   try {
     rateLimit(req, "invite-view", 120, 60 * 60 * 1000);
-    const invite = await inviteByToken((await ctx.params).token).catch((e) => {
+    const userId = (await getSession())?.user.id ?? null;
+    let invite = await inviteForRequest((await ctx.params).token, userId).catch((e) => {
       throw e instanceof InviteError ? new HttpError(404, e.message) : e;
     });
+    // Opened signed in by someone who already has an account: link it to them automatically.
+    let linkError: string | null = null;
+    if (userId && invite.claimedByUserId !== userId && invite.userId !== userId) {
+      invite = await claimInvite(invite, userId).catch((e) => {
+        if (!(e instanceof InviteError)) throw e;
+        linkError = e.message;
+        return invite;
+      });
+    }
     const view = await inviteView(invite);
     const wallet = getAddress(invite.sellerWallet);
     after(async () => {
@@ -54,7 +66,7 @@ export async function GET(req: Request, ctx: RouteContext<"/api/invite/[token]">
         };
       }),
     );
-    return Response.json({ ...view, deals });
+    return Response.json({ ...view, deals, linked: { toYou: !!userId && invite.claimedByUserId === userId, signedIn: !!userId, error: linkError } });
   } catch (err) {
     return errorResponse(err);
   }

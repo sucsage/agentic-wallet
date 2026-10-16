@@ -29,3 +29,15 @@
 .aw-acting-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .aw-acting-row>div{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 @media(max-width:640px){.aw-co-row{grid-template-columns:auto minmax(0,1fr)}.aw-co-row>strong,.aw-co-actions{grid-column:2}}
+.aw-send-dialog{width:min(460px,100%);max-height:90vh;overflow:auto}
+.aw-send-list{display:flex;flex-direction:column;gap:6px;max-height:280px;overflow:auto}
+.aw-send-row{display:flex;align-items:center;gap:10px;padding:6px 8px;border:1px solid #262626;border-radius:10px;background:#161616}
+.aw-send-row label{flex:1;display:flex;flex-direction:row!important;align-items:center;gap:8px;font-size:14px!important}
+.aw-send-row label input{width:16px;height:16px;padding:0}
+.aw-send-row>input{width:110px;padding:7px 10px!important;font-size:15px!important;text-align:right}
+.aw-send-row>input:disabled{opacity:.4}
+.aw-send-split{display:flex;gap:8px}
+.aw-send-split input{flex:1;min-width:0}
+.aw-send-total{display:flex;justify-content:space-between;align-items:center;padding-top:6px;border-top:1px solid #262626;color:#aaa;font-size:13px}
+.aw-send-total b{color:#fff;font-size:17px}
+.aw-gw-wallet-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px}

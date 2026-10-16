@@ -1,6 +1,7 @@
 "use client";
 
 import jsQR from "jsqr";
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import { DisputeFlow, type DisputeFlowData, isStagedDispute } from "./dispute-flow";
@@ -47,6 +48,8 @@ type View = {
   sent: string;
   payout: { method: string; target: string; bank: string | null; name: string; setAt: string } | null;
   deals: Deal[];
+  /** Opened signed in: the invite is linked to that account (earnings to its wallet). */
+  linked?: { toYou: boolean; signedIn: boolean; error: string | null };
   /** Bank payouts through Opn Payments (test mode). */
   opn: { active: boolean | null; transfers: { amount: string; status: string; id: string | null; error: string | null; at: string }[] } | null;
 };
@@ -110,12 +113,28 @@ export function InvitePage({ token }: { token: string }) {
             <h1>{view ? `Hi ${view.name}` : error ? "Link unavailable" : "Loading…"}</h1>
             {view && (
               <p>
-                <b>{view.buyerName}</b> wants to hire you. No account needed: accept, deliver, get paid to your bank or PromptPay.
+                <b>{view.buyerName}</b> wants to hire you.{" "}
+                {view.linked?.toYou ? "This deal is linked to your account." : "No account needed: accept, deliver, get paid to your bank or PromptPay."}
               </p>
             )}
           </div>
         </header>
         {error && <p className="inv-error">{error}</p>}
+        {view?.linked?.toYou && (
+          <section className="inv-card inv-linked">
+            <b>✓ Linked to your Agentic Wallet account</b>
+            <p>
+              Earnings go straight into your wallet, {view.buyerName} is now in your contacts, and this deal is listed on your Deals page. Keep working here, or{" "}
+              <Link href="/deals">open the app</Link>.
+            </p>
+          </section>
+        )}
+        {view?.linked?.error && <p className="inv-muted">Not linked to your account: {view.linked.error}</p>}
+        {view && !view.linked?.signedIn && (
+          <p className="inv-muted">
+            Already have an Agentic Wallet account? <a href={`/login?next=${encodeURIComponent(token)}`}>Log in</a>: this deal then links to your account and pays into your wallet.
+          </p>
+        )}
 
         {view && (
           <>

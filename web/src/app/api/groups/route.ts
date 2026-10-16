@@ -16,7 +16,7 @@ export async function GET() {
         members: g.members.map((m) => ({ userId: m.user.id, name: m.user.name, role: m.role, canSign: m.canSign })),
         openProposals: g.proposals.length,
         invited: g.invites.length,
-        company: g.company ? { id: g.company.id, name: g.company.name } : null,
+        company: g.company ? { id: g.company.id, kind: g.company.kind, name: g.company.name } : null,
       })),
     });
   } catch (err) {

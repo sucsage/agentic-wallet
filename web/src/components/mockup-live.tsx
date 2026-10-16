@@ -407,7 +407,7 @@ const remember = (id: string | null) => {
 
 type FundingResult = { status: string; steps: { step: string; outcome?: { url?: string | null; hash?: string } }[]; error?: string };
 
-function DraftCard({
+export function DraftCard({
   draft,
   currency,
   onApprove,
@@ -437,13 +437,14 @@ function DraftCard({
     );
   }
   const failed = draft.status === "FAILED";
+  const preview = draft.status === "PREVIEW";
   const sell = draft.side === "SELL";
   const who = draft.sellerLabel || `${draft.counterparty.slice(0, 6)}…${draft.counterparty.slice(-4)}`;
   return (
     <section className="aw-deal-draft">
       <div className="aw-draft-topline">
         <small>
-          {sell ? "DRAFT OFFER TO SELL" : "DRAFT DEAL"} · DR-{draft.id.slice(-6).toUpperCase()}
+          {preview ? (sell ? "PREVIEW · OFFER TO SELL" : "PREVIEW · DEAL") : sell ? "DRAFT OFFER TO SELL" : "DRAFT DEAL"} · DR-{draft.id.slice(-6).toUpperCase()}
         </small>
         <span>
           {funded
@@ -454,8 +455,10 @@ function DraftCard({
               ? sell
                 ? "Failed · nothing was offered"
                 : "Failed · money refunded"
-              : company && !sell
-                ? `Needs ${company.threshold} company signers`
+              : preview
+                ? "Not created yet · check and confirm"
+              : company
+                ? `Needs ${company.threshold} signers`
                 : "Needs your approval · Tier 1"}
         </span>
       </div>
@@ -517,8 +520,11 @@ function DraftCard({
       )}
       <div className="aw-draft-notice">
         ⓘ &nbsp;
+        {preview && "The AI only proposed this: no deal exists until you confirm. "}
         {company && !sell
           ? `Submitting counts your yes. The total is taken from the ${company.name} account only after ${company.threshold} signers approve.`
+          : company && sell
+          ? `Submitting counts your yes. Once ${company.threshold} signers approve, the offer goes on-chain in the name of ${company.name}; it locks nothing, and the buyer's payments go into its account.`
           : sell
           ? "Sending puts the offer on-chain and locks nothing. The buyer pays the total from their wallet when they accept; you are paid as each delivery is approved."
           : "Approving takes the total from your wallet balance and locks it in escrow. Each milestone is paid only after you approve its delivery."}
@@ -529,12 +535,13 @@ function DraftCard({
             Discard
           </Button>
           <Button onClick={() => onApprove(draft)}>
+            {preview && "Confirm · "}
             {failed
               ? "Try again"
-              : sell
-                ? `Send offer · ${tokenMoney(draft.total, currency)}`
-                : company
-                  ? `Submit to company signers · ${tokenMoney(draft.total, currency)}`
+              : company
+                ? `Submit to ${company.name} signers · ${tokenMoney(draft.total, currency)}`
+                : sell
+                  ? `Send offer · ${tokenMoney(draft.total, currency)}`
                   : `Approve & lock ${tokenMoney(draft.total, currency)}`}
           </Button>
         </div>
@@ -1137,6 +1144,13 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
   const lang = useLang();
   const { wallet, drafts, me } = useAppData();
   const [filter, setFilter] = useState<"All" | "Buying" | "Selling" | "Dispute">("All");
+  // Deals someone hired the user for through a seller link, linked to this account.
+  const [linkedInvites, setLinkedInvites] = useState<{ id: string; buyer: string; href: string }[]>([]);
+  useEffect(() => {
+    api<{ invites: { id: string; buyer: string; href: string }[] }>("/api/invites/claimed")
+      .then((r) => setLinkedInvites(r.invites))
+      .catch(() => setLinkedInvites([]));
+  }, []);
   const currency = me?.bank.currency ?? "THB";
   const explorer = wallet?.explorer?.replace(/\/address\/.*/, "") ?? null;
 
@@ -1194,6 +1208,16 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
           </div>
           <Button onClick={() => go("สร้างดีล")}>New deal with AI</Button>
         </header>
+        {linkedInvites.length > 0 && (
+          <div className="aw-linked-invites">
+            <b>Hired through a link</b>
+            {linkedInvites.map((i) => (
+              <a key={i.id} href={i.href}>
+                {i.buyer} hired you · open →
+              </a>
+            ))}
+          </div>
+        )}
         <div className="aw-deals-tabs" role="tablist" aria-label="Filter deals">
           {(["All", "Buying", "Selling", "Dispute"] as const).map((item) => (
             <button type="button" role="tab" key={item} aria-selected={filter === item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>

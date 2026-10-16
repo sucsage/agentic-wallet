@@ -16,9 +16,10 @@ export async function POST(req: Request, ctx: RouteContext<"/api/workspace/[addr
     const { address, id } = await ctx.params;
     const wallet = await userWallet(address);
     const user = await requireUser();
-    // As a company: the click submits the draft to the company's signers (the user's yes counts).
+    // As a company or group: the click submits the draft (a purchase or an offer to sell in its
+    // name) to its signers (the user's yes counts).
     const company = await companyOfWallet(wallet);
-    const pending = await db.dealDraft.findFirst({ where: { id, walletAddress: wallet, side: "BUY" } });
+    const pending = await db.dealDraft.findFirst({ where: { id, walletAddress: wallet, status: { in: ["PREVIEW", "DRAFT", "FAILED"] } } });
     if (company && pending) {
       const open = await db.groupProposal.findFirst({ where: { draftId: id, status: "OPEN" } });
       const vote = open

@@ -89,6 +89,63 @@ export async function rotateInviteLink(userId: string, inviteId: string): Promis
   return token;
 }
 
+/**
+ * The invite a request is about: by the link's secret, or "id.<inviteId>" for the signed-in seller
+ * the invite was linked to (they reach it from their own Deals page, without the link).
+ */
+export async function inviteForRequest(token: string, sessionUserId: string | null): Promise<SellerInvite> {
+  if (token.startsWith("id.")) {
+    const invite = sessionUserId ? await db.sellerInvite.findFirst({ where: { id: token.slice(3), claimedByUserId: sessionUserId } }) : null;
+    if (!invite) throw new InviteError("This deal is not linked to your account");
+    return invite;
+  }
+  return inviteByToken(token);
+}
+
+/**
+ * The invited seller already has an account and opened the link signed in: link the invite to it.
+ * Their earnings go to their own wallet account (no payout form), the buyer becomes a contact, and
+ * the deals show in their app. Not when the payout already goes somewhere else, or someone else
+ * claimed it: whoever holds the link can claim it, as whoever holds it can already set the payout.
+ */
+export async function claimInvite(invite: SellerInvite, userId: string): Promise<SellerInvite> {
+  if (invite.claimedByUserId === userId) return invite;
+  if (invite.claimedByUserId) throw new InviteError("This invite is linked to another account");
+  if (invite.userId === userId) throw new InviteError("This is your own invite: send the link to the seller");
+  const account = await db.bankAccount.findFirst({
+    where: { customer: { userId }, linkedAt: { not: null } },
+    include: { customer: true },
+    orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
+  });
+  if (!account?.accountNo || !account.customer) throw new InviteError("Open your wallet first to link this deal to your account");
+  if (account.currency !== invite.currency) throw new InviteError(`This deal pays ${invite.currency}; your wallet is in ${account.currency}`);
+  if (invite.payoutSetAt && invite.payoutAccountId !== account.id) throw new InviteError("The payout of this invite already goes to another account");
+  const updated = await db.sellerInvite.updateMany({
+    where: { id: invite.id, claimedByUserId: null },
+    data: {
+      claimedByUserId: userId,
+      claimedAt: new Date(),
+      ...(invite.payoutSetAt
+        ? {}
+        : { payoutMethod: "MOCKBANK" as const, payoutTarget: account.accountNo, payoutAccountId: account.id, payoutName: maskName(account.customer.displayName), payoutSetAt: new Date() }),
+    },
+  });
+  if (updated.count !== 1) throw new InviteError("This invite is linked to another account");
+  // The buyer and the seller become contacts (both took a step: one invited, the other opened it).
+  const [a, b] = [invite.userId, userId];
+  const existing = await db.friendship.findFirst({ where: { OR: [{ requesterId: a, addresseeId: b }, { requesterId: b, addresseeId: a }] } });
+  if (!existing) await db.friendship.create({ data: { requesterId: a, addresseeId: b, status: "ACCEPTED", acceptedAt: new Date() } });
+  else if (existing.status !== "ACCEPTED") await db.friendship.update({ where: { id: existing.id }, data: { status: "ACCEPTED", acceptedAt: new Date() } });
+  const fresh = await db.sellerInvite.findUniqueOrThrow({ where: { id: invite.id } });
+  await sweepInvite(getAddress(fresh.sellerWallet));
+  return fresh;
+}
+
+/** Invites linked to this seller's account, for their Deals page. */
+export function claimedInvites(userId: string) {
+  return db.sellerInvite.findMany({ where: { claimedByUserId: userId }, orderBy: { claimedAt: "desc" } });
+}
+
 export async function inviteByToken(token: string): Promise<SellerInvite> {
   if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) throw new InviteError("This link is not valid");
   const invite = await db.sellerInvite.findUnique({ where: { tokenHash: hashToken(token) } });

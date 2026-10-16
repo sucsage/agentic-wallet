@@ -39,3 +39,6 @@
 .inv-opn{display:flex;flex-direction:column;gap:6px;margin-top:6px;padding:10px;border:1px solid #2e3f5e;border-radius:12px;background:#141c29}
 .inv-opn-row{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;margin:0;font-size:13px}
 .inv-opn-row span{color:#9fc2ff;font-family:ui-monospace,monospace;font-size:11px}
+.inv-linked{border-color:#2f6b45;background:#132018}
+.inv-linked p{margin:0;color:#bfd8c6;font-size:14px}
+.inv-linked a{color:#8fe0a8}

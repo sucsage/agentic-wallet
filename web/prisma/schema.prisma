@@ -336,6 +336,8 @@ model BankTransfer {
 // ---------------------------------------------------------------------------------------------
 
 enum DealDraftStatus {
+  /// What the AI proposed: shown only in its chat card, listed nowhere, until the user confirms it.
+  PREVIEW
   DRAFT
   FUNDED
   FAILED
@@ -433,25 +435,49 @@ model Group {
   invites   GroupInvite[]
   links     GroupLink[]
   rules     GroupRuleProposal[]
-  /// Set when this group is a company's signers: its deals are paid from the company wallet.
+  /// Set when this group is a company's signers, or has its own group wallet: its deals are paid
+  /// from (and its sales paid into) that wallet.
   company   Company?
+  messages  GroupMessage[]
+}
+
+/// The group chat. userId null = the group's AI agent (its tool steps in `steps`).
+model GroupMessage {
+  id        String   @id @default(cuid())
+  groupId   String
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId    String?
+  text      String
+  steps     Json?
+  createdAt DateTime @default(now())
+
+  @@index([groupId, createdAt])
+}
+
+enum CompanyKind {
+  /// A registered company (juristic id checked).
+  COMPANY
+  /// A group of friends with a shared wallet: no registration.
+  GROUP
 }
 
 /// A company account: its own e-money account and agent wallet, run by a group of signers.
 /// Members switch to it ("Acting as"); its deals lock only after N of M signers approve.
 model Company {
-  id            String   @id @default(cuid())
+  id            String      @id @default(cuid())
+  kind          CompanyKind @default(COMPANY)
   name          String
   /// Masked registration id (Thai juristic id / Chinese unified social credit code) and its HMAC.
-  maskedTaxId   String
-  taxIdHash     String   @unique
+  /// Null for a group wallet.
+  maskedTaxId   String?
+  taxIdHash     String?     @unique
   currency      Currency
-  customerId    String   @unique
-  walletAddress String   @unique
-  groupId       String   @unique
-  group         Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  customerId    String      @unique
+  walletAddress String      @unique
+  groupId       String      @unique
+  group         Group       @relation(fields: [groupId], references: [id], onDelete: Cascade)
   createdById   String
-  createdAt     DateTime @default(now())
+  createdAt     DateTime    @default(now())
 }
 
 /// Someone asked to join a group; they become a member only by accepting.
@@ -544,7 +570,10 @@ model GroupProposal {
   group      Group               @relation(fields: [groupId], references: [id], onDelete: Cascade)
   proposerId String
   /// The proposer's bank-deal draft; it is locked from the proposer's account once approved.
-  draftId    String              @unique
+  /// Null for a payout.
+  draftId    String?             @unique
+  /// A payout from the company's / group's shared account to members: [{ userId, amount }] (minor units).
+  payout     Json?
   status     GroupProposalStatus @default(OPEN)
   createdAt  DateTime            @default(now())
 
@@ -632,10 +661,15 @@ model SellerInvite {
   payoutSetAt     DateTime?
   /// BANK payouts through Opn Payments (test mode): the recipient created for this seller.
   opnRecipientId  String?
+  /// A seller who already has an account opened the link signed in: the invite is linked to them
+  /// (earnings to their own wallet account, the deals listed in their app).
+  claimedByUserId String?
+  claimedAt       DateTime?
   expiresAt       DateTime
   createdAt       DateTime      @default(now())
 
   @@index([userId])
+  @@index([claimedByUserId])
 }
 
 // ---------------------------------------------------------------------------------------------

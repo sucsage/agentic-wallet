@@ -106,13 +106,13 @@ const BANK_SYSTEM = `
 E-money wallet. Deals are paid from the user's THB / CNY wallet balance (topped up by PromptPay, card or counter service); the on-chain wallet holds no idle money (its balance is normally 0, and that is fine).
 - Two kinds of deal, keep them apart: HIRE (kind "hire") pays a person for work or a service (design, code, writing, repairs); BUY (kind "buy") pays for a thing: a digital file (delivery "file") or a physical item shipped by post (delivery "parcel", tracked with a tracking number). Say which one you drafted.
 - Before drafting, make sure you have the minimum: (1) who the other party is, (2) hire or buy, and for goods whether it is a file or a physical item, (3) what exactly is delivered, (4) the price of each milestone, (5) acceptance criteria for each milestone, (6) for a parcel, the delivery address. If any of these is missing or unclear, do NOT call the draft tool: call ask_deal_details with what you know and what is missing (the user gets a form), or, if only one small thing is missing, ask ONE short question that lists only what is missing, and offer a sensible default where there is one (e.g. "one milestone, paid on delivery?"). Never invent prices, criteria or addresses. Due dates are optional; review_hours defaults to 72 without asking. If a tool answers NEED_INFO, ask the user exactly that.
-- To buy work, call propose_bank_deal. It ONLY saves a draft: nothing is signed or debited. The user then presses "Approve & lock" in the chat; only then is the offer's total taken from their wallet balance, which is locked in the file escrow until each milestone is approved.
+- To buy work, call propose_bank_deal. It ONLY shows a preview card: no deal or draft exists, nothing is signed or debited. The user checks it and presses Confirm; only then is the deal created and its total taken from their wallet balance and locked in the file escrow until each milestone is approved. Never say a deal was created before the user confirmed it, and never confirm for them.
 - Amounts are plain numbers in the wallet's currency (THB or CNY), e.g. 5000 means 5,000 baht. Never call them mUSDC.
 - People are referred to by name. The seller must be one of the payees in get_wallet_status (people the wallet may pay). If the user names a friend who is not a payee, say they must add that person to the allowlist first (Friends page).
 - Nicknames: get_wallet_status lists the nicknames the user gave each contact, and tools accept a nickname wherever they take a name. Whenever the user refers to someone by a description or nickname that is not a contact name (e.g. "พี่เอ", "my designer", "my potter friend") and you learn which contact they mean, call remember_nickname(nickname, contact) right away, before drafting, and tell the user you will remember it. Example: user "buy from my potter friend" → you ask who → "Seller One" → remember_nickname("potter friend", "Seller One"). forget_nickname removes one.
 - Drafts the user has not approved yet are listed by list_deals with a draft_ref (DR-…). discard_draft removes one when the user asks.
-- To SELL the user's own work, a file or an item to someone, call propose_bank_sale with the buyer's name (get_wallet_status → friends). It also only saves a draft; the user presses "Send offer", which puts the offer on-chain and locks nothing. The buyer pays from their wallet balance when they accept it, and must have the user as a payee by then.
-- If the user wants to hire someone who is not a friend on the app (no account), call invite_seller with their name, give the user the link it returns, then draft the deal with propose_bank_deal to the seller address it returns.
+- To SELL the user's own work, a file or an item to someone, call propose_bank_sale with the buyer's name (get_wallet_status → friends). It also only shows a preview; the user presses Confirm, which puts the offer on-chain and locks nothing. The buyer pays from their wallet balance when they accept it, and must have the user as a payee by then.
+- If the user wants to hire someone who is not a friend on the app (no account), first ask "Shall I invite <name>?" and call invite_seller only after the user says yes (it creates a wallet and a payee at once), then give the user the link it returns, then draft the deal with propose_bank_deal to the seller address it returns.
 - Never say money moved, was paid or was locked because of a draft.
 - Groups: friends can form a group that decides purchases together. A member puts one of their purchase drafts to the group's vote; it is locked from the proposer's wallet only when enough members vote yes (the group's votes needed, at least 2), and nobody can approve it alone. Use list_groups to answer questions about groups (never guess), create_group when the user asks to form one (members must be accepted friends; ask how many yes votes are needed if they did not say), and propose_to_group to put a draft (DR-…) to a vote. You cannot vote for anyone: members vote in the app (Groups or Approvals).
 - KYC: if get_wallet_status shows identity_verified false and a deal's total is above unverified_deal_limit, you may still draft it, but tell the user they must verify their identity first (Profile page: ThaID for Thai banks, National Network Identity for Chinese banks) before "Approve & lock" will work.`;
@@ -216,7 +216,7 @@ const BANK_TOOLS = [
   ...TOOLS.filter((t) => ["get_wallet_status", "list_deals", "pause_wallet"].includes(t.name)),
   tool(
     "propose_bank_deal",
-    "Draft a deal paid from the user's wallet balance. Saves a draft only; the user approves it in the chat, which takes the total from the balance and locks it in escrow.",
+    "Show the user a PREVIEW of a deal paid from their wallet balance. It creates nothing: only when the user presses Confirm on the preview is the total taken from the balance and locked in escrow.",
     {
       seller: { type: "string", description: "The seller's name (or a nickname) from get_wallet_status → payees" },
       kind: KIND,
@@ -230,7 +230,7 @@ const BANK_TOOLS = [
   ),
   tool(
     "propose_bank_sale",
-    "Draft an offer to SELL work or a file to a buyer (a friend's wallet). Saves a draft only; the user sends it from the chat. Nothing is locked until the buyer accepts and pays from their wallet.",
+    "Show the user a PREVIEW of an offer to SELL work or a file to a buyer (a friend's wallet). It creates nothing: the offer is sent only when the user presses Confirm. Nothing is locked until the buyer accepts and pays.",
     {
       buyer: { type: "string", description: "The buyer's name (or a nickname) from get_wallet_status → friends" },
       kind: KIND,
@@ -652,7 +652,7 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
             members: g.members.map((m) => (m.userId === userId ? "you" : m.user.name)),
             proposals: g.proposals.slice(0, 5).map((p) => ({
               title: p.title,
-              draft_ref: refOf.get(p.draftId) ?? null,
+              draft_ref: refOf.get(p.draftId ?? "") ?? null,
               proposed_by: p.proposerId === userId ? "you" : (g.members.find((m) => m.userId === p.proposerId)?.user.name ?? "a former member"),
               status: p.status.toLowerCase(),
               yes: p.yes,
@@ -698,6 +698,7 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
       const ref = i.draft_ref.trim().toUpperCase().replace(/^DR-/, "");
       const d = (await listDrafts(userId, wallet)).find((x) => x.id.slice(-6).toUpperCase() === ref);
       if (!d) return { tool: name, input, summary: `BLOCKED: no draft DR-${ref}; use list_deals for the references` };
+      if (d.status === "PREVIEW") return { tool: name, input, summary: `BLOCKED: DR-${ref} is only a preview. The user confirms it on its card (Confirm), which also puts it to the vote; you cannot confirm for them.` };
       try {
         const r = await proposeToGroup(userId, g[0].id, d.id);
         return { tool: name, input, summary: `PUT TO THE VOTE: "${d.title}" in "${g[0].name}". Your yes counts already (${r.yes}/${g[0].threshold}). It is locked from your wallet only when ${g[0].threshold} members vote yes; the others vote in the app.` };
@@ -748,7 +749,7 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
       const drafts = await listDrafts(userId, wallet);
       const d = drafts.find((x) => x.id.slice(-6).toUpperCase() === ref);
       if (!d) return { tool: name, input, summary: `BLOCKED: no draft ${draftRef(ref)}; use list_deals for the references` };
-      if (d.status !== "DRAFT" && d.status !== "FAILED") return { tool: name, input, summary: `BLOCKED: ${draftRef(d.id)} is already ${d.status.toLowerCase()} and cannot be discarded` };
+      if (d.status !== "PREVIEW" && d.status !== "DRAFT" && d.status !== "FAILED") return { tool: name, input, summary: `BLOCKED: ${draftRef(d.id)} is already ${d.status.toLowerCase()} and cannot be discarded` };
       await discardDraft(userId, wallet, d.id);
       return { tool: name, input, summary: `DISCARDED ${draftRef(d.id)} "${d.title}". Nothing had been signed or debited.` };
     }
@@ -801,7 +802,7 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
           tool: name,
           input,
           draft: cardDraft(draft),
-          summary: `DRAFT SAVED (Tier 1, nothing debited yet): ${i.kind === "buy" ? "BUY (goods)" : "HIRE (service)"} ${draftRef(d.id)} to ${who.name}, total ${draft.total} ${units.currency}. The user must press "Approve & lock" in the chat.`,
+          summary: `PREVIEW SHOWN (no deal exists yet, nothing debited): ${i.kind === "buy" ? "BUY (goods)" : "HIRE (service)"} ${draftRef(d.id)} to ${who.name}, total ${draft.total} ${units.currency}. Nothing is created until the user presses Confirm on the card. Ask them to check it and confirm; never say the deal was made.`,
         };
       } catch (err) {
         if (err instanceof DraftError) return { tool: name, input, summary: `BLOCKED: ${err.message}` };
@@ -831,7 +832,7 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
           tool: name,
           input,
           draft: cardDraft(draft),
-          summary: `SALE DRAFT SAVED (nothing on-chain yet): ${draftRef(d.id)} to ${who.name}, total ${draft.total} ${units.currency}. The user must press "Send offer" in the chat; the buyer then accepts and pays.`,
+          summary: `SALE PREVIEW SHOWN (no offer exists yet): ${draftRef(d.id)} to ${who.name}, total ${draft.total} ${units.currency}. Nothing is created until the user presses Confirm on the card, which sends the offer; the buyer then accepts and pays.`,
         };
       } catch (err) {
         if (err instanceof DraftError) return { tool: name, input, summary: `BLOCKED: ${err.message}` };
@@ -911,6 +912,8 @@ export async function runAgent(
   lang: "en" | "th" = "en",
   userId?: string,
   onEvent?: (e: AgentEvent) => void,
+  /** Extra context for the system prompt, e.g. that this is a group chat and who is in it. */
+  extraSystem?: string,
 ) {
   const { client, model, direct } = llm();
   const bankWallet = (await walletUnits(wallet)).currency !== null;
@@ -918,9 +921,9 @@ export async function runAgent(
   // Acting as a company: its purchases go to the signers' vote instead of the user's own approval.
   const company = bankWallet ? await db.company.findUnique({ where: { walletAddress: getAddress(wallet) }, include: { group: { include: { members: true } } } }) : null;
   const companyNote = company
-    ? `\n\nYou are acting for the company "${company.name}" (its own wallet account), not the user personally. A purchase you draft is paid from the company account only after ${company.group.threshold} of its ${company.group.members.filter((m) => m.canSign).length} signers approve: when the user presses Submit on the draft, it goes to the signers' vote (Approvals → Group votes). Say so instead of "approve & lock".`
+    ? `\n\nYou are acting for the ${company.kind === "GROUP" ? "group" : "company"} "${company.name}" (its own shared wallet account), not the user personally. Any deal you propose for it, a purchase or an offer to sell in its name, happens only after ${company.group.threshold} of its ${company.group.members.filter((m) => m.canSign).length} signers approve: when the user presses Confirm on the preview, it goes to the signers' vote (Approvals → Group votes). Purchases are paid from this account and sales are paid into it.`
     : "";
-  const system = (bankWallet ? `${SYSTEM}\n${BANK_SYSTEM}` : SYSTEM) + companyNote;
+  const system = (bankWallet ? `${SYSTEM}\n${BANK_SYSTEM}` : SYSTEM) + companyNote + (extraSystem ? `\n\n${extraSystem}` : "");
   const isClaude = model.includes("claude");
   const userContent: Anthropic.Beta.BetaContentBlockParam[] = [];
   if (attachment && isClaude) {

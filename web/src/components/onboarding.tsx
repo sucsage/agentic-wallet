@@ -29,6 +29,16 @@ export function AuthScreen({ onSignedIn }: { onSignedIn: () => void }) {
   useEffect(() => {
     api<AuthOptions>("/api/auth-options").then(setOptions).catch(() => setOptions(null));
   }, []);
+  // Opened from a seller invite ("Log in" on /invite/…): go back there, where the deal links to the account.
+  const nextPath = () => {
+    const t = new URLSearchParams(window.location.search).get("next") ?? "";
+    return /^[A-Za-z0-9_-]{20,64}$/.test(t) ? `/invite/${t}` : null;
+  };
+  const signedIn = () => {
+    const next = nextPath();
+    if (next) window.location.assign(next);
+    else onSignedIn();
+  };
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -47,14 +57,14 @@ export function AuthScreen({ onSignedIn }: { onSignedIn: () => void }) {
         : await authClient.signIn.email({ email: email.trim(), password });
     setBusy(false);
     if (r.error) setError(r.error.message ?? "Something went wrong");
-    else onSignedIn();
+    else signedIn();
   }
 
   async function social(provider: "google" | "apple") {
     setBusy(true);
     setError(null);
     // On success the browser is already on its way to the provider.
-    const r = await authClient.signIn.social({ provider, callbackURL: "/chat" });
+    const r = await authClient.signIn.social({ provider, callbackURL: nextPath() ?? "/chat" });
     if (r.error) {
       setError(r.error.message ?? "Something went wrong");
       setBusy(false);

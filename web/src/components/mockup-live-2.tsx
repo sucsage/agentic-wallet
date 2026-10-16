@@ -10,6 +10,9 @@ import { localizeMockupNode, useLang } from "@/lib/i18n";
 import { api, download, tokenMoney, useAppData } from "./app-data";
 import { DisputeFlow, type DisputeFlowData, isStagedDispute } from "./dispute-flow";
 import { usePrefs } from "./prefs";
+import { FundCompany, setActing } from "./company";
+import { GroupChat } from "./group-chat";
+import { SendMoneyDialog } from "./send-money";
 import { BalanceBar } from "./mockup-live";
 import { Button, Card, Loading, PageTitle } from "./mockup-ui";
 
@@ -546,7 +549,9 @@ export function LiveFriends() {
   const [found, setFound] = useState<{ username: string; name: string }[]>([]);
   const [tab, setTab] = useState<"all" | "group" | "allow">("all");
   const [myQr, setMyQr] = useState<{ image: string; url: string } | null>(null);
-  const { me } = useAppData();
+  const [sending, setSending] = useState(false);
+  const [sendId, setSendId] = useState(() => crypto.randomUUID());
+  const { me, refresh } = useAppData();
   const { data: groupsData } = useApi<{ groups: { members: { userId: string }[] }[] }>("/api/groups");
   const friends = data?.friends ?? [];
   // Someone scanned your "My code" QR: their page opens with your username ready to add.
@@ -594,7 +599,28 @@ export function LiveFriends() {
             <h1>Contacts</h1>
             <p>Add contacts who use Agentic Wallet to invite them to groups and make them payees</p>
           </div>
+          <Button onClick={() => setSending(true)} disabled={!!me?.acting} title={me?.acting ? "Switch to Personal to send from your own wallet" : undefined}>
+            ⇄ Send money
+          </Button>
         </header>
+        {sending && (
+          <SendMoneyDialog
+            title="Send money"
+            intro="From your own wallet to one or several contacts at once. Everyone is paid together, or nobody is. Test money only."
+            people={friends.filter((f) => f.status === "ACCEPTED").map((f) => ({ userId: f.userId, name: f.name }))}
+            currency={me?.bank.currency ?? "THB"}
+            submitLabel="Send now"
+            onClose={() => {
+              setSending(false);
+              setSendId(crypto.randomUUID());
+            }}
+            onSubmit={async (recipients) => {
+              const r = await send<{ total: string; already: boolean }>("/api/transfers", "POST", { recipients, requestId: sendId });
+              await refresh();
+              return r.already ? "Already sent (this request was paid before)." : `Sent ${tokenMoney(Number(r.total) / 100, me?.bank.currency ?? "THB")} to ${recipients.length} ${recipients.length === 1 ? "person" : "people"}.`;
+            }}
+          />
+        )}
         {error && <p className="aw-bank-error">{error}</p>}
         {!data && !error && <Loading block text="Loading contacts and payees…" />}
         {note}
@@ -854,7 +880,7 @@ type GroupSummary = {
   members: GroupMemberView[];
   openProposals: number;
   invited?: number;
-  company?: { id: string; name: string } | null;
+  company?: { id: string; kind: "COMPANY" | "GROUP"; name: string } | null;
 };
 type GroupInviteView = { id: string; groupId: string; name: string; company: string | null; members: number; threshold: number; canSign: boolean; invitedBy: string };
 type GroupDetail = {
@@ -865,7 +891,7 @@ type GroupDetail = {
   myRole: "ADMIN" | "MEMBER";
   iSign: boolean;
   signers: number;
-  company: { id: string; name: string; maskedTaxId: string; wallet: string; accountNo: string | null; balance: string } | null;
+  company: { id: string; kind: "COMPANY" | "GROUP"; name: string; maskedTaxId: string | null; wallet: string; accountNo: string | null; balance: string } | null;
   stats: { committed: number; deals: number; openVotes: number };
   members: (GroupMemberView & { joinedAt: string })[];
   invites: { id: string; userId: string; name: string; canSign: boolean }[];
@@ -882,6 +908,8 @@ type GroupDetail = {
     myVote: boolean | null;
     voters: { name: string; approve: boolean }[];
     milestones: { amount: string }[];
+    side: "BUY" | "SELL" | "PAYOUT";
+    payout: { name: string; amount: number }[];
   }[];
   rules: { id: string; kind: string; text: string; status: string; proposer: string; yes: number; no: number; myVote: boolean | null }[];
   activity: { at: string; text: string }[];
@@ -1000,10 +1028,13 @@ export function LiveGroups({ initialCreateOpen = false, joinToken = null }: { in
   const [invitePick, setInvitePick] = useState<Record<string, "signer" | "member">>({});
   const [rule, setRule] = useState<{ kind: string; target: string; threshold: number }>({ kind: "SET_THRESHOLD", target: "", threshold: 2 });
   const [qrError, setQrError] = useState<string | null>(null);
+  const [funding, setFunding] = useState(false);
+  const [payingOut, setPayingOut] = useState(false);
   const currency = me?.bank.currency ?? "THB";
   const friends = (friendsData?.friends ?? []).filter((f) => f.status === "ACCEPTED");
-  // Only purchases lock money, so only they go to a vote. A company group votes on the company's drafts.
-  const openDrafts = drafts.filter((d) => d.status === "DRAFT" && d.side === "BUY");
+  // A personal purchase locks money, so it goes to a vote; in a company's or group wallet's name
+  // (Acting as) its offers to sell go to the vote too.
+  const openDrafts = drafts.filter((d) => d.status === "DRAFT" && (d.side === "BUY" || !!me?.acting));
   const signers = 1 + Object.values(picked).filter((r) => r === "signer").length;
   const total = (ms: { amount: string }[]) => ms.reduce((t, m) => t + Number(m.amount), 0);
   const invites = invitesData?.invites ?? [];
@@ -1119,7 +1150,7 @@ export function LiveGroups({ initialCreateOpen = false, joinToken = null }: { in
                   <small>
                     Pays from
                     <br />
-                    <b>{g.company ? `Company · ${g.company.name}` : "the proposer's wallet"}</b>
+                    <b>{g.company ? `${g.company.kind === "GROUP" ? "Group wallet" : "Company"} · ${g.company.name}` : "the proposer's wallet"}</b>
                   </small>
                 </div>
                 <footer>
@@ -1203,13 +1234,35 @@ export function LiveGroups({ initialCreateOpen = false, joinToken = null }: { in
         )}
         {selected && detail && (
           <section className="aw-group-live" id="aw-group-wallet">
+            {funding && detail.company && (
+              <FundCompany
+                company={{ id: detail.company.id, name: detail.company.name, currency, kind: detail.company.kind }}
+                onDone={() => void afterChange()}
+                onClose={() => setFunding(false)}
+              />
+            )}
+            {payingOut && detail.company && (
+              <SendMoneyDialog
+                title={`Pay out from ${detail.name}`}
+                intro={`From the group account (${tokenMoney(Number(detail.company.balance) / 100, currency)}) to members, e.g. to share what a sale earned. It goes to the vote: paid once ${detail.threshold} signers approve. Your yes counts now.`}
+                people={detail.members.map((m) => ({ userId: m.userId, name: m.userId === me?.user.id ? `${m.name} (you)` : m.name }))}
+                currency={currency}
+                submitLabel="Propose payout"
+                onClose={() => setPayingOut(false)}
+                onSubmit={async (recipients) => {
+                  const r = await send<{ status: string; yes: number }>(`/api/groups/${detail.id}/payouts`, "POST", { recipients });
+                  await afterChange();
+                  return r.status === "EXECUTED" ? "Approved and paid out." : `Put to the vote: ${r.yes} of ${detail.threshold} yes so far.`;
+                }}
+              />
+            )}
             <header className="aw-group-live-head">
               <div>
                 <small className="aw-gr-eyebrow">GROUP WALLET · {roleOf({ role: detail.myRole, canSign: detail.iSign }).toUpperCase()}</small>
                 <h2>{detail.name}</h2>
                 <small>
                   {detail.threshold} of {detail.signers} signers must approve a payment or a rule change
-                  {detail.company ? ` · company reg. ${detail.company.maskedTaxId}` : ""}
+                  {detail.company?.maskedTaxId ? ` · company reg. ${detail.company.maskedTaxId}` : ""}
                 </small>
               </div>
               <div className="aw-gw-actions">
@@ -1225,7 +1278,39 @@ export function LiveGroups({ initialCreateOpen = false, joinToken = null }: { in
               <div>
                 <small>Pays from</small>
                 <b>{detail.company ? tokenMoney(Number(detail.company.balance) / 100, currency) : "Proposer's wallet"}</b>
-                <small>{detail.company ? `Company account ${detail.company.accountNo ?? ""}` : "Each payment is taken from whoever proposed it"}</small>
+                <small>{detail.company ? `${detail.company.kind === "GROUP" ? "Group" : "Company"} account ${detail.company.accountNo ?? ""}` : "Each payment is taken from whoever proposed it"}</small>
+                {detail.company ? (
+                  <span className="aw-gw-wallet-actions">
+                    {me?.acting?.companyId !== detail.company.id && (
+                      <Button variant="outline" onClick={() => void setActing(detail.company!.id)}>
+                        Act as {detail.company.name}
+                      </Button>
+                    )}
+                    <Button variant="outline" onClick={() => setFunding(true)}>
+                      Add money
+                    </Button>
+                    {detail.iSign && (
+                      <Button variant="outline" onClick={() => setPayingOut(true)}>
+                        Pay out to members
+                      </Button>
+                    )}
+                  </span>
+                ) : detail.myRole === "ADMIN" ? (
+                  <span className="aw-gw-wallet-actions">
+                    <Button
+                      disabled={!!busy}
+                      onClick={() => {
+                        if (!window.confirm(`Open a shared wallet for "${detail.name}"? The group can then hire and sell in its own name; its money moves only after ${detail.threshold} signers approve.`)) return;
+                        void run("gwallet", () => send(`/api/groups/${detail.id}/wallet`, "POST"), afterChange);
+                      }}
+                    >
+                      {busy === "gwallet" ? "Opening the wallet (about 10 s)…" : "Open a group wallet"}
+                    </Button>
+                    <small>To hire or sell in the group&apos;s name</small>
+                  </span>
+                ) : (
+                  <small>The owner can open a group wallet to hire and sell in the group&apos;s name.</small>
+                )}
               </div>
               <div>
                 <small>Paid through the group</small>
@@ -1286,7 +1371,7 @@ export function LiveGroups({ initialCreateOpen = false, joinToken = null }: { in
               <Card className="aw-group-panel">
                 <h3>Group rules</h3>
                 <p className="aw-gr-muted">
-                  {detail.threshold} of {detail.signers} signers approve · {detail.company ? "pays from the company account" : "pays from the proposer's wallet"}. Changing a rule needs the same vote.
+                  {detail.threshold} of {detail.signers} signers approve · {detail.company ? `pays from the ${detail.company.kind === "GROUP" ? "group" : "company"} account` : "pays from the proposer's wallet"}. Changing a rule needs the same vote.
                 </p>
                 <div className="aw-gr-rule">
                   <select value={rule.kind} onChange={(e) => setRule({ ...rule, kind: e.target.value })}>
@@ -1307,7 +1392,7 @@ export function LiveGroups({ initialCreateOpen = false, joinToken = null }: { in
                     <select value={rule.target} onChange={(e) => setRule({ ...rule, target: e.target.value })}>
                       <option value="">Who…</option>
                       {detail.members
-                        .filter((m) => m.userId !== me?.user.id && (rule.kind === "ADD_SIGNER" ? m.canSign === false : rule.kind === "REMOVE_SIGNER" ? m.canSign !== false : true))
+                        .filter((m) => m.userId !== me?.user.id && (rule.kind === "ADD_SIGNER" ? m.canSign === false : m.role !== "ADMIN" && (rule.kind === "REMOVE_SIGNER" ? m.canSign !== false : true)))
                         .map((m) => (
                           <option key={m.userId} value={m.userId}>
                             {m.name}
@@ -1332,11 +1417,12 @@ export function LiveGroups({ initialCreateOpen = false, joinToken = null }: { in
                 </div>
               </Card>
             </div>
+            <GroupChat groupId={detail.id} threshold={detail.threshold} shared={detail.company?.name ?? null} />
             <Card className="aw-group-wallet-card aw-group-wallet-votes">
               <h3>＋ Propose a payment</h3>
               <p>
                 {detail.company
-                  ? `Draft a purchase in the AI chat while acting as ${detail.company.name}; it is paid from the company account once ${detail.threshold} signers approve.`
+                  ? `Ask the AI (here in the group chat, or acting as ${detail.company.name}) to hire or sell in the group's name; it happens once ${detail.threshold} signers approve. Purchases are paid from the ${detail.company.kind === "GROUP" ? "group" : "company"} account and sales are paid into it.`
                   : `Draft a purchase in the AI chat first. It stays on hold while the group votes, and is paid from your wallet once ${detail.threshold} signers approve.`}
               </p>
               {openDrafts.length === 0 && <small>No purchase drafts {me?.acting ? `for ${me.acting.name}` : "of yours"} yet.</small>}
@@ -1389,7 +1475,9 @@ export function LiveGroups({ initialCreateOpen = false, joinToken = null }: { in
               <article className="aw-gw-proposal" key={p.id}>
                 <div>
                   <b>
-                    Pay · {p.title} · {tokenMoney(total(p.milestones), currency)}
+                    {p.side === "PAYOUT"
+                      ? `Payout · ${p.payout.map((r) => `${r.name} ${tokenMoney(r.amount, currency)}`).join(", ")} · ${tokenMoney(p.payout.reduce((t, r) => t + r.amount, 0), currency)}`
+                      : `${p.side === "SELL" ? "Sell" : "Pay"} · ${p.title} · ${tokenMoney(total(p.milestones), currency)}`}
                   </b>
                   <small className="aw-gw-proposal-meta">
                     Proposed by {p.mine ? "you" : p.proposer} · {p.yes}/{detail.threshold} approved{p.no ? ` · ${p.no} no` : ""} · {PROPOSAL_STATUS[p.status] ?? p.status}

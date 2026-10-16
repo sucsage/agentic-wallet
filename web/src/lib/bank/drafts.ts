@@ -103,7 +103,7 @@ function termsOf(input: { kind?: string; shipTo?: string | null; title: string; 
   return { ...base, kind: input.kind ?? "HIRE", ...(input.shipTo ? { shipTo: input.shipTo } : {}) };
 }
 
-/** Saves the agent's draft. Refuses sellers the wallet does not allowlist, so approval cannot fail on that. */
+/** Saves the agent's draft as a PREVIEW (nothing exists until the user confirms it). Refuses sellers the wallet does not allowlist, so approval cannot fail on that. */
 export async function createDraft(
   userId: string,
   wallet: Address,
@@ -121,6 +121,7 @@ export async function createDraft(
   return db.dealDraft.create({
     data: {
       userId,
+      status: "PREVIEW",
       walletAddress: wallet,
       seller,
       kind: input.kind ?? "HIRE",
@@ -158,6 +159,7 @@ export async function createSellDraft(
   return db.dealDraft.create({
     data: {
       userId,
+      status: "PREVIEW",
       side: "SELL",
       walletAddress: wallet,
       seller: wallet,
@@ -187,9 +189,10 @@ export async function approveDraft(
   if (!opts.viaGroup && (await db.groupProposal.findFirst({ where: { draftId, status: "OPEN" } }))) {
     throw new DraftError("This draft is waiting for its group's vote. It is locked when enough members approve.");
   }
-  // A company's purchase is locked only by its signers' vote (N of M), never by one member.
-  if (!opts.viaGroup && draft.side === "BUY" && (await db.company.findUnique({ where: { walletAddress: getAddress(wallet) } }))) {
-    throw new DraftError("A company deal needs its signers' approval: submit it for the company vote.");
+  // A company's or group wallet's deal (a purchase, or an offer to sell in its name) happens only
+  // by its signers' vote (N of M), never by one member.
+  if (!opts.viaGroup && (await db.company.findUnique({ where: { walletAddress: getAddress(wallet) } }))) {
+    throw new DraftError("A deal in a company's or group's name needs its signers' approval: submit it for their vote.");
   }
   // One approval at a time (DB-01): overlapping clicks used to sign several mandates and lock the
   // same draft several times. The lease expires on its own if a request dies half way.
@@ -327,7 +330,7 @@ async function approveSellDraft(
 /** Discarding a draft also withdraws it from any group vote it was in. */
 export async function discardDraft(userId: string, wallet: Address, draftId: string): Promise<boolean> {
   const done = await db.dealDraft.updateMany({
-    where: { id: draftId, userId, walletAddress: wallet, status: { in: ["DRAFT", "FAILED"] } },
+    where: { id: draftId, userId, walletAddress: wallet, status: { in: ["PREVIEW", "DRAFT", "FAILED"] } },
     data: { status: "CANCELLED" },
   });
   if (done.count === 1) await db.groupProposal.updateMany({ where: { draftId, status: "OPEN" }, data: { status: "REJECTED" } });

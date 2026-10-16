@@ -53,7 +53,12 @@ export function MockupApp({ initialRoute = "landing", initialBank = "thai", init
     if (isPending) return;
     // App screens need a bank sign-in; a signed-in user skips the login page.
     if (isApp && !session) router.replace("/login");
-    if (route === "login" && session) router.replace("/chat");
+    if (route === "login" && session) {
+      // Back to the seller invite the user came from, if any (see AuthScreen).
+      const t = new URLSearchParams(window.location.search).get("next") ?? "";
+      if (/^[A-Za-z0-9_-]{20,64}$/.test(t)) window.location.assign(`/invite/${t}`);
+      else router.replace("/chat");
+    }
   }, [isApp, isPending, route, router, session]);
   const screen = () => {
     switch (route) {
