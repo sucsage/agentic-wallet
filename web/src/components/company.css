@@ -41,3 +41,5 @@
 .aw-send-total{display:flex;justify-content:space-between;align-items:center;padding-top:6px;border-top:1px solid #262626;color:#aaa;font-size:13px}
 .aw-send-total b{color:#fff;font-size:17px}
 .aw-gw-wallet-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px}
+.aw-send-limits{margin:-4px 0 2px!important;color:#9da9ba;font-size:12px!important}
+.aw-send-row>input.aw-send-bad{border-color:#d9534f!important;color:#ff8a80}

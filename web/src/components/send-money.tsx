@@ -18,6 +18,7 @@ export function SendMoneyDialog({
   people,
   currency,
   submitLabel,
+  limits,
   onSubmit,
   onClose,
 }: {
@@ -26,6 +27,8 @@ export function SendMoneyDialog({
   people: Person[];
   currency: "THB" | "CNY";
   submitLabel: string;
+  /** Per-person bounds (major units), checked here and again on the server. */
+  limits?: { min: number; max: number };
   onSubmit: (recipients: { userId: string; amount: number }[]) => Promise<string>;
   onClose: () => void;
 }) {
@@ -37,7 +40,8 @@ export function SendMoneyDialog({
   const chosen = people.filter((p) => picked[p.userId]);
   const recipients = chosen.map((p) => ({ userId: p.userId, amount: Number(amounts[p.userId] || 0) }));
   const total = recipients.reduce((t, r) => t + r.amount, 0);
-  const valid = recipients.length > 0 && recipients.every((r) => r.amount > 0);
+  const outOfRange = (amount: number) => !!limits && amount > 0 && (amount < limits.min || amount > limits.max);
+  const valid = recipients.length > 0 && recipients.every((r) => r.amount > 0 && !outOfRange(r.amount));
 
   function splitEqually() {
     const t = Number(split);
@@ -75,6 +79,11 @@ export function SendMoneyDialog({
           </button>
         </header>
         <p>{intro}</p>
+        {limits && (
+          <p className="aw-send-limits">
+            {tokenMoney(limits.min, currency)} to {tokenMoney(limits.max, currency)} per person
+          </p>
+        )}
         {people.length === 0 && <p>No one to send to yet.</p>}
         <div className="aw-send-list">
           {people.map((p) => (
@@ -86,8 +95,10 @@ export function SendMoneyDialog({
               <input
                 inputMode="decimal"
                 aria-label={`Amount for ${p.name}`}
-                placeholder="0.00"
+                placeholder={limits ? `${limits.min}–${limits.max.toLocaleString("en-US")}` : "0.00"}
                 disabled={!picked[p.userId]}
+                aria-invalid={picked[p.userId] && outOfRange(Number(amounts[p.userId] || 0))}
+                className={picked[p.userId] && outOfRange(Number(amounts[p.userId] || 0)) ? "aw-send-bad" : undefined}
                 value={amounts[p.userId] ?? ""}
                 onChange={(e) => setAmounts({ ...amounts, [p.userId]: e.target.value.replace(/[^\d.]/g, "") })}
               />

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import "./invite.css";
@@ -199,6 +200,16 @@ export function PayPage({ token }: { token: string }) {
             )}
           </section>
         ))}
+        {view && (
+          <section className="inv-card inv-app">
+            <p className="inv-muted">No account needed to pay here. Want your own Agentic Wallet to hire and get paid with escrow?</p>
+            <div className="inv-actions">
+              <Link className="inv-linkbtn" href="/login?mode=login&next=%2Fchat">
+                Open the app
+              </Link>
+            </div>
+          </section>
+        )}
         {view && (
           <p className="inv-foot">
             This link is your key to these deals; keep it private. It expires on {new Date(view.expiresAt).toLocaleDateString()}. Your money is held by an escrow smart contract until

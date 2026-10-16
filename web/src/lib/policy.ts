@@ -36,13 +36,13 @@ export function evaluateTransfer(state: WalletState, to: string, amount: number)
     return {
       route: "block",
       tier: 1,
-      reasons: [`${to} is not an allowlisted recipient. Only the owner can add recipients.`],
+      reasons: [`${to} is not on the allow transfer list. Only the owner can add recipients.`],
     };
   }
   if (!(amount > 0)) return { route: "block", tier: 1, reasons: ["Amount must be positive"] };
   const caps = capCheck(state, amount);
   if (caps.length) return { route: "propose", tier: 1, reasons: caps };
-  return { route: "execute", tier: 2, reasons: ["Allowlisted recipient, within per-tx and daily caps"] };
+  return { route: "execute", tier: 2, reasons: ["Recipient on the allow transfer list, within per-tx and daily caps"] };
 }
 
 export function evaluateRelease(
@@ -58,7 +58,7 @@ export function evaluateRelease(
     return { route: "block", tier: 1, reasons: [`Milestone is already ${milestone.status}`] };
   }
   if (!isAllowlisted(state, deal.payee)) {
-    return { route: "block", tier: 1, reasons: ["Deal payee is not an allowlisted recipient"] };
+    return { route: "block", tier: 1, reasons: ["Deal payee is not on the allow transfer list"] };
   }
   const reasons = capCheck(state, n(milestone.amount));
   if (milestone.status === "Pending") reasons.push("No delivery evidence has been anchored on-chain yet");
@@ -66,7 +66,7 @@ export function evaluateRelease(
   return {
     route: "execute",
     tier: 2,
-    reasons: ["Evidence on-chain, allowlisted payee, within per-tx and daily caps"],
+    reasons: ["Evidence on-chain, payee on the allow transfer list, within per-tx and daily caps"],
   };
 }
 
@@ -89,6 +89,6 @@ export function scanForInjection(text: string, state: WalletState): string[] {
       !Object.values(state.roles).some((r) => r.toLowerCase() === a.toLowerCase()) &&
       a.toLowerCase() !== state.address.toLowerCase(),
   );
-  if (unknown.length) flags.push(`Mentions non-allowlisted address ${unknown.join(", ")}`);
+  if (unknown.length) flags.push(`Mentions an address not on the allow transfer list ${unknown.join(", ")}`);
   return flags;
 }

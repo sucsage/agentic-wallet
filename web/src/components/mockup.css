@@ -1740,3 +1740,18 @@
 .aw-invite-link-row{display:flex;gap:8px}
 .aw-invite-link-row input{flex:1;min-width:0;padding:9px 12px;border:1px solid #334;border-radius:10px;background:#0b0f16;color:#cfe0ff;font-size:13px}
 .aw-invite-link-new{align-self:flex-start;padding:0;border:0;background:none;color:#8fb8ff;font-size:12px;text-decoration:underline;cursor:pointer}
+/* Summary chart: bars sized in % of the column, hover / focus tooltip with the month's breakdown */
+.aw-summary-bars-pair i{max-height:none!important;transition:height .3s ease,opacity .15s}
+.aw-summary-bar-group{position:relative;cursor:default;outline:none;border-radius:8px}
+.aw-summary-bar-group.hover .aw-summary-bars-pair,.aw-summary-bar-group:focus-visible .aw-summary-bars-pair{background:#ffffff0d;border-radius:6px}
+.aw-summary-bars:has(.hover) .aw-summary-bar-group:not(.hover) .aw-summary-bars-pair i{opacity:.45}
+.aw-summary-tip{position:absolute;top:0;left:50%;transform:translateX(-50%);z-index:5;min-width:210px;padding:10px 12px;border:1px solid #333;border-radius:10px;background:#0b0b0b;box-shadow:0 10px 30px #000a;pointer-events:none;text-align:left}
+.aw-summary-tip.right{left:auto;right:0;transform:none}
+.aw-summary-bar-group:first-child .aw-summary-tip{left:0;transform:none}
+.aw-summary-tip b{display:block;margin-bottom:6px;font-size:13px;color:#f4f4f4}
+.aw-summary-tip p{display:flex;justify-content:space-between;gap:14px;margin:2px 0;font-size:12px;color:#aaa}
+.aw-summary-tip p.sub{font-size:11px;color:#888}
+.aw-summary-tip strong{color:#eee;font-weight:700}
+.aw-summary-tip .green{color:#16c76b}.aw-summary-tip .red{color:#f34348}.aw-summary-tip .blue{color:#6aa8ff}
+.aw-summary-tip hr{margin:6px 0;border:0;border-top:1px solid #262626}
+.aw-summary-tip small{display:block;margin-top:5px;color:#666;font-size:10px}

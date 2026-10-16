@@ -865,7 +865,7 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
       if (typeof who === "string") return { tool: name, input, summary: `BLOCKED: ${who}. If they have no account on the app, draft again with new_person true.` };
       // A group's / company's wallet needs no allowlist entry: its signers' vote approves the seller.
       const sharedWallet = await db.company.findUnique({ where: { walletAddress: getAddress(wallet) } });
-      if (!who.payee && !sharedWallet) return { tool: name, input, summary: `BLOCKED: ${who.name} is not a payee yet. The user must add them to the allowlist on the Friends page first.` };
+      if (!who.payee && !sharedWallet) return { tool: name, input, summary: `BLOCKED: ${who.name} is not a payee yet. The user must add them to the allow transfer list on the Contacts page first.` };
       const missing = missingInfo(i);
       if (missing.length) return { tool: name, input, summary: `NEED_INFO (nothing was saved): ask the user for ${missing.join("; ")}.` };
       try {

@@ -666,3 +666,18 @@
  .aw-app.aw-v08 :is(.aw-deals-content,.aw-summary-content,.aw-friends-content,.aw-groups-content,.aw-policy-content,.aw-profile-content,.aw-approvals-content,.aw-d021-content,.aw-d012-content,.aw-d015-content,.aw-d012-verdict-content,.aw-group-invite-content,.aw-group-wallet-page,.aw-create-group-content,.aw-v08-flow-content){padding-bottom:24px}
  .aw-app.aw-v08 :is(.aw-deals-content,.aw-summary-content,.aw-friends-content,.aw-groups-content,.aw-policy-content,.aw-profile-content,.aw-approvals-content,.aw-d021-content,.aw-d012-content,.aw-d015-content,.aw-d012-verdict-content,.aw-group-invite-content,.aw-create-group-content,.aw-v08-flow-content)>:last-child{margin-bottom:0}
 }
+/* Agent limits next to the AI agent (rail button + editor in the details panel) */
+.aw-v08-limits-btn{width:40px;height:40px;display:grid;place-items:center;border:1px solid #333;border-radius:12px;background:#151515;color:#bbb;cursor:pointer}
+.aw-v08-limits-btn:hover,.aw-v08-limits-btn.active{border-color:#555;color:#fff;background:#1e1e1e}
+.aw-v08-limits-btn svg{width:18px;height:18px;stroke:currentColor;stroke-width:1.6;stroke-linecap:round}
+.aw-v08-limits-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.aw-v08-limits-head button{padding:4px 10px;border:1px solid #333;border-radius:8px;background:#1a1a1a;color:#eee;font-size:12px;cursor:pointer}
+.aw-v08-limits-head button:disabled{opacity:.5;cursor:default}
+.aw-v08-limits form{display:grid;gap:8px;margin-top:10px}
+.aw-v08-limits label{display:flex;align-items:center;justify-content:space-between;gap:10px;color:#999;font-size:13px}
+.aw-v08-limits input{width:110px;padding:6px 8px;border:1px solid #333;border-radius:8px;background:#0b0b0b;color:#fff;text-align:right}
+@media(min-width:761px){.aw-v08-agent-rail:not(.expanded){height:336px}}
+@media(max-width:760px){.aw-v08-limits-btn{width:34px;height:34px}}
+.aw-v08-agent-rail.expanded>.aw-v08-limits-btn{opacity:0;visibility:hidden;pointer-events:none}
+.aw-v08-agent-details .aw-v08-limits small{font-size:14px;color:#777}
+.aw-v08-agent-details .aw-v08-limits p{font-size:14px;margin:16px 0;color:#999}

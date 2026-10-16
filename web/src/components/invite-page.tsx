@@ -170,17 +170,27 @@ export function InvitePage({ token }: { token: string }) {
         {view?.linked?.toYou && (
           <section className="inv-card inv-linked">
             <b>✓ Linked to your Agentic Wallet account</b>
-            <p>
-              Earnings go straight into your wallet, {view.buyerName} is now in your contacts, and this deal is listed on your Deals page. Keep working here, or{" "}
-              <Link href="/deals">open the app</Link>.
-            </p>
+            <p>Earnings go straight into your wallet, {view.buyerName} is now in your contacts, and this deal is listed on your Deals page. Keep working here, or open the app.</p>
+            <div className="inv-actions">
+              <Link className="inv-linkbtn" href="/deals">
+                Open the app
+              </Link>
+            </div>
           </section>
         )}
         {view?.linked?.error && <p className="inv-muted">Not linked to your account: {view.linked.error}</p>}
         {view && !view.linked?.signedIn && (
-          <p className="inv-muted">
-            Already have an Agentic Wallet account? <a href={`/login?next=${encodeURIComponent(`/invite/${token}`)}`}>Log in</a>: this deal then links to your account and pays into your wallet.
-          </p>
+          <section className="inv-card inv-app">
+            <p className="inv-muted">Already have an Agentic Wallet account? Log in: this deal then links to your account and pays into your wallet. No account? You can keep using this page, or create one.</p>
+            <div className="inv-actions">
+              <a className="inv-linkbtn" href={`/login?mode=login&next=${encodeURIComponent(`/invite/${token}`)}`}>
+                Log in
+              </a>
+              <a className="inv-linkbtn ghost" href={`/login?next=${encodeURIComponent(`/invite/${token}`)}`}>
+                Create an account
+              </a>
+            </div>
+          </section>
         )}
 
         {view && (

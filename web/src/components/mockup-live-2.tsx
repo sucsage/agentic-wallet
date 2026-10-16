@@ -13,6 +13,7 @@ import { usePrefs } from "./prefs";
 import { FundCompany, setActing } from "./company";
 import { GroupChat } from "./group-chat";
 import { SendMoneyDialog } from "./send-money";
+import { SEND_LIMITS } from "@/lib/send-limits";
 import { BalanceBar } from "./mockup-live";
 import { Button, Card, Loading, PageTitle } from "./mockup-ui";
 
@@ -324,16 +325,13 @@ export function LivePolicy() {
   const address = me?.wallets[0]?.address;
   const { data: state, reload: reloadState } = useApi<{ audit: AuditEntry[] }>(address ? `/api/workspace/${address}` : null);
   const { busy, run, note } = useAction();
-  const [editing, setEditing] = useState(false);
-  const [perTx, setPerTx] = useState("");
-  const [perDay, setPerDay] = useState("");
   const currency = data?.token.currency ?? me?.bank.currency ?? "THB";
 
   return localizeMockupNode(
     <div className="aw-policy-page">
       <BalanceBar />
       <main className="aw-policy-content">
-        <PageTitle title="Policy & Allowlist" description="The policy engine and the smart contract enforce the same rules" />
+        <PageTitle title="Policy & Allow transfer list" description="The policy engine and the smart contract enforce the same rules" />
         {error && <p className="aw-bank-error">{error}</p>}
         {!data && !error && <Loading block text="Reading your policy from the chain…" />}
         {note}
@@ -341,7 +339,7 @@ export function LivePolicy() {
           {[
             ["Tier 0", "Read", "Balance, deals, history", "green"],
             ["Tier 1", "Propose", "Lock money, add payees · you approve", "amber"],
-            ["Tier 2", "Act alone", "Within limits and allowlist only", "blue"],
+            ["Tier 2", "Act alone", "Within limits and the allow transfer list only", "blue"],
             ["Tier 3", "Pause", "Anyone can pause · only you resume", "red"],
           ].map(([tier, title, description, tone]) => (
             <article className={`aw-policy-tier ${tone}`} key={tier}>
@@ -355,55 +353,23 @@ export function LivePolicy() {
           <Card className="aw-policy-limits">
             <header>
               <h2>Agent limits</h2>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setPerTx(data?.session.maxPerTx ?? "");
-                  setPerDay(data?.session.dailyLimit ?? "");
-                  setEditing((v) => !v);
-                }}
-              >
-                {editing ? "Cancel" : "Edit"}
+              {/* Changed next to the AI agent on the chat page. */}
+              <Button variant="outline" onClick={() => (window.location.href = "/chat")}>
+                Change on the AI page →
               </Button>
             </header>
-            {editing ? (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void run("limits", () => send("/api/policy/limits", "PUT", { maxPerTx: Number(perTx), dailyLimit: Number(perDay) }), async () => {
-                    setEditing(false);
-                    await reload();
-                  });
-                }}
-              >
-                <label className="aw-policy-limit">
-                  <span>Per transaction</span>
-                  <input aria-label="Per transaction limit" type="number" min="1" step="any" value={perTx} onChange={(e) => setPerTx(e.target.value)} />
-                </label>
-                <label className="aw-policy-limit">
-                  <span>Per day</span>
-                  <input aria-label="Per day limit" type="number" min="1" step="any" value={perDay} onChange={(e) => setPerDay(e.target.value)} />
-                </label>
-                <Button type="submit" disabled={busy === "limits"}>
-                  {busy === "limits" ? "Saving on-chain…" : "Save"}
-                </Button>
-              </form>
-            ) : (
-              <>
-                <div className="aw-policy-limit">
-                  <span>Per transaction</span>
-                  <b>{data ? tokenMoney(data.session.maxPerTx, currency) : "…"}</b>
-                </div>
-                <div className="aw-policy-limit">
-                  <span>Per day</span>
-                  <b>{data ? tokenMoney(data.session.dailyLimit, currency) : "…"}</b>
-                </div>
-                <div className="aw-policy-limit">
-                  <span>Left today</span>
-                  <b>{data ? tokenMoney(data.session.remainingToday, currency) : "…"}</b>
-                </div>
-              </>
-            )}
+            <div className="aw-policy-limit">
+              <span>Per transaction</span>
+              <b>{data ? tokenMoney(data.session.maxPerTx, currency) : "…"}</b>
+            </div>
+            <div className="aw-policy-limit">
+              <span>Per day</span>
+              <b>{data ? tokenMoney(data.session.dailyLimit, currency) : "…"}</b>
+            </div>
+            <div className="aw-policy-limit">
+              <span>Left today</span>
+              <b>{data ? tokenMoney(data.session.remainingToday, currency) : "…"}</b>
+            </div>
             <div className="aw-policy-limit">
               <span>Check balance before approval</span>
               <b className="aw-green">Always on</b>
@@ -427,7 +393,7 @@ export function LivePolicy() {
           </Card>
           <Card className="aw-policy-allowlist">
             <header>
-              <h2>Allowlist · who can be paid</h2>
+              <h2>Allow transfer list · who can be paid</h2>
             </header>
             <div className="aw-policy-recipient-list">
               {data?.recipients.map((r) => (
@@ -623,6 +589,7 @@ export function LiveFriends() {
             people={friends.filter((f) => f.status === "ACCEPTED").map((f) => ({ userId: f.userId, name: f.name }))}
             currency={me?.bank.currency ?? "THB"}
             submitLabel="Send now"
+            limits={SEND_LIMITS}
             onClose={() => {
               setSending(false);
               setSendId(crypto.randomUUID());
@@ -745,7 +712,7 @@ export function LiveFriends() {
                 [
                   ["all", `All ${mutual.length}`],
                   ["group", `Same group ${mutual.filter((f) => inMyGroups.has(f.userId)).length}`],
-                  ["allow", `Allowlisted ${mutual.filter((f) => f.allowlisted).length}`],
+                  ["allow", `Allow transfer list ${mutual.filter((f) => f.allowlisted).length}`],
                 ] as const
               ).map(([k, label]) => (
                 <button type="button" role="tab" key={k} aria-selected={tab === k} className={tab === k ? "active" : ""} onClick={() => setTab(k)}>
@@ -754,7 +721,7 @@ export function LiveFriends() {
               ))}
             </div>
           </header>
-          <div className="aw-friend-policy">ⓘ &nbsp; A contact is not automatically in your allowlist. Making someone a payee is an on-chain action you approve.</div>
+          <div className="aw-friend-policy">ⓘ &nbsp; A contact is not automatically on your allow transfer list. Making someone a payee is an on-chain action you approve.</div>
           <div className="aw-friend-cards">
             {shown.length === 0 && <small>No contacts here.</small>}
             {shown.map((f) => (
@@ -766,7 +733,7 @@ export function LiveFriends() {
                     <small>@{f.username}</small>
                   </span>
                 </div>
-                <div className="aw-friend-tags">{f.allowlisted && <span className="allow">allowlist</span>}</div>
+                <div className="aw-friend-tags">{f.allowlisted && <span className="allow">allow transfer</span>}</div>
                 <div className="aw-friend-card-actions">
                   <Button onClick={() => (window.location.href = `/chat?draft=${encodeURIComponent(`Hire ${f.name} for `)}`)}>New deal</Button>
                   <Button
@@ -774,7 +741,7 @@ export function LiveFriends() {
                     disabled={!!busy || !f.wallet}
                     onClick={() => run(`p${f.friendshipId}`, () => send(`/api/friends/${f.friendshipId}/payee`, "PUT", { allowed: !f.allowlisted }), reload)}
                   >
-                    {busy === `p${f.friendshipId}` ? "Updating the allowlist on-chain…" : f.allowlisted ? "Allowlisted ✓ · remove" : f.wallet ? "Add to allowlist" : "No wallet yet"}
+                    {busy === `p${f.friendshipId}` ? "Updating the allow transfer list on-chain…" : f.allowlisted ? "On allow transfer list ✓ · remove" : f.wallet ? "Add to allow transfer list" : "No wallet yet"}
                   </Button>
                   <Button variant="outline" disabled={!!busy} onClick={() => run(`u${f.friendshipId}`, () => send(`/api/friends/${f.friendshipId}`, "DELETE"), reload)}>
                     Remove contact
@@ -1514,15 +1481,32 @@ export function LiveGroups({ initialCreateOpen = false, joinToken = null }: { in
 type Summary = {
   currency: "THB" | "CNY";
   totals: { income: number; spent: number; refunds: number; net: number; openingDeposits: number };
-  months: { month: string; income: number; spent: number; refunds: number }[];
+  months: {
+    month: string;
+    income: number;
+    spent: number;
+    refunds: number;
+    dealIncome: number;
+    transfersIn: number;
+    dealSpent: number;
+    transfersOut: number;
+    topups: number;
+    count: number;
+  }[];
   deals: { title: string; spent: number; refunded: number }[];
   tax: { kind: string; year: number; income: number; taxable: number; tax: number; vatWarning: string | null; notes: string[] } | null;
 };
 
 export function LiveSummary() {
   const lang = useLang();
-  const { wallet, drafts } = useAppData();
-  const { data, error } = useApi<Summary>("/api/summary");
+  const { wallet, drafts, me } = useAppData();
+  // Keyed by the wallet being viewed, re-read every 30 s and whenever its balance moves.
+  const { data, error, reload } = useApi<Summary>(`/api/summary?as=${me?.acting?.companyId ?? "me"}`, 30_000);
+  const balanceKey = (me?.accounts ?? []).map((a) => a.balance).join(",");
+  useEffect(() => {
+    if (balanceKey) void reload();
+  }, [balanceKey, reload]);
+  const [hover, setHover] = useState<number | null>(null);
   const [ai, setAi] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
@@ -1567,8 +1551,8 @@ export function LiveSummary() {
         <div className="aw-summary-metrics">
           {(
             [
-              ["Received", data?.totals.income, "Paid to you as a seller", "green"],
-              ["Spent", data?.totals.spent, "Locked into deals from your wallet", "red"],
+              ["Received", data?.totals.income, "Paid to you by deals and transfers", "green"],
+              ["Spent", data?.totals.spent, "Locked into deals and sent to people", "red"],
               ["Locked now", locked, "Still in escrow", "yellow"],
               ["Refunded", data?.totals.refunds, "Came back to your wallet", "blue"],
             ] as const
@@ -1627,16 +1611,64 @@ export function LiveSummary() {
               <i className="green-dot" /> Received <i className="red-dot" /> Spent
             </span>
           </header>
-          <div className="aw-summary-bars">
-            {(data?.months ?? []).map((m) => (
-              <div className="aw-summary-bar-group" key={m.month}>
-                <div className="aw-summary-bars-pair">
-                  <i style={{ height: `${Math.round((m.income / max) * 100)}px` }} />
-                  <i style={{ height: `${Math.round((m.spent / max) * 100)}px` }} />
+          <div className="aw-summary-bars" onMouseLeave={() => setHover(null)}>
+            {(data?.months ?? []).map((m, i) => {
+              const label = new Date(`${m.month}-01T00:00:00Z`).toLocaleDateString(lang === "th" ? "th-TH" : "en-US", { month: "short", year: "numeric", timeZone: "UTC" });
+              const rows = (
+                [
+                  ["Paid to you by deals", m.dealIncome, "green"],
+                  ["Sent to you", m.transfersIn, "green"],
+                  ["Locked into deals", m.dealSpent, "red"],
+                  ["You sent", m.transfersOut, "red"],
+                  ["Refunded", m.refunds, "blue"],
+                  ["Topped up", m.topups, "blue"],
+                ] as const
+              ).filter(([, v]) => v > 0);
+              return (
+                <div
+                  className={`aw-summary-bar-group${hover === i ? " hover" : ""}`}
+                  key={m.month}
+                  tabIndex={0}
+                  aria-label={`${label}: received ${tokenMoney(m.income, c)}, spent ${tokenMoney(m.spent, c)}`}
+                  onMouseEnter={() => setHover(i)}
+                  onFocus={() => setHover(i)}
+                  onBlur={() => setHover(null)}
+                >
+                  {hover === i && (
+                    <div className={`aw-summary-tip${i >= (data?.months.length ?? 0) - 2 ? " right" : ""}`} role="tooltip">
+                      <b>{label}</b>
+                      <p>
+                        <span>Received</span>
+                        <strong className="green">{tokenMoney(m.income, c)}</strong>
+                      </p>
+                      <p>
+                        <span>Spent</span>
+                        <strong className="red">{tokenMoney(m.spent, c)}</strong>
+                      </p>
+                      <p>
+                        <span>Net</span>
+                        <strong>{tokenMoney(m.income + m.refunds - m.spent, c)}</strong>
+                      </p>
+                      {rows.length > 0 && <hr />}
+                      {rows.map(([k, v, tone]) => (
+                        <p key={k} className="sub">
+                          <span>{k}</span>
+                          <strong className={tone}>{tokenMoney(v, c)}</strong>
+                        </p>
+                      ))}
+                      <small>
+                        {m.count} transaction{m.count === 1 ? "" : "s"}
+                      </small>
+                    </div>
+                  )}
+                  <div className="aw-summary-bars-pair">
+                    <i style={{ height: `${m.income > 0 ? Math.max(2, Math.round((m.income / max) * 100)) : 0}%` }} />
+                    <i style={{ height: `${m.spent > 0 ? Math.max(2, Math.round((m.spent / max) * 100)) : 0}%` }} />
+                  </div>
+                  <small>{label}</small>
                 </div>
-                <small>{m.month}</small>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
         {data?.tax && (

@@ -14,10 +14,24 @@ export type Summary = {
   currency: Currency;
   from: string;
   to: string;
-  totals: { income: number; spent: number; refunds: number; net: number; openingDeposits: number };
-  months: { month: string; income: number; spent: number; refunds: number }[];
+  totals: { income: number; spent: number; refunds: number; net: number; openingDeposits: number; dealIncome: number; transfersIn: number; transfersOut: number };
+  /** The last six months up to now. income = paid by deals + money sent to you; spent = locked into deals + money you sent. */
+  months: Month[];
   deals: { title: string; spent: number; refunded: number }[];
   tax: TaxEstimate | null;
+};
+
+export type Month = {
+  month: string;
+  income: number;
+  spent: number;
+  refunds: number;
+  dealIncome: number;
+  transfersIn: number;
+  dealSpent: number;
+  transfersOut: number;
+  topups: number;
+  count: number;
 };
 
 export type TaxEstimate = {
@@ -89,18 +103,43 @@ export async function buildSummary(
   const drafts = await db.dealDraft.findMany({ where: { userId, fundingId: { not: null } }, select: { title: true, fundingId: true } });
   const titleByFunding = new Map(drafts.map((d) => [d.fundingId!, d.title]));
 
-  const totals = { income: 0, spent: 0, refunds: 0, net: 0, openingDeposits: 0 };
-  const months = new Map<string, { month: string; income: number; spent: number; refunds: number }>();
+  const totals = { income: 0, spent: 0, refunds: 0, net: 0, openingDeposits: 0, dealIncome: 0, transfersIn: 0, transfersOut: 0 };
+  const blank = (month: string): Month => ({ month, income: 0, spent: 0, refunds: 0, dealIncome: 0, transfersIn: 0, dealSpent: 0, transfersOut: 0, topups: 0, count: 0 });
+  // Always the last six months (empty ones too), so this month's bar is there before anything happens.
+  const months = new Map<string, Month>();
+  const end = new Date(Math.min(Date.now(), +to - 1));
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() - i, 1));
+    if (d >= new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), 1))) months.set(d.toISOString().slice(0, 7), blank(d.toISOString().slice(0, 7)));
+  }
   const deals = new Map<string, { title: string; spent: number; refunded: number }>();
   for (const t of rows) {
     const amount = baht(t.amount);
     const incoming = t.toId !== null && ids.includes(t.toId);
     const month = t.createdAt.toISOString().slice(0, 7);
-    const m = months.get(month) ?? { month, income: 0, spent: 0, refunds: 0 };
-    if ((t.kind === "DEPOSIT" || t.kind === "TOPUP") && incoming) totals.openingDeposits += amount;
-    else if (t.kind === "FUND" && !incoming) {
+    const m = months.get(month) ?? blank(month);
+    const outgoing = t.fromId !== null && ids.includes(t.fromId);
+    m.count += 1;
+    if ((t.kind === "DEPOSIT" || t.kind === "TOPUP") && incoming) {
+      totals.openingDeposits += amount;
+      m.topups += amount;
+    } else if (t.kind === "TRANSFER" && incoming !== outgoing) {
+      // Send money, salaries and group payouts. Moving between two of your own accounts is neither.
+      if (incoming) {
+        totals.income += amount;
+        totals.transfersIn += amount;
+        m.income += amount;
+        m.transfersIn += amount;
+      } else {
+        totals.spent += amount;
+        totals.transfersOut += amount;
+        m.spent += amount;
+        m.transfersOut += amount;
+      }
+    } else if (t.kind === "FUND" && !incoming) {
       totals.spent += amount;
       m.spent += amount;
+      m.dealSpent += amount;
       const fundingId = t.idempotencyKey.match(/^funding:(0x[0-9a-f]+):debit$/)?.[1];
       const title = (fundingId && titleByFunding.get(fundingId)) || "Other deal";
       const d = deals.get(title) ?? { title, spent: 0, refunded: 0 };
@@ -111,7 +150,9 @@ export async function buildSummary(
       m.refunds += amount;
     } else if (t.kind === "PAYOUT" && incoming) {
       totals.income += amount;
+      totals.dealIncome += amount;
       m.income += amount;
+      m.dealIncome += amount;
     }
     months.set(month, m);
   }
@@ -121,7 +162,7 @@ export async function buildSummary(
   const year = new Date(+to - 1).getUTCFullYear();
   const tax =
     customer.currency === "THB"
-      ? thaiTax(customer.type === "COMPANY" ? "company" : "personal", totals.income, Math.max(0, totals.spent - totals.refunds), year)
+      ? thaiTax(customer.type === "COMPANY" ? "company" : "personal", totals.dealIncome, Math.max(0, totals.spent - totals.transfersOut - totals.refunds), year)
       : null;
 
   return {
@@ -129,7 +170,7 @@ export async function buildSummary(
     from: from.toISOString(),
     to: to.toISOString(),
     totals,
-    months: [...months.values()],
+    months: [...months.values()].sort((a, b) => a.month.localeCompare(b.month)).slice(-6),
     deals: [...deals.values()].sort((a, b) => b.spent - a.spent),
     tax,
   };

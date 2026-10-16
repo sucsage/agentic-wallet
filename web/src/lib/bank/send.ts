@@ -4,6 +4,7 @@ import { Prisma } from "@/generated/prisma/client";
 
 import { db } from "../db";
 import { KycRequired, requireKycFor } from "../kyc";
+import { SEND_LIMITS } from "../send-limits";
 
 /**
  * Sending money to several people at once: from your own wallet account to friends, or from a
@@ -24,12 +25,15 @@ export function walletAccountOf(userId: string) {
 }
 
 /** Checks the list and turns amounts (major units) into satang / fen. */
-export function cleanRecipients(list: Recipient[]): { userId: string; minor: bigint }[] {
+export function cleanRecipients(list: Recipient[], limits?: { min: number; max: number }): { userId: string; minor: bigint }[] {
   if (list.length === 0) throw new SendError("Choose at least one person");
   if (list.length > MAX_RECIPIENTS) throw new SendError(`At most ${MAX_RECIPIENTS} people at once`);
   if (new Set(list.map((r) => r.userId)).size !== list.length) throw new SendError("Each person once only");
   return list.map((r) => {
     if (!Number.isFinite(r.amount) || r.amount <= 0 || r.amount > 1_000_000) throw new SendError("Every amount must be above 0");
+    if (limits && (r.amount < limits.min || r.amount > limits.max)) {
+      throw new SendError(`Each person gets ${limits.min.toLocaleString("en-US")} to ${limits.max.toLocaleString("en-US")} per transfer`);
+    }
     return { userId: r.userId, minor: BigInt(Math.round(r.amount * 100)) };
   });
 }
@@ -65,7 +69,7 @@ export async function payMany(fromId: string, recipients: { userId: string; mino
 
 /** From your own wallet to friends (accepted contacts only). */
 export async function sendToFriends(userId: string, list: Recipient[], requestId: string) {
-  const recipients = cleanRecipients(list);
+  const recipients = cleanRecipients(list, SEND_LIMITS);
   const friends = await db.friendship.findMany({
     where: { status: "ACCEPTED", OR: [{ requesterId: userId }, { addresseeId: userId }] },
     select: { requesterId: true, addresseeId: true },

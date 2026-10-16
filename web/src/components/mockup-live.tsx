@@ -407,6 +407,95 @@ const remember = (id: string | null) => {
   }
 };
 
+/**
+ * The agent's Tier 2 caps (per transaction, per day), next to the AI agent on the chat page.
+ * Saving is an owner transaction on the wallet contract (setSession), so it takes a few seconds.
+ */
+function LimitsEditor({
+  wallet,
+  editing,
+  setEditing,
+  onSaved,
+}: {
+  wallet: ReturnType<typeof useAppData>["wallet"];
+  editing: boolean;
+  setEditing: (v: boolean) => void;
+  onSaved: () => Promise<void>;
+}) {
+  const [perTx, setPerTx] = useState("");
+  const [perDay, setPerDay] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const currency = wallet?.token.currency ?? "THB";
+  useEffect(() => {
+    if (!editing || !wallet) return;
+    // Opening the editor starts from the caps on-chain.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPerTx(String(Number(wallet.session.maxPerTx)));
+    setPerDay(String(Number(wallet.session.dailyLimit)));
+    setMsg(null);
+    // Only when the editor opens (or the wallet first loads): the app re-reads the wallet every few
+    // seconds, and that must not overwrite what is being typed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing, !wallet]);
+
+  async function save(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setMsg(null);
+    try {
+      await api("/api/policy/limits", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ maxPerTx: Number(perTx), dailyLimit: Number(perDay) }),
+      });
+      await onSaved();
+      setEditing(false);
+      setMsg({ ok: true, text: "Saved on-chain." });
+    } catch (err) {
+      setMsg({ ok: false, text: (err as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="aw-v08-limits">
+      <div className="aw-v08-limits-head">
+        <small>Your limits</small>
+        <button type="button" onClick={() => setEditing(!editing)} disabled={busy || !wallet}>
+          {editing ? "Cancel" : "Edit"}
+        </button>
+      </div>
+      {editing ? (
+        <form onSubmit={save}>
+          <label>
+            <span>Per transaction</span>
+            <input aria-label="Per transaction limit" type="number" min="1" step="any" value={perTx} onChange={(e) => setPerTx(e.target.value)} />
+          </label>
+          <label>
+            <span>Per day</span>
+            <input aria-label="Per day limit" type="number" min="1" step="any" value={perDay} onChange={(e) => setPerDay(e.target.value)} />
+          </label>
+          <Button type="submit" disabled={busy || !(Number(perTx) > 0) || !(Number(perDay) > 0)}>
+            {busy ? "Saving on-chain…" : "Save limits"}
+          </Button>
+        </form>
+      ) : (
+        <>
+          <p>
+            Per transaction <strong>{wallet ? tokenMoney(wallet.session.maxPerTx, currency) : "…"}</strong>
+          </p>
+          <p>
+            Per day <strong>{wallet ? tokenMoney(wallet.session.dailyLimit, currency) : "…"}</strong>
+          </p>
+        </>
+      )}
+      {msg && <p className={msg.ok ? "aw-live-ok" : "aw-bank-error"}>{msg.text}</p>}
+    </div>
+  );
+}
+
 type FundingResult = { status: string; dealId?: number | string; steps: { step: string; outcome?: { url?: string | null; hash?: string } }[]; error?: string };
 
 export function DraftCard({
@@ -472,7 +561,7 @@ export function DraftCard({
         <span>
           {draft.kind === "HIRE" ? (sell ? "Client" : "Contractor") : sell ? "Buyer" : "Seller"}&nbsp; <b>{who}</b>
         </span>
-        {!sell && <i className="green">In allowlist ✓</i>}
+        {!sell && <i className="green">On allow transfer list ✓</i>}
       </div>
       {draft.milestones.map((m, i) => (
         <div className="aw-draft-milestone" key={i}>
@@ -555,7 +644,7 @@ export function DraftCard({
 const TIER_TEXT = [
   "Read balance, deals, history",
   "Draft a deal · you approve the debit",
-  "Approve small deliveries within limits + allowlist",
+  "Approve small deliveries within limits + allow transfer list",
   "Pause · anyone can, only owner resumes",
 ];
 
@@ -577,6 +666,7 @@ export function LiveChat() {
   const [chatId, setChatId] = useState<string | null>(null);
   const [loadingChat, setLoadingChat] = useState(false);
   const [agentOpen, setAgentOpen] = useState(true);
+  const [limitsEditing, setLimitsEditing] = useState(false);
   const [chatPrefs] = usePrefs();
   const aiOff = chatPrefs?.aiChat === false;
   // "New deal" on a contact opens the chat with a message started for them.
@@ -599,6 +689,11 @@ export function LiveChat() {
   // must not subtract the same deal twice.
   const [balanceAtOpen, setBalanceAtOpen] = useState<number | null>(null);
   const [debiting, setDebiting] = useState(false);
+  // The dialog can be closed while the debit runs on-chain; the result then lands in the chat.
+  const confirmOpen = useRef(false);
+  useEffect(() => {
+    confirmOpen.current = confirm !== null;
+  }, [confirm]);
   const [debitResult, setDebitResult] = useState<FundingResult | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const currency = me?.bank.currency ?? "THB";
@@ -787,13 +882,21 @@ export function LiveChat() {
       const funding = res.funding;
       if (!funding) throw new Error("No funding result");
       setDebitResult(funding);
+      if (d.side !== "SELL" && !confirmOpen.current) {
+        setItems((cur) => [
+          ...cur,
+          funding.status === "FUNDED"
+            ? { kind: "agent", at: now(), steps: [], text: `**${d.title}** is locked in escrow${funding.dealId != null ? ` as D-${funding.dealId}` : ""}.` }
+            : { kind: "error", text: `${d.title}: ${funding.error ?? funding.status}` },
+        ]);
+      }
       if (d.side === "SELL" && funding.status !== "FUNDED") {
         setItems((cur) => [...cur, { kind: "error", text: `The offer was not sent: ${funding.error ?? funding.status}` }]);
       }
       await refresh();
     } catch (e) {
       setDebitResult({ status: "ERROR", steps: [], error: (e as Error).message });
-      if (d.side === "SELL") setItems((cur) => [...cur, { kind: "error", text: (e as Error).message }]);
+      if (d.side === "SELL" || !confirmOpen.current) setItems((cur) => [...cur, { kind: "error", text: (e as Error).message }]);
     } finally {
       setDebiting(false);
     }
@@ -1001,6 +1104,22 @@ export function LiveChat() {
               <path d="M12 7V3H8M2 12v4M22 12v4M9 12v3M15 12v3" />
             </svg>
           </span>
+          <button
+            type="button"
+            className={`aw-v08-limits-btn${limitsEditing ? " active" : ""}`}
+            aria-label="Change the agent's limits per transaction and per day"
+            title="Agent limits: per transaction / per day"
+            onClick={() => {
+              setAgentOpen(true);
+              setLimitsEditing(true);
+            }}
+          >
+            <svg viewBox="0 0 18 18" fill="none" aria-hidden="true">
+              <path d="M3 5h12M3 13h12" />
+              <circle cx="7" cy="5" r="1.8" />
+              <circle cx="11" cy="13" r="1.8" />
+            </svg>
+          </button>
           {[0, 1, 2, 3].map((tier) => (
             <button key={tier} type="button" className={`aw-v08-tier tier${tier}`} aria-label={`Tier ${tier} details`} onClick={() => setAgentOpen(true)}>
               {tier}
@@ -1015,13 +1134,12 @@ export function LiveChat() {
               </p>
             ))}
             <hr />
-            <small>Your limits</small>
-            <p>
-              Per transaction <strong>{wallet ? tokenMoney(wallet.session.maxPerTx, wallet.token.currency) : "…"}</strong>
-            </p>
-            <p>
-              Per day <strong>{wallet ? tokenMoney(wallet.session.dailyLimit, wallet.token.currency) : "…"}</strong>
-            </p>
+            <LimitsEditor
+              wallet={wallet}
+              editing={limitsEditing}
+              setEditing={setLimitsEditing}
+              onSaved={refresh}
+            />
             <hr />
             <small>Recent drafts</small>
             {drafts.length === 0 && <p className="aw-v08-agent-recent">None yet</p>}
@@ -1041,7 +1159,7 @@ export function LiveChat() {
             <div
               className="aw-debit-overlay"
               onMouseDown={(event) => {
-                if (event.target === event.currentTarget && !debiting) {
+                if (event.target === event.currentTarget) {
                   setConfirm(null);
                   setDebitResult(null);
                 }
@@ -1056,7 +1174,6 @@ export function LiveChat() {
                   <button
                     type="button"
                     aria-label="Close confirmation"
-                    disabled={debiting}
                     onClick={() => {
                       setConfirm(null);
                       setDebitResult(null);
@@ -1124,13 +1241,12 @@ export function LiveChat() {
                 <footer>
                   <Button
                     variant="outline"
-                    disabled={debiting}
                     onClick={() => {
                       setConfirm(null);
                       setDebitResult(null);
                     }}
                   >
-                    {debitResult ? "Close" : "Cancel"}
+                    {debitResult || debiting ? "Close" : "Cancel"}
                   </Button>
                   {!debitResult && (
                     <Button disabled={debiting} onClick={() => approve(confirm)}>

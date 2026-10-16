@@ -25,7 +25,7 @@ export const SIDEBAR_GROUPS = [
     { label: "Groups", route: "กลุ่ม", icon: "users" },
   ] },
   { title: "Settings", items: [
-    { label: "Policy & Allowlist", route: "นโยบาย & Allowlist", icon: "shield" },
+    { label: "Policy & Allow transfer list", route: "นโยบาย & Allowlist", icon: "shield" },
     { label: "Profile & Privacy", route: "ความเป็นส่วนตัว", icon: "lock" },
   ] },
 ] as const;

@@ -33,6 +33,12 @@ export function AuthScreen({ onSignedIn }: { onSignedIn: () => void }) {
   const [options, setOptions] = useState<AuthOptions | null>(null);
 
   useEffect(() => {
+    // Links from an invite page say which form to open: ?mode=login (sign up is the default).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (new URLSearchParams(window.location.search).get("mode") === "login") setMode("login");
+  }, []);
+
+  useEffect(() => {
     api<AuthOptions>("/api/auth-options").then(setOptions).catch(() => setOptions(null));
   }, []);
   // Sent here from a page that needs sign-in (src/proxy.ts) or from a seller invite: go back there.
