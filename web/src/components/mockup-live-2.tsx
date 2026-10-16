@@ -1713,6 +1713,8 @@ export function LiveSummary() {
 
 type DealDetail = {
   id: number;
+  /** Who made the offer: while it is Proposed, only the other side can accept it. */
+  offeredBy: "me" | "them";
   /** The other side has no account and this user invited them: their private link. */
   invite: { kind: "seller" | "buyer"; name: string; link: string | null; expiresAt: string; linked: boolean } | null;
   title: string;
@@ -2275,7 +2277,13 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
                 {m.index + 1}. {m.name}
               </h2>
               <div className="aw-d012-payout">
-                <span>{(data.role === "seller" ? SELLER_STEP : STEP)[m.status] ?? m.status}</span>
+                <span>
+                  {data.status === "Proposed"
+                    ? data.offeredBy === "me"
+                      ? `Starts when ${data.counterpartyLabel} accepts${data.role === "seller" ? " and pays" : ""}`
+                      : "Starts when you accept"
+                    : ((data.role === "seller" ? SELLER_STEP : STEP)[m.status] ?? m.status)}
+                </span>
                 <b>{tokenMoney(m.amount, c)}</b>
               </div>
               {m.acceptance && <p>Acceptance: {m.acceptance}</p>}
