@@ -9,7 +9,7 @@ import { type TxOutcome, atFreshBlock, publicClient, roleAddresses, send } from 
 import { config } from "../config";
 import { db } from "../db";
 import { type FileDealView, readFileDeals, walletUnits } from "../state";
-import { CARRIER_LABEL, type Carrier, bookParcel, checkTracking, trackParcel } from "../post";
+import { CARRIER_LABEL, type Carrier, bookParcel, checkTracking, deliveredShippedAt, trackParcel } from "../post";
 import { type DraftMilestone, deliveryOf } from "./drafts";
 import { type Mandate, mintCapError, ownerSignMandate } from "./funding";
 import { arbitrate } from "./arbiter";
@@ -367,6 +367,17 @@ export async function deliveryInfo(dealId: number, index: number) {
       ? { carrier: d.carrier, carrierLabel: CARRIER_LABEL[d.carrier as Carrier] ?? d.carrier, tracking: d.tracking, ...trackParcel(d.carrier as Carrier, d.shippedAt) }
       : null;
   return { note: d.note, fileName: d.fileName, mime: d.mime, size: d.size, sha256: d.sha256, deliveredAt: d.updatedAt, parcel };
+}
+
+/**
+ * Test mode: a Mock Post parcel arrives now instead of moving one stage a minute, so a demo does
+ * not wait. Either side of the deal may press it; real carriers are never touched.
+ */
+export async function arriveParcelNow(wallet: Address, dealId: number, index: number) {
+  await dealForWallet(wallet, dealId);
+  const d = await db.dealDelivery.findUnique({ where: { escrow_dealId_index: { escrow: escrow(dealId), dealId, index } } });
+  if (!d?.shippedAt || d.carrier !== "MOCK_POST") throw new DealError("Only a Mock Post parcel can be delivered instantly (test mode)");
+  await db.dealDelivery.update({ where: { id: d.id }, data: { shippedAt: deliveredShippedAt() } });
 }
 
 /** The decrypted file: always for the seller, for the buyer only once the escrow released the key. */

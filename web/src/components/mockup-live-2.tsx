@@ -63,9 +63,21 @@ function useAction() {
     setBusy(key);
     setMessage(null);
     try {
-      const r = (await fn()) as { outcome?: Outcome; status?: string; error?: string } | undefined;
+      const r = (await fn()) as { outcome?: Outcome; status?: string; error?: string; groupVote?: { status: string; yes: number; threshold: number; group: string } } | undefined;
       const o = r?.outcome;
-      if (o && o.status !== "success") setMessage({ ok: false, text: o.error ?? o.status, url: o.url });
+      const v = r?.groupVote;
+      if (v)
+        setMessage({
+          ok: v.status !== "FAILED" && v.status !== "REJECTED",
+          text:
+            v.status === "EXECUTED"
+              ? `${v.group}'s signers approved it: done.`
+              : v.status === "OPEN"
+                ? `Sent to ${v.group}'s signers: ${v.yes} of ${v.threshold} yes so far. It happens when ${v.threshold} approve (they vote on the group's page).`
+                : `The vote ${v.status.toLowerCase()}.`,
+        });
+      else if (r?.status === "OPEN" || r?.status === "EXECUTED") setMessage({ ok: true, text: r.status === "EXECUTED" ? "Approved and done" : "Your vote is counted" });
+      else if (o && o.status !== "success") setMessage({ ok: false, text: o.error ?? o.status, url: o.url });
       // Accepting a seller's offer reports a funding status instead of one transaction.
       else if (r?.status && !["FUNDED", "success"].includes(r.status))
         setMessage({ ok: false, text: r.status === "REFUNDED" ? `Not accepted · money refunded to your wallet${r.error ? ` (${r.error})` : ""}` : `Still processing (${r.status}) · try again in a moment` });
@@ -100,6 +112,58 @@ const when = (unix: number) =>
   unix ? new Date(unix * 1000).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
 
 // ------------------------------------------------------------------------------------------
+/** A seller sells to someone without an account: a private buyer link (pay by card, approve delivery). */
+function BuyerLinkPanel() {
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [made, setMade] = useState<{ name: string; link: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <section className="aw-friends-panel">
+      <h2>Sell to someone without an account</h2>
+      <p>Get a private link for them: they see your offer, pay by card (test mode) and approve the delivery without signing up. Then ask the AI to draft the sale to “name (invited buyer)”.</p>
+      {made ? (
+        <div className="aw-buyer-link">
+          <b>{made.name}</b>
+          <input readOnly value={made.link} onFocus={(e) => e.currentTarget.select()} />
+          <div>
+            <Button variant="outline" onClick={() => void navigator.clipboard.writeText(made.link)}>
+              Copy link
+            </Button>
+            <Button variant="outline" onClick={() => (setMade(null), setName(""))}>
+              Another
+            </Button>
+          </div>
+          <small>Shown once: send it to them privately. It works for 30 days.</small>
+        </div>
+      ) : (
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setBusy(true);
+            setError(null);
+            try {
+              setMade(await send<{ name: string; link: string }>("/api/buyer-invites", "POST", { name }));
+            } catch (err) {
+              setError((err as Error).message);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          <label className="aw-friends-search">
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Buyer's name" maxLength={80} />
+          </label>
+          <Button type="submit" disabled={busy || name.trim().length < 2}>
+            {busy ? "Creating (about 10 s)…" : "Create buyer link"}
+          </Button>
+        </form>
+      )}
+      {error && <p className="aw-bank-error">{error}</p>}
+    </section>
+  );
+}
+
 // Approvals
 // ------------------------------------------------------------------------------------------
 
@@ -676,6 +740,7 @@ export function LiveFriends() {
               ))}
             </div>
           </section>
+          <BuyerLinkPanel />
           <section className="aw-friends-panel aw-my-code">
             <h2>My code</h2>
             <p>Contacts scan this QR to add you{me?.user.username ? ` (@${me.user.username})` : ""}.</p>
@@ -908,7 +973,7 @@ type GroupDetail = {
     myVote: boolean | null;
     voters: { name: string; approve: boolean }[];
     milestones: { amount: string }[];
-    side: "BUY" | "SELL" | "PAYOUT";
+    side: "BUY" | "SELL" | "PAYOUT" | "RELEASE";
     payout: { name: string; amount: number }[];
   }[];
   rules: { id: string; kind: string; text: string; status: string; proposer: string; yes: number; no: number; myVote: boolean | null }[];
@@ -1356,8 +1421,31 @@ export function LiveGroups({ initialCreateOpen = false, joinToken = null }: { in
                       <small>{m.canSign === false ? "Can propose" : "Can approve payments"}</small>
                     </span>
                     <span className={`aw-group-role ${m.role === "ADMIN" ? "yellow" : m.canSign === false ? "" : "blue"}`}>{roleOf(m)}</span>
+                    {detail.myRole === "ADMIN" && m.role !== "ADMIN" && (
+                      <span className="aw-gr-owner-actions">
+                        <button
+                          type="button"
+                          disabled={!!busy}
+                          onClick={() => void run(`sign${m.userId}`, () => send(`/api/groups/${detail.id}/members/${m.userId}`, "PATCH", { canSign: m.canSign === false }), afterChange)}
+                        >
+                          {m.canSign === false ? "Make signer" : "Stop signing"}
+                        </button>
+                        <button
+                          type="button"
+                          className="danger"
+                          disabled={!!busy}
+                          onClick={() => {
+                            if (!window.confirm(`Remove ${m.name} from "${detail.name}"?`)) return;
+                            void run(`kick${m.userId}`, () => send(`/api/groups/${detail.id}/members/${m.userId}`, "DELETE"), afterChange);
+                          }}
+                        >
+                          Remove
+                        </button>
+                      </span>
+                    )}
                   </div>
                 ))}
+                {detail.myRole === "ADMIN" && <small className="aw-gr-muted">As the owner you change signers and remove members directly; other members propose changes for a vote.</small>}
                 {detail.invites.map((i) => (
                   <div className="aw-gr-member pending" key={i.id}>
                     <span className="aw-group-avatar">{initials(i.name)}</span>
@@ -1477,7 +1565,9 @@ export function LiveGroups({ initialCreateOpen = false, joinToken = null }: { in
                   <b>
                     {p.side === "PAYOUT"
                       ? `Payout · ${p.payout.map((r) => `${r.name} ${tokenMoney(r.amount, currency)}`).join(", ")} · ${tokenMoney(p.payout.reduce((t, r) => t + r.amount, 0), currency)}`
-                      : `${p.side === "SELL" ? "Sell" : "Pay"} · ${p.title} · ${tokenMoney(total(p.milestones), currency)}`}
+                      : p.side === "RELEASE"
+                        ? p.title
+                        : `${p.side === "SELL" ? "Sell" : "Pay"} · ${p.title} · ${tokenMoney(total(p.milestones), currency)}`}
                   </b>
                   <small className="aw-gw-proposal-meta">
                     Proposed by {p.mine ? "you" : p.proposer} · {p.yes}/{detail.threshold} approved{p.no ? ` · ${p.no} no` : ""} · {PROPOSAL_STATUS[p.status] ?? p.status}
@@ -1533,19 +1623,19 @@ export function LiveGroups({ initialCreateOpen = false, joinToken = null }: { in
               >
                 Leave group
               </Button>
-              {detail.myRole === "ADMIN" && !detail.company && (
+              {detail.myRole === "ADMIN" && detail.company?.kind !== "COMPANY" && (
                 <Button
                   variant="danger"
                   disabled={!!busy}
                   onClick={() => {
-                    if (!window.confirm(`Delete "${detail.name}" for everyone? Open votes end; drafts stay with their proposers.`)) return;
+                    if (!window.confirm(`Dissolve "${detail.name}" for everyone? Open votes end; drafts stay with their proposers.${detail.company ? " The group wallet must be empty (pay it out first)." : ""}`)) return;
                     void run("delete", () => send(`/api/groups/${detail.id}`, "DELETE"), async () => {
                       setSelected(null);
                       await reload();
                     });
                   }}
                 >
-                  Delete group
+                  Dissolve group
                 </Button>
               )}
             </div>
@@ -2006,7 +2096,7 @@ function DeliverForm({ dealId, index, parcel, onDone }: { dealId: number; index:
 type Parcel = NonNullable<NonNullable<DealDetail["milestones"][number]["delivery"]>["parcel"]>;
 
 /** Where the parcel is: the carrier's tracking events as a timeline (Napat's v0.8 layout). */
-function ParcelPanel({ p, shipTo, role, reviewing }: { p: Parcel; shipTo: string | null; role: "buyer" | "seller"; reviewing: boolean }) {
+function ParcelPanel({ p, shipTo, role, reviewing, onArrive }: { p: Parcel; shipTo: string | null; role: "buyer" | "seller"; reviewing: boolean; onArrive?: () => void }) {
   const t = (iso: string) => new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   // Events arrive newest first; the timeline reads oldest first, ending at the latest one.
   const events = [...p.events].reverse();
@@ -2061,6 +2151,11 @@ function ParcelPanel({ p, shipTo, role, reviewing }: { p: Parcel; shipTo: string
         <p className="aw-parcel-ok">{role === "buyer" && reviewing ? "✓ Delivered. Check the item, then approve to pay the seller (or dispute)." : "✓ Delivered."}</p>
       )}
       {p.delivered === false && role === "buyer" && reviewing && <p>Not delivered yet. Approve only once you have the item.</p>}
+      {p.tracked && !p.delivered && onArrive && (
+        <button type="button" className="aw-parcel-test" onClick={onArrive}>
+          ⚡ Deliver now (test mode)
+        </button>
+      )}
     </div>
   );
 }
@@ -2286,7 +2381,15 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
                   )}
                 </div>
               )}
-              {m.delivery?.parcel && <ParcelPanel p={m.delivery.parcel} shipTo={data.shipTo} role={data.role} reviewing={m.status === "Delivered"} />}
+              {m.delivery?.parcel && (
+                <ParcelPanel
+                  p={m.delivery.parcel}
+                  shipTo={data.shipTo}
+                  role={data.role}
+                  reviewing={m.status === "Delivered"}
+                  onArrive={() => void run(`parcel${m.index}`, () => send(`/api/deals/${id}/parcel`, "POST", { index: m.index }), after)}
+                />
+              )}
               {!m.delivery?.parcel && m.delivers === "parcel" && data.shipTo && data.role === "seller" && (
                 <p>
                   📦 Ship to: <MaskedAddress text={data.shipTo} />

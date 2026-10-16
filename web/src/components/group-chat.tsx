@@ -8,11 +8,12 @@ import type { DraftView } from "@/lib/bank/drafts";
 import { useLang } from "@/lib/i18n";
 
 import { api, useAppData } from "./app-data";
+import { ChatMarkdown, OpenDealButton } from "./chat-markdown";
 import { DraftCard } from "./mockup-live";
 import { Button, Loading } from "./mockup-ui";
 import "./group-chat.css";
 
-type Step = { tool: string; summary: string; draft?: DraftView; form?: { missing: string[] }; wallet: string; mine: boolean; inVote?: boolean };
+type Step = { tool: string; summary: string; open?: { dealId: number; title: string }; draft?: DraftView; form?: { missing: string[] }; wallet: string; mine: boolean; inVote?: boolean };
 type Message = { id: string; ai: boolean; mine: boolean; author: string; text: string; steps: Step[]; at: string };
 
 const time = (iso: string) => new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
@@ -105,10 +106,12 @@ export function GroupChat({ groupId, threshold, shared }: { groupId: string; thr
               {m.ai ? "✦ AI agent" : m.mine ? "You" : m.author} · {time(m.at)}
             </small>
             <div className="aw-gchat-bubble">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>
+              {m.ai ? <ChatMarkdown text={m.text} /> : <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>}
             </div>
             {m.steps.map((s, i) =>
-              s.draft ? (
+              s.open ? (
+                <OpenDealButton key={i} dealId={s.open.dealId} title={s.open.title} />
+              ) : s.draft ? (
                 <div key={i} className="aw-gchat-card">
                   {s.mine ? (
                     <DraftCard
@@ -124,13 +127,13 @@ export function GroupChat({ groupId, threshold, shared }: { groupId: string; thr
                       {s.draft.status === "PREVIEW"
                         ? "waiting for them to confirm."
                         : s.inVote
-                          ? "now in the group vote (Approvals → Group votes)."
+                          ? "now in the group vote (votes below, on this group's page)."
                           : s.draft.status === "FUNDED"
                             ? `done · deal #${s.draft.dealId}.`
                             : s.draft.status.toLowerCase()}
                     </p>
                   )}
-                  {s.mine && s.inVote && <p className="aw-gchat-note">In the group vote now: signers approve in Approvals → Group votes.</p>}
+                  {s.mine && s.inVote && <p className="aw-gchat-note">In the group vote now: signers approve it below, on this group&apos;s page.</p>}
                 </div>
               ) : s.form ? (
                 <p key={i} className="aw-gchat-note">

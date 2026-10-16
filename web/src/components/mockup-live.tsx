@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
+import { ChatMarkdown, OpenDealButton } from "./chat-markdown";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -337,7 +338,7 @@ export function BankAuthorizeLive({ bank, onCancel, onContinue }: { bank: BankCh
 // AI chat (CreateDealScreen)
 // ------------------------------------------------------------------------------------------
 
-type Step = { tool: string; summary: string; draft?: DraftView; form?: DealFormData };
+type Step = { tool: string; summary: string; draft?: DraftView; form?: DealFormData; open?: { dealId: number; title: string } };
 type ChatItem =
   | { kind: "user"; text: string; at: string }
   /** `live`: still streaming; `running`: tool calls started but not finished yet. */
@@ -405,7 +406,7 @@ const remember = (id: string | null) => {
   }
 };
 
-type FundingResult = { status: string; steps: { step: string; outcome?: { url?: string | null; hash?: string } }[]; error?: string };
+type FundingResult = { status: string; dealId?: number | string; steps: { step: string; outcome?: { url?: string | null; hash?: string } }[]; error?: string };
 
 export function DraftCard({
   draft,
@@ -645,7 +646,7 @@ export function LiveChat() {
   }
 
   async function removeChat(c: SavedChat) {
-    if (!address || busy || !window.confirm(`Delete the chat "${c.title}"? Drafts made in it stay in Approvals.`)) return;
+    if (!address || busy || !window.confirm(`Delete the chat "${c.title}"? Drafts made in it stay in Deals.`)) return;
     try {
       await api(`/api/workspace/${address}/chats/${c.id}`, { method: "DELETE" });
       if (c.id === chatId) newChat();
@@ -761,7 +762,7 @@ export function LiveChat() {
             text:
               v.status === "EXECUTED"
                 ? `${v.company}'s signers approved: the deal is locked from the company account.`
-                : `Submitted to ${v.company}'s signers: ${v.yes} of ${v.threshold} approvals so far. It locks from the company account when ${v.threshold} signers approve (Approvals → Group votes).`,
+                : `Submitted to ${v.company}'s signers: ${v.yes} of ${v.threshold} approvals so far. It locks from the company account when ${v.threshold} signers approve (on the group's page under Groups).`,
           },
         ]);
         await refresh();
@@ -914,8 +915,13 @@ export function LiveChat() {
                   )}
                   <article className="aw-ai-agent-message aw-ai-draft-wrap">
                     <div className="aw-ai-markdown">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.text}</ReactMarkdown>
+                      <ChatMarkdown text={item.text} />
                     </div>
+                    {item.steps
+                      .filter((s) => s.open)
+                      .map((s, k) => (
+                        <OpenDealButton key={`open-${k}`} dealId={s.open!.dealId} title={s.open!.title} />
+                      ))}
                     {item.steps
                       .filter((s) => s.form)
                       .map((s, k) => (
@@ -1142,7 +1148,40 @@ function deliveryType(d: DraftView): "Physical" | "Digital" | "Report" {
 
 export function LiveDeals({ go }: { go: (screen: string) => void }) {
   const lang = useLang();
-  const { wallet, drafts, me } = useAppData();
+  const { wallet, drafts, me, refresh } = useAppData();
+  // A draft opens here (it used to be on the Approvals page): approve or discard it in place.
+  const [openDraft, setOpenDraft] = useState<string | null>(null);
+  const [draftMsg, setDraftMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [draftBusy, setDraftBusy] = useState(false);
+  const draftAddress = me?.acting ? (me.wallets.find((w) => w.label === me.acting?.name)?.address ?? me.wallets[0]?.address) : me?.wallets[0]?.address;
+  async function draftAction(d: DraftView, kind: "approve" | "discard") {
+    const address = d.wallet || draftAddress;
+    if (!address || draftBusy) return;
+    setDraftBusy(true);
+    setDraftMsg(null);
+    try {
+      if (kind === "discard") {
+        await api(`/api/workspace/${address}/drafts/${d.id}`, { method: "DELETE" });
+        setOpenDraft(null);
+        setDraftMsg({ ok: true, text: `Discarded “${d.title}”.` });
+      } else {
+        const r = await api<{ funding?: FundingResult; companyVote?: { status: string; yes: number; threshold: number; company: string } }>(`/api/workspace/${address}/drafts/${d.id}/approve`, { method: "POST" });
+        const v = r.companyVote;
+        setDraftMsg(
+          v
+            ? { ok: true, text: v.status === "EXECUTED" ? `${v.company}'s signers approved it.` : `Submitted to ${v.company}'s signers: ${v.yes} of ${v.threshold} so far (they vote on the group's page).` }
+            : r.funding?.status === "FUNDED"
+              ? { ok: true, text: d.side === "SELL" ? `Offer sent: deal #${r.funding.dealId}.` : `Locked: deal #${r.funding.dealId}.` }
+              : { ok: false, text: r.funding?.error ?? `Not done (${r.funding?.status ?? "unknown"})` },
+        );
+      }
+      await refresh();
+    } catch (e) {
+      setDraftMsg({ ok: false, text: (e as Error).message });
+    } finally {
+      setDraftBusy(false);
+    }
+  }
   const [filter, setFilter] = useState<"All" | "Buying" | "Selling" | "Dispute">("All");
   // Deals someone hired the user for through a seller link, linked to this account.
   const [linkedInvites, setLinkedInvites] = useState<{ id: string; buyer: string; href: string }[]>([]);
@@ -1159,6 +1198,7 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
       .filter((d) => d.status === "DRAFT" || d.status === "FAILED")
       .map((d) => ({
         key: `draft-${d.id}`,
+        draftId: d.id,
         id: "Draft",
         title: d.title,
         kind: d.kind,
@@ -1176,6 +1216,7 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
       const draft = drafts.find((x) => x.dealId === d.id);
       return {
         key: `deal-${d.id}`,
+        draftId: null as string | null,
         id: `D-${d.id}`,
         title: draft?.title ?? `File deal #${d.id}`,
         kind: draft?.kind ?? null,
@@ -1184,7 +1225,15 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
         role: d.role === "buyer" ? ("Buying" as const) : ("Selling" as const),
         milestones: `${done} / ${d.milestones.length}`,
         amount: tokenMoney(d.total, currency),
-        status: disputed ? "Dispute" : done === d.milestones.length ? "Completed · paid" : d.status === "Proposed" ? "Waiting for seller" : "In progress",
+        status: disputed
+          ? "Dispute"
+          : done === d.milestones.length
+            ? "Completed · paid"
+            : d.status === "Proposed"
+              ? d.offeredBy === "them"
+                ? "Offer to you · open to accept"
+                : d.role === "buyer" ? "Waiting for seller" : "Waiting for buyer"
+              : "In progress",
         tone: disputed ? "red" : done === d.milestones.length ? "green" : STATUS_TONE[d.status] ?? "blue",
       };
     }),
@@ -1253,10 +1302,13 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
               {visible.map((r) => (
                 <tr
                   key={r.key}
-                  tabIndex={r.id.startsWith("D-") ? 0 : -1}
-                  onClick={() => r.id.startsWith("D-") && go(`รายละเอียดดีล ${r.id}`)}
+                  tabIndex={0}
+                  className={r.draftId && openDraft === r.draftId ? "selected" : undefined}
+                  onClick={() => (r.draftId ? setOpenDraft(openDraft === r.draftId ? null : r.draftId) : go(`รายละเอียดดีล ${r.id}`))}
                   onKeyDown={(e) => {
-                    if ((e.key === "Enter" || e.key === " ") && r.id.startsWith("D-")) go(`รายละเอียดดีล ${r.id}`);
+                    if (e.key !== "Enter" && e.key !== " ") return;
+                    if (r.draftId) setOpenDraft(openDraft === r.draftId ? null : r.draftId);
+                    else go(`รายละเอียดดีล ${r.id}`);
                   }}
                 >
                   <td>
@@ -1287,6 +1339,24 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
             </tbody>
           </table>
         </div>
+        {draftMsg && <p className={draftMsg.ok ? "aw-live-ok" : "aw-bank-error"}>{draftMsg.text}</p>}
+        {(() => {
+          const d = drafts.find((x) => x.id === openDraft && (x.status === "DRAFT" || x.status === "FAILED"));
+          if (!d) return null;
+          return (
+            <div className="aw-deals-draft">
+              <DraftCard
+                draft={d}
+                currency={currency}
+                balance={me?.accounts[0] ? Number(me.accounts[0].balance) / 100 : null}
+                company={me?.acting ? { name: me.acting.name, threshold: me.acting.threshold } : null}
+                onApprove={(x) => void draftAction(x, "approve")}
+                onDiscard={(x) => void draftAction(x, "discard")}
+              />
+              {draftBusy && <Loading text="Working on it…" />}
+            </div>
+          );
+        })()}
         {explorer && wallet && (
           <p className="aw-profile-passbook-note">
             Every lock is an on-chain transaction:{" "}

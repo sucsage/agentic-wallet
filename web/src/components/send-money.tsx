@@ -57,6 +57,7 @@ export function SendMoneyDialog({
     setMsg(null);
     try {
       setMsg({ ok: true, text: await onSubmit(recipients) });
+      setTimeout(onClose, 1500);
     } catch (err) {
       setMsg({ ok: false, text: (err as Error).message });
     } finally {

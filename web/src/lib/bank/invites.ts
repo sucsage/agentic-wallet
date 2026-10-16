@@ -141,6 +141,16 @@ export async function claimInvite(invite: SellerInvite, userId: string): Promise
   return fresh;
 }
 
+/**
+ * The invited seller corrects their name (the buyer typed it when inviting). It is what the buyer
+ * sees ("<name> (invited)"); the payout name is checked separately, against the bank account.
+ */
+export async function renameInvite(invite: SellerInvite, name: string): Promise<SellerInvite> {
+  const clean = name.trim().replace(/\s+/g, " ").slice(0, 80);
+  if (clean.length < 2) throw new InviteError("Enter your name");
+  return db.sellerInvite.update({ where: { id: invite.id }, data: { name: clean } });
+}
+
 /** Invites linked to this seller's account, for their Deals page. */
 export function claimedInvites(userId: string) {
   return db.sellerInvite.findMany({ where: { claimedByUserId: userId }, orderBy: { claimedAt: "desc" } });

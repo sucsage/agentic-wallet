@@ -33,9 +33,9 @@ async function loadNotifications(): Promise<Item[]> {
   const items: Item[] = [];
   for (const r of a?.reviews ?? []) items.push({ text: `Review the delivery for D-${r.dealId} · ${r.title}`, href: `/deals/D-${r.dealId}`, tone: "warn" });
   for (const o of a?.offers ?? []) items.push({ text: `Offer from ${o.sellerLabel || "a seller"}: ${o.title}`, href: `/deals/D-${o.dealId}`, tone: "warn" });
-  for (const v of a?.groupVotes ?? []) items.push({ text: `${v.group.name} votes on: ${v.title}`, href: "/approvals", tone: "warn" });
+  for (const v of a?.groupVotes ?? []) items.push({ text: `${v.group.name} votes on: ${v.title}`, href: "/groups", tone: "warn" });
   for (const t of a?.sellerTodo ?? []) items.push({ text: `${t.step === "accept" ? "Accept" : "Deliver"} D-${t.dealId} · ${t.title}`, href: `/deals/D-${t.dealId}` });
-  for (const d of a?.drafts ?? []) items.push({ text: `Draft waiting for your approval: ${d.title}`, href: "/approvals" });
+  for (const d of a?.drafts ?? []) items.push({ text: `Draft waiting for your approval: ${d.title}`, href: "/deals" });
   for (const i of inv?.invites ?? []) items.push({ text: `${i.invitedBy} invited you to ${i.name}`, href: "/groups", tone: "info" });
   for (const f of (fr?.friends ?? []).filter((x) => x.direction === "incoming")) items.push({ text: `${f.name} wants to add you as a contact`, href: "/contacts", tone: "info" });
   return items;
@@ -112,7 +112,7 @@ async function loadIndex(): Promise<Hit[]> {
   ]);
   return [
     ...(d?.deals ?? []).map((x) => ({ kind: "Deal" as const, text: `D-${x.id} · ${x.title ?? "Deal"} · ${x.counterpartyLabel}`, href: `/deals/D-${x.id}` })),
-    ...(d?.drafts ?? []).map((x) => ({ kind: "Deal" as const, text: `Draft · ${x.title}`, href: "/approvals" })),
+    ...(d?.drafts ?? []).map((x) => ({ kind: "Deal" as const, text: `Draft · ${x.title}`, href: "/deals" })),
     ...(f?.friends ?? []).filter((x) => x.status === "ACCEPTED").map((x) => ({ kind: "Contact" as const, text: `${x.name} · @${x.username}`, href: "/contacts" })),
     ...(g?.groups ?? []).map((x) => ({ kind: "Group" as const, text: x.name, href: "/groups" })),
   ];

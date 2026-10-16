@@ -68,6 +68,52 @@ const STEP: Record<string, string> = {
   Split: "Split by the arbiter · your share is paid",
 };
 
+/** The buyer typed the seller's name when inviting: the seller can write their own. */
+function NameEditor({ base, name, onDone }: { base: string; name: string; onDone: () => Promise<void> }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(name);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  if (!editing) {
+    return (
+      <button type="button" className="inv-name-edit" onClick={() => (setValue(name), setEditing(true))}>
+        Not your name? Change it
+      </button>
+    );
+  }
+  return (
+    <form
+      className="inv-name-form"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setBusy(true);
+        setErr(null);
+        try {
+          await call(`${base}/name`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: value }) });
+          await onDone();
+          setEditing(false);
+        } catch (e2) {
+          setErr((e2 as Error).message);
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <label>
+        Your name (shown to the buyer)
+        <input value={value} onChange={(e) => setValue(e.target.value)} minLength={2} maxLength={80} autoFocus autoComplete="name" />
+      </label>
+      <button type="submit" disabled={busy || value.trim().length < 2}>
+        {busy ? "Saving…" : "Save"}
+      </button>
+      <button type="button" onClick={() => setEditing(false)} disabled={busy}>
+        Cancel
+      </button>
+      {err && <p className="inv-error">{err}</p>}
+    </form>
+  );
+}
+
 async function call<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { cache: "no-store", ...init });
   const body = await res.json().catch(() => null);
@@ -111,6 +157,7 @@ export function InvitePage({ token }: { token: string }) {
           <div>
             <small>Agentic Wallet · seller link</small>
             <h1>{view ? `Hi ${view.name}` : error ? "Link unavailable" : "Loading…"}</h1>
+            {view && <NameEditor base={base} name={view.name} onDone={load} />}
             {view && (
               <p>
                 <b>{view.buyerName}</b> wants to hire you.{" "}

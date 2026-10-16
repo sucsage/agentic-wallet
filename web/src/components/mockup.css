@@ -1715,3 +1715,21 @@
 .aw-wallet-switch-menu p{margin:4px 8px;color:#888;font-size:12px;line-height:1.45}
 .aw-wallet-switch-menu .aw-wallet-switch-more{justify-content:center;margin-top:4px;color:#9fc2ff;font-size:12px}
 @media(max-width:650px){.aw-wallet-switch-button small,.aw-wallet-switch-name{display:none}.aw-wallet-switch-menu{position:fixed;left:12px;right:12px;top:60px;width:auto}}
+.aw-deals-draft{margin-top:14px;max-width:640px}
+.aw-deals-table tr.selected td{background:#18202d}
+.aw-open-deal{display:flex;align-items:center;justify-content:space-between;gap:12px;max-width:420px;margin-top:8px;padding:12px 14px;border:1px solid #2b3d5c;border-radius:12px;background:#121a27;color:#eee;text-decoration:none}
+.aw-open-deal:hover{border-color:#4f7fd0}
+.aw-open-deal span{display:flex;flex-direction:column;gap:2px;min-width:0}
+.aw-open-deal small{color:#8fb8ff;font-size:11px}
+.aw-open-deal b{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.aw-open-deal i{font-style:normal;color:#8fb8ff;font-size:13px;white-space:nowrap}
+.aw-parcel-test{align-self:flex-start;margin-top:8px;padding:7px 12px;border:1px dashed #6b5a1e;border-radius:9px;background:#1e1a0d;color:#ffd36a;font-size:12px;cursor:pointer}
+.aw-gr-owner-actions{display:flex;gap:6px;margin-left:auto}
+.aw-gr-owner-actions button{padding:4px 9px;border:1px solid #333;border-radius:8px;background:#171717;color:#ccc;font-size:12px;cursor:pointer}
+.aw-gr-owner-actions button:hover:not(:disabled){border-color:#4c6a9d;color:#fff}
+.aw-gr-owner-actions button.danger{color:#ff8a8a;border-color:#4a2626}
+.aw-gr-owner-actions button:disabled{opacity:.5}
+.aw-buyer-link{display:flex;flex-direction:column;gap:8px}
+.aw-buyer-link input{width:100%;padding:9px 12px;border:1px solid #333;border-radius:10px;background:#0c0c0c;color:#cfe0ff;font-size:13px}
+.aw-buyer-link>div{display:flex;gap:8px}
+.aw-buyer-link small{color:#888;font-size:12px}

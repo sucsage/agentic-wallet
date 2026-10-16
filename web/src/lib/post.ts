@@ -65,6 +65,9 @@ const STAGES: { code: number; status: string; location: string }[] = [
 
 const stepMs = () => Number(process.env.POST_STEP_SECONDS ?? 60) * 1000;
 
+/** Demo / test: the shipping time that makes a Mock Post parcel show as delivered right now. */
+export const deliveredShippedAt = (now = Date.now()) => new Date(now - STAGES.length * stepMs());
+
 /**
  * Where a parcel is now. Only Mock Post parcels are tracked; for any other carrier the result
  * says so and `delivered` is null (unknown).

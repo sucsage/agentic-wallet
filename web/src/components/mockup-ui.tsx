@@ -16,7 +16,6 @@ export const SIDEBAR_GROUPS = [
   { title: "Main", items: [
     { label: "AI Chat", route: "สร้างดีล", icon: "bot" },
     { label: "Deals", route: "ดีลทั้งหมด", icon: "file" },
-    { label: "Approvals", route: "รออนุมัติ", icon: "check", badge: "3" },
   ] },
   { title: "Money", items: [
     { label: "Summary", route: "กระเป๋", icon: "chart" },

@@ -11,6 +11,8 @@ import {
   releaseMilestone,
   transfer,
 } from "./actions";
+import { addressGaps } from "./address";
+import { BuyerInviteError, createBuyerInvite } from "./bank/buyer-invites";
 import { SocialError, createGroup, friendLabels, groupDetail, listFriends, listGroups, pendingVotes, proposeToGroup } from "./social";
 import { DraftError, type DraftView, createDraft, createSellDraft, discardDraft, draftView, listDrafts } from "./bank/drafts";
 import { db } from "./db";
@@ -69,6 +71,8 @@ export type AgentStep = {
   draft?: DraftView;
   /** A short form for the details a deal still needs (ask_deal_details). */
   form?: DealForm;
+  /** A deal the user asked to open (open_deal): the chat shows a button to its page. */
+  open?: { dealId: number; title: string };
 };
 
 /** What the chat's "before I draft the deal" form shows: what is known, and what to ask for. */
@@ -105,7 +109,7 @@ Style: concise, professional, plain English (reply in the user's language if the
 const BANK_SYSTEM = `
 E-money wallet. Deals are paid from the user's THB / CNY wallet balance (topped up by PromptPay, card or counter service); the on-chain wallet holds no idle money (its balance is normally 0, and that is fine).
 - Two kinds of deal, keep them apart: HIRE (kind "hire") pays a person for work or a service (design, code, writing, repairs); BUY (kind "buy") pays for a thing: a digital file (delivery "file") or a physical item shipped by post (delivery "parcel", tracked with a tracking number). Say which one you drafted.
-- Before drafting, make sure you have the minimum: (1) who the other party is, (2) hire or buy, and for goods whether it is a file or a physical item, (3) what exactly is delivered, (4) the price of each milestone, (5) acceptance criteria for each milestone, (6) for a parcel, the delivery address. If any of these is missing or unclear, do NOT call the draft tool: call ask_deal_details with what you know and what is missing (the user gets a form), or, if only one small thing is missing, ask ONE short question that lists only what is missing, and offer a sensible default where there is one (e.g. "one milestone, paid on delivery?"). Never invent prices, criteria or addresses. Due dates are optional; review_hours defaults to 72 without asking. If a tool answers NEED_INFO, ask the user exactly that.
+- Before drafting, make sure you have the minimum: (1) who the other party is, (2) hire or buy, and for goods whether it is a file or a physical item, (3) what exactly is delivered, (4) the price of each milestone, (5) acceptance criteria for each milestone, (6) for a parcel, the COMPLETE delivery address: the recipient's name, phone number, house number and street, sub-district, district, province (or city) and postcode. Ask for every missing part at once, never accept a partial address, and never fill a part in yourself. If any of these is missing or unclear, do NOT call the draft tool: call ask_deal_details with what you know and what is missing (the user gets a form), or, if only one small thing is missing, ask ONE short question that lists only what is missing, and offer a sensible default where there is one (e.g. "one milestone, paid on delivery?"). Never invent prices, criteria or addresses. Due dates are optional; review_hours defaults to 72 without asking. If a tool answers NEED_INFO, ask the user exactly that.
 - To buy work, call propose_bank_deal. It ONLY shows a preview card: no deal or draft exists, nothing is signed or debited. The user checks it and presses Confirm; only then is the deal created and its total taken from their wallet balance and locked in the file escrow until each milestone is approved. Never say a deal was created before the user confirmed it, and never confirm for them.
 - Amounts are plain numbers in the wallet's currency (THB or CNY), e.g. 5000 means 5,000 baht. Never call them mUSDC.
 - People are referred to by name. The seller must be one of the payees in get_wallet_status (people the wallet may pay). If the user names a friend who is not a payee, say they must add that person to the allowlist first (Friends page).
@@ -113,8 +117,9 @@ E-money wallet. Deals are paid from the user's THB / CNY wallet balance (topped 
 - Drafts the user has not approved yet are listed by list_deals with a draft_ref (DR-…). discard_draft removes one when the user asks.
 - To SELL the user's own work, a file or an item to someone, call propose_bank_sale with the buyer's name (get_wallet_status → friends). It also only shows a preview; the user presses Confirm, which puts the offer on-chain and locks nothing. The buyer pays from their wallet balance when they accept it, and must have the user as a payee by then.
 - If the user wants to hire someone who is not a friend on the app (no account), first ask "Shall I invite <name>?" and call invite_seller only after the user says yes (it creates a wallet and a payee at once), then give the user the link it returns, then draft the deal with propose_bank_deal to the seller address it returns.
+- If the user wants to SELL to someone who is not on the app (no account), first ask "Shall I invite <name> as a buyer?" and call invite_buyer only after the user says yes, give the user the link it returns, then draft the sale with propose_bank_sale to "<name> (invited buyer)".
 - Never say money moved, was paid or was locked because of a draft.
-- Groups: friends can form a group that decides purchases together. A member puts one of their purchase drafts to the group's vote; it is locked from the proposer's wallet only when enough members vote yes (the group's votes needed, at least 2), and nobody can approve it alone. Use list_groups to answer questions about groups (never guess), create_group when the user asks to form one (members must be accepted friends; ask how many yes votes are needed if they did not say), and propose_to_group to put a draft (DR-…) to a vote. You cannot vote for anyone: members vote in the app (Groups or Approvals).
+- Groups: friends can form a group that decides purchases together. A member puts one of their purchase drafts to the group's vote; it is locked from the proposer's wallet only when enough members vote yes (the group's votes needed, at least 2), and nobody can approve it alone. Use list_groups to answer questions about groups (never guess), create_group when the user asks to form one (members must be accepted friends; ask how many yes votes are needed if they did not say), and propose_to_group to put a draft (DR-…) to a vote. You cannot vote for anyone: members vote in the app (on the group's page under Groups).
 - KYC: if get_wallet_status shows identity_verified false and a deal's total is above unverified_deal_limit, you may still draft it, but tell the user they must verify their identity first (Profile page: ThaID for Thai banks, National Network Identity for Chinese banks) before "Approve & lock" will work.`;
 
 const tool = (name: string, description: string, properties: Record<string, unknown>, required: string[]) =>
@@ -210,7 +215,7 @@ const BANK_MILESTONES = {
 };
 
 const KIND = { type: "string", enum: ["hire", "buy"], description: "hire: paying a person for work or a service; buy: paying for a thing (a file or a physical item)" };
-const SHIP_TO = { type: "string", description: "Delivery address for parcel milestones, as the user gave it; empty if nothing is shipped" };
+const SHIP_TO = { type: "string", description: "Full delivery address for parcel milestones, as the user gave it (recipient's name, phone, house number and street, sub-district, district, province, postcode); empty if nothing is shipped" };
 
 const BANK_TOOLS = [
   ...TOOLS.filter((t) => ["get_wallet_status", "list_deals", "pause_wallet"].includes(t.name)),
@@ -246,6 +251,18 @@ const BANK_TOOLS = [
     "invite_seller",
     "Hire someone who has no account: creates a wallet for them, makes it a payee of this wallet (the user asked, so this is their approval) and returns a private link for the user to send them. Then draft the deal with propose_bank_deal using the returned seller name.",
     { name: { type: "string", description: "The seller's name as the user wrote it" } },
+    ["name"],
+  ),
+  tool(
+    "open_deal",
+    "Open one of the user's deals: shows a button to its page (milestones, deliveries, approve, dispute). Use when the user asks to open, see, check or act on a specific deal.",
+    { deal: { type: "string", description: "The deal's number, e.g. D-12 (from list_deals)" } },
+    ["deal"],
+  ),
+  tool(
+    "invite_buyer",
+    "Sell to someone who has no account: creates a wallet for them (allowing this wallet as its payee) and returns a private link the user sends them; on it they see the offer, pay by card and approve deliveries. Then draft the sale with propose_bank_sale using the returned buyer name. Only after the user said yes to inviting them.",
+    { name: { type: "string", description: "The buyer's name as the user wrote it" } },
     ["name"],
   ),
   tool("list_groups", "The user's groups: members, votes needed, open votes and recent proposals (by name and draft reference).", {}, []),
@@ -353,7 +370,9 @@ function missingInfo(i: DealInput): string[] {
   for (const m of i.milestones) {
     if (m.acceptance.trim().length < 8) missing.push(`acceptance criteria for "${m.name}" (what must be delivered for it to be approved)`);
   }
-  if (i.milestones.some((m) => delivery(m) === "parcel") && i.ship_to.trim().length < 10) missing.push("the delivery address for the parcel");
+  if (i.milestones.some((m) => delivery(m) === "parcel")) {
+    for (const gap of addressGaps(i.ship_to)) missing.push(`in the delivery address: ${gap}`);
+  }
   return missing;
 }
 
@@ -402,6 +421,8 @@ const INPUTS: Record<string, z.ZodType> = {
   propose_bank_deal: z.object({ seller: z.string().min(1).max(120), ...DEAL_FIELDS }),
   propose_bank_sale: z.object({ buyer: z.string().min(1).max(120), ...DEAL_FIELDS }),
   list_groups: z.object({}).passthrough(),
+  open_deal: z.object({ deal: z.string().min(1).max(20) }),
+  invite_buyer: z.object({ name: z.string().min(2).max(80) }),
   create_group: z.object({ name: z.string().trim().min(1).max(80), members: z.array(z.string().min(1).max(120)).min(1).max(19), votes_needed: z.number().int().min(2).max(20) }),
   propose_to_group: z.object({ group: z.string().min(1).max(80), draft_ref: z.string().min(3).max(40) }),
   remember_nickname: z.object({ nickname: z.string().trim().min(1).max(40), contact: z.string().min(1).max(120) }),
@@ -599,6 +620,15 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
           open_proposals: state.proposals.filter((p) => p.status === "open").length,
         }),
       };
+    }
+    case "open_deal": {
+      const id = Number(String(input.deal).replace(/[^0-9]/g, ""));
+      const s = await readWallet(wallet);
+      const d = s.fileDeals.find((x) => x.id === id);
+      if (!Number.isInteger(id) || !d) return { tool: name, input, summary: `BLOCKED: no deal D-${id} in this wallet; use list_deals for the numbers` };
+      const drafts = userId ? await listDrafts(userId, wallet) : [];
+      const title = drafts.find((x) => x.dealId === id)?.title ?? `Deal D-${id}`;
+      return { tool: name, input, open: { dealId: id, title }, summary: `OPEN BUTTON SHOWN for D-${id} "${title}". Tell the user to press it; do not paste links.` };
     }
     case "list_deals": {
       const s = await readWallet(wallet);
@@ -839,6 +869,23 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
         throw err;
       }
     }
+    case "invite_buyer": {
+      if (!userId) throw new Error("Invites need a signed-in user");
+      try {
+        const { invite, token } = await createBuyerInvite(userId, wallet, String(input.name));
+        const origin =
+          process.env.BETTER_AUTH_URL ??
+          (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "http://localhost:3000");
+        return {
+          tool: name,
+          input,
+          summary: `INVITED BUYER ${invite.name}: now a contact named "${invite.name} (invited buyer)". Private link for the user to send them (show it exactly once, as a link): ${origin}/pay/${token} . They see the offer there, pay by card (test mode) and approve deliveries without signing up. Now draft the sale with propose_bank_sale, buyer "${invite.name} (invited buyer)".`,
+        };
+      } catch (err) {
+        if (err instanceof BuyerInviteError) return { tool: name, input, summary: `BLOCKED: ${err.message}` };
+        throw err;
+      }
+    }
     case "invite_seller": {
       if (!userId) throw new Error("Invites need a signed-in user");
       try {
@@ -921,7 +968,7 @@ export async function runAgent(
   // Acting as a company: its purchases go to the signers' vote instead of the user's own approval.
   const company = bankWallet ? await db.company.findUnique({ where: { walletAddress: getAddress(wallet) }, include: { group: { include: { members: true } } } }) : null;
   const companyNote = company
-    ? `\n\nYou are acting for the ${company.kind === "GROUP" ? "group" : "company"} "${company.name}" (its own shared wallet account), not the user personally. Any deal you propose for it, a purchase or an offer to sell in its name, happens only after ${company.group.threshold} of its ${company.group.members.filter((m) => m.canSign).length} signers approve: when the user presses Confirm on the preview, it goes to the signers' vote (Approvals → Group votes). Purchases are paid from this account and sales are paid into it.`
+    ? `\n\nYou are acting for the ${company.kind === "GROUP" ? "group" : "company"} "${company.name}" (its own shared wallet account), not the user personally. Any deal you propose for it, a purchase or an offer to sell in its name, happens only after ${company.group.threshold} of its ${company.group.members.filter((m) => m.canSign).length} signers approve: when the user presses Confirm on the preview, it goes to the signers' vote (on the group's page under Groups). Purchases are paid from this account and sales are paid into it.`
     : "";
   const system = (bankWallet ? `${SYSTEM}\n${BANK_SYSTEM}` : SYSTEM) + companyNote + (extraSystem ? `\n\n${extraSystem}` : "");
   const isClaude = model.includes("claude");

@@ -65,6 +65,8 @@ export function FundCompany({ company, onDone, onClose }: { company: { id: strin
       });
       setMsg({ ok: true, text: `Moved ${money(String(Math.round(Number(amount) * 100)), company.currency)} into ${company.name}.` });
       onDone?.();
+      // Done: show the result for a moment, then close.
+      setTimeout(onClose, 1200);
     } catch (err) {
       setMsg({ ok: false, text: (err as Error).message });
     } finally {

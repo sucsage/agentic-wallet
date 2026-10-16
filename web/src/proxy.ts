@@ -8,7 +8,7 @@ import { type NextRequest, NextResponse } from "next/server";
  *    never the database (a stale cookie passes, and the app sends that user to /login itself; the
  *    proxy never redirects away from /login, so the two can never loop). Every route handler still checks
  *    the session and the wallet itself (src/lib/guard.ts); this only saves a flash of an empty app.
- * 2. Security headers on every response. Pages whose URL carries a secret (a seller's invite link,
+ * 2. Security headers on every response. Pages whose URL carries a secret (a seller's or buyer's invite link,
  *    a password-reset token, a group join link) send no Referer, so the secret never leaks to
  *    another site through a clicked link or a loaded resource.
  * 3. A state-changing API call (POST, PUT, PATCH, DELETE) from another site's page is refused
@@ -37,7 +37,7 @@ const APP_PAGES = [
 const PUBLIC_UNDER_APP = ["/groups/join/"];
 
 /** Pages whose URL holds a secret token. */
-const SECRET_URLS = ["/invite/", "/reset-password", "/groups/join/", "/api/auth/reset-password/"];
+const SECRET_URLS = ["/invite/", "/pay/", "/reset-password", "/groups/join/", "/api/auth/reset-password/"];
 
 const UNSAFE = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 

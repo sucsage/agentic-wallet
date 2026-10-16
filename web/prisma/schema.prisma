@@ -574,6 +574,9 @@ model GroupProposal {
   draftId    String?             @unique
   /// A payout from the company's / group's shared account to members: [{ userId, amount }] (minor units).
   payout     Json?
+  /// A move on a deal of the shared wallet that pays money out, decided by the signers' vote:
+  /// { dealId, index, action: "approve" (release a delivered milestone) | "accept" (pay a seller's offer) }.
+  dealAction Json?
   status     GroupProposalStatus @default(OPEN)
   createdAt  DateTime            @default(now())
 
@@ -912,4 +915,22 @@ model UserPreference {
   /// A linked card covers a short balance when a deal is approved.
   cardCover    Boolean  @default(true)
   updatedAt    DateTime @updatedAt
+}
+
+/// A buyer without an account: a seller offers them work or goods through a link. The server runs a
+/// wallet for them (like an invited seller's), they pay the offer by card (Stripe test mode) and
+/// approve the delivery on the link's page. The link's secret is the only credential (hash stored).
+model BuyerInvite {
+  id           String   @id @default(cuid())
+  tokenHash    String   @unique
+  /// The seller who invited them, and the wallet that sells.
+  userId       String
+  sellerWallet String
+  buyerWallet  String   @unique
+  name         String
+  currency     Currency
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
 }

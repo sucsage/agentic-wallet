@@ -358,6 +358,24 @@ Internally the e-money account is a ledger account. The funding saga, the reserv
   - The buyer becomes a contact.
   - The deals are listed on their Deals page and open at `/invite/id.<id>`, which only that account can open.
 
+### 3.13 Buyers without an account, group powers, and test helpers
+
+- **Selling to someone without an account** (`web/src/lib/bank/buyer-invites.ts`): the seller creates a buyer link (on Contacts, or the AI's `invite_buyer`).
+  - The server runs a wallet for that buyer, with the seller allowed as its payee.
+  - On `/pay/<token>` the buyer sees the offer and pays it by card. Payment goes through Stripe Checkout in test mode, is credited to the wallet's account, and is then locked in escrow by the normal accept flow.
+  - The buyer then approves the delivery, which pays the seller, and downloads the file.
+- **Group wallet deals.** Releasing a delivered milestone, or paying a seller's offer, from a group or company wallet goes to the signers' N-of-M vote (`GroupProposal.dealAction`). No single member can do either alone.
+- **The group's owner** changes signers, removes members and dissolves the group directly. Safeguards:
+  - The owner cannot change their own place.
+  - The group must keep enough signers for its votes-needed rule.
+  - A group wallet must be empty before the group is dissolved.
+- **Approvals page removed.** Offers, deliveries and drafts are handled from Deals (a draft opens in place); group votes are on each group's page.
+- **The AI opens deals.** The `open_deal` tool shows a button to the deal's page, and every `D-<n>` in a reply links to that deal.
+- **Parcels.**
+  - The agent drafts a parcel deal only with a complete address: recipient's name, phone, house number and street, district, province or city, and postcode (`web/src/lib/address.ts`).
+  - In test mode a Mock Post parcel can be delivered immediately ("Deliver now").
+- **Invited sellers** can correct the name the buyer typed for them.
+
 ## 4. The AI agent
 
 `web/src/lib/agent.ts`: an LLM tool-use loop (max 12 turns) over any Anthropic-compatible API

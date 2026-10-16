@@ -15,7 +15,7 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/workspace/[addr
   }
 }
 
-/** Deletes a chat for good (drafts made in it stay in Approvals). */
+/** Deletes a chat for good (drafts made in it stay in Deals). */
 export async function DELETE(_req: Request, ctx: RouteContext<"/api/workspace/[address]/chats/[id]">) {
   try {
     const p = await ctx.params;

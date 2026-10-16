@@ -3,7 +3,9 @@ import { z } from "zod";
 
 import { openDispute } from "@/lib/bank/arbiter";
 import { DealError, acceptAndPay, buyerAction, dealForWallet, sellerAction, syncDeal } from "@/lib/bank/deals";
+import { companyOfWallet } from "@/lib/company";
 import { HttpError, errorResponse, rateLimit, requireBankWallet } from "@/lib/guard";
+import { SocialError, proposeDealAction } from "@/lib/social";
 import { KycRequired, requireKycFor } from "@/lib/kyc";
 
 export const maxDuration = 120;
@@ -19,7 +21,8 @@ const Body = z.object({
  * A move on a deal, pressed by the user. Buyer: approve (the agent's Tier 2 path within its caps,
  * else the owner's mandate), dispute, reclaim, cancel its own offer, accept a seller's offer (paying
  * in from the bank). Seller: accept a buyer's offer, cancel its own offer, claim, refund.
- * Delivering has its own route (it carries a file).
+ * Delivering has its own route (it carries a file). On a group's or company's wallet, approving and
+ * accepting go to the signers' vote instead.
  */
 export async function POST(req: Request, ctx: RouteContext<"/api/deals/[id]/action">) {
   try {
@@ -37,6 +40,18 @@ export async function POST(req: Request, ctx: RouteContext<"/api/deals/[id]/acti
       await requireKycFor(user.id, customer.currency, Number(deal.total)).catch((e) => {
         throw e instanceof KycRequired ? new HttpError(403, e.message) : e;
       });
+    }
+    // A group's or company's wallet pays out only by its signers' vote: releasing a delivery or
+    // paying a seller's offer becomes a proposal (the asker's yes counts), executed when it passes.
+    if (deal.role === "buyer" && (action === "approve" || action === "accept")) {
+      const shared = await companyOfWallet(wallet);
+      if (shared) {
+        const vote = await proposeDealAction(user.id, shared.groupId, { dealId: id, index, action }).catch((e) => {
+          throw e instanceof SocialError ? new HttpError(400, e.message) : e;
+        });
+        if (vote.status === "EXECUTED") after(() => syncDeal(wallet, id).catch((e) => console.error("syncDeal", id, e)));
+        return Response.json({ groupVote: vote });
+      }
     }
     if (action === "dispute" && deal.role === "buyer") {
       if (!reason || reason.trim().length < 10) throw new HttpError(400, "Say what is wrong (at least 10 characters): the arbiter decides on it");
