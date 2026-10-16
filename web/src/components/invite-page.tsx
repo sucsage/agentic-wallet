@@ -132,7 +132,7 @@ export function InvitePage({ token }: { token: string }) {
         {view?.linked?.error && <p className="inv-muted">Not linked to your account: {view.linked.error}</p>}
         {view && !view.linked?.signedIn && (
           <p className="inv-muted">
-            Already have an Agentic Wallet account? <a href={`/login?next=${encodeURIComponent(token)}`}>Log in</a>: this deal then links to your account and pays into your wallet.
+            Already have an Agentic Wallet account? <a href={`/login?next=${encodeURIComponent(`/invite/${token}`)}`}>Log in</a>: this deal then links to your account and pays into your wallet.
           </p>
         )}
 

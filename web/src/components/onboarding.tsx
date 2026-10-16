@@ -8,6 +8,12 @@ import { authClient } from "@/lib/auth-client";
 import { api, useAppData } from "./app-data";
 import { Button, Card, Loading } from "./mockup-ui";
 
+/** A ?next= target only if it stays on this site: a path, never "//other.site" or a full URL. */
+export function safeNext(next: string | null): string | null {
+  if (!next || !next.startsWith("/") || next.startsWith("//") || next.startsWith("/\\") || next.startsWith("/login")) return null;
+  return next.slice(0, 500);
+}
+
 type AuthOptions = { google: boolean; apple: boolean; passwordReset: boolean };
 
 /**
@@ -29,11 +35,8 @@ export function AuthScreen({ onSignedIn }: { onSignedIn: () => void }) {
   useEffect(() => {
     api<AuthOptions>("/api/auth-options").then(setOptions).catch(() => setOptions(null));
   }, []);
-  // Opened from a seller invite ("Log in" on /invite/…): go back there, where the deal links to the account.
-  const nextPath = () => {
-    const t = new URLSearchParams(window.location.search).get("next") ?? "";
-    return /^[A-Za-z0-9_-]{20,64}$/.test(t) ? `/invite/${t}` : null;
-  };
+  // Sent here from a page that needs sign-in (src/proxy.ts) or from a seller invite: go back there.
+  const nextPath = () => safeNext(new URLSearchParams(window.location.search).get("next"));
   const signedIn = () => {
     const next = nextPath();
     if (next) window.location.assign(next);

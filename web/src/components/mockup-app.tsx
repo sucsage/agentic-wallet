@@ -8,7 +8,7 @@ import { AppDataProvider, useAppData } from "./app-data";
 import { BankAuthorizeLive, LiveChat, LiveDeals, LivePrivacy } from "./mockup-live";
 import { LiveApprovals, LiveDealDetail, LiveFriends, LiveGroups, LivePolicy, LiveSummary } from "./mockup-live-2";
 import { translateMockupText, useLang } from "@/lib/i18n";
-import { AuthScreen, OnboardingScreen, ResetPasswordScreen } from "./onboarding";
+import { AuthScreen, OnboardingScreen, ResetPasswordScreen, safeNext } from "./onboarding";
 import { Header, Loading, SIDEBAR_GROUPS, SidebarIcon, type ScreenName } from "./mockup-ui";
 import { LandingScreen } from "./mockup-screens";
 import type { BankChoice } from "./mockup-screens";
@@ -52,12 +52,12 @@ export function MockupApp({ initialRoute = "landing", initialBank = "thai", init
   useEffect(() => {
     if (isPending) return;
     // App screens need a bank sign-in; a signed-in user skips the login page.
-    if (isApp && !session) router.replace("/login");
+    if (isApp && !session) router.replace(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
     if (route === "login" && session) {
-      // Back to the seller invite the user came from, if any (see AuthScreen).
-      const t = new URLSearchParams(window.location.search).get("next") ?? "";
-      if (/^[A-Za-z0-9_-]{20,64}$/.test(t)) window.location.assign(`/invite/${t}`);
-      else router.replace("/chat");
+      // Back to the page the user came from, if any (src/proxy.ts, a seller invite; see AuthScreen).
+      const next = safeNext(new URLSearchParams(window.location.search).get("next"));
+      if (next?.startsWith("/invite/")) window.location.assign(next);
+      else router.replace(next ?? "/chat");
     }
   }, [isApp, isPending, route, router, session]);
   const screen = () => {
