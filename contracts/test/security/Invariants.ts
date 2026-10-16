@@ -143,7 +143,7 @@ describe("FileEscrow properties", async function () {
         const index = BigInt(Math.floor(r() * 2));
         const anyAction = pick(r, [
           "offerToBuy", "offerToSell", "accept", "cancel", "deliver", "approve", "releaseKey",
-          "claim", "refund", "dispute", "reclaim", "resolve", "time",
+          "claim", "refund", "dispute", "reclaim", "resolve", "resolveSplit", "time",
         ] as const);
         // Mostly take a move that is valid for the milestone's current state, so the sequences get deep
         // into the state machine; sometimes take a random (usually invalid) move to test the refusals.
@@ -159,7 +159,7 @@ describe("FileEscrow properties", async function () {
               1: ["approve", "approve", "dispute", "claim", "time", "refund"],
               2: ["releaseKey", "releaseKey", "time", "reclaim"],
               3: ["approve", "dispute", "claim", "time"],
-              5: ["resolve"],
+              5: ["resolve", "resolveSplit"],
             };
             action = pick(r, next[ms.status] ?? ["time"]);
           } else if (count < 4 && r() < 0.5) action = r() < 0.5 ? "offerToBuy" : "offerToSell";
@@ -197,6 +197,8 @@ describe("FileEscrow properties", async function () {
           await attempt(() => b.write.reclaim([dealId, index]));
         } else if (action === "resolve") {
           await attempt(() => a.write.resolve([dealId, index, r() < 0.5]));
+        } else if (action === "resolveSplit") {
+          await attempt(() => a.write.resolveSplit([dealId, index, pick(r, [0, 1, 1, 3_333, 5_000, 9_999, 10_000, 10_001])]));
         } else if (action === "time") {
           await networkHelpers.time.increase(pick(r, [HOUR, REVIEW / 2n, REVIEW + 1n]));
         }
@@ -211,7 +213,7 @@ describe("FileEscrow properties", async function () {
             for (let m = 0; m < Number(deal.milestoneCount); m++) {
               const ms = await escrow.read.getMilestone([BigInt(d), BigInt(m)]);
               seen.add(ms.status);
-              if (ms.status !== 4 && ms.status !== 6) locked += ms.amount; // not Released / Refunded
+              if (ms.status !== 4 && ms.status !== 6 && ms.status !== 7) locked += ms.amount; // not Released / Refunded / Split
             }
           }
         }
@@ -221,7 +223,7 @@ describe("FileEscrow properties", async function () {
         assert.equal(sum, START, `${where}: tokens were created or destroyed`);
       }
       console.log(`      seed ${seed}: ${succeeded} calls succeeded, milestone statuses reached: ${[...seen].sort().join(",")}`);
-      assert.ok(succeeded >= 20 && (seen.has(4) || seen.has(6)), `seed ${seed}: the sequence never settled a milestone`);
+      assert.ok(succeeded >= 20 && (seen.has(4) || seen.has(6) || seen.has(7)), `seed ${seed}: the sequence never settled a milestone`);
     });
   }
 });
