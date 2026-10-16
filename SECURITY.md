@@ -95,7 +95,10 @@ key (`ArbiterNotNeutral`), so the buyer's side can never judge its own dispute.
 
 - **Sign-in.** Mock Bank login with a 6-digit demo PIN, hashed with scrypt. After **5 wrong PINs the
   account locks for 15 minutes**. Sessions are handled by Better Auth. The login page states that
-  this is a demo bank and must not get real credentials.
+  this is a demo bank and must not get real credentials. New users sign in with email and password
+  (scrypt) or Google / Apple. **Password reset:** a single-use emailed link valid 30 minutes; the
+  answer is the same whether or not the email has an account, and a reset revokes every other
+  session. Without a mail service in production the option is hidden rather than faked.
 - **Authorization.** Every wallet route checks the session **and** that the wallet belongs to the
   user (`web/src/lib/guard.ts`). The browser never sends amounts or payees for a lock: approval reads
   the draft back from the database, so what gets locked is what the user saw.

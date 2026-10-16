@@ -8,23 +8,39 @@ import { authClient } from "@/lib/auth-client";
 import { api, useAppData } from "./app-data";
 import { Button, Card, Loading } from "./mockup-ui";
 
+type AuthOptions = { google: boolean; apple: boolean; passwordReset: boolean };
+
 /**
- * Sign up / log in with email and password, like a mobile wallet app. No bank login: the wallet
- * itself holds THB or CNY e-money (test money), topped up by card, PromptPay or counter service.
+ * Sign up / log in with email and password, or Google / Apple, like a mobile wallet app. No bank
+ * login: the wallet itself holds THB or CNY e-money (test money), topped up by card, PromptPay or
+ * counter service. A forgotten password is reset through a link sent by email.
  */
 export function AuthScreen({ onSignedIn }: { onSignedIn: () => void }) {
-  const [mode, setMode] = useState<"login" | "register">("register");
+  const [mode, setMode] = useState<"login" | "register" | "forgot">("register");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sent, setSent] = useState(false);
+  const [options, setOptions] = useState<AuthOptions | null>(null);
+
+  useEffect(() => {
+    api<AuthOptions>("/api/auth-options").then(setOptions).catch(() => setOptions(null));
+  }, []);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
+    if (mode === "forgot") {
+      const r = await authClient.requestPasswordReset({ email: email.trim(), redirectTo: "/reset-password" });
+      setBusy(false);
+      if (r.error) setError(r.error.message ?? "Something went wrong");
+      else setSent(true);
+      return;
+    }
     const r =
       mode === "register"
         ? await authClient.signUp.email({ name: name.trim(), email: email.trim(), password })
@@ -34,17 +50,79 @@ export function AuthScreen({ onSignedIn }: { onSignedIn: () => void }) {
     else onSignedIn();
   }
 
+  async function social(provider: "google" | "apple") {
+    setBusy(true);
+    setError(null);
+    // On success the browser is already on its way to the provider.
+    const r = await authClient.signIn.social({ provider, callbackURL: "/chat" });
+    if (r.error) {
+      setError(r.error.message ?? "Something went wrong");
+      setBusy(false);
+    }
+  }
+
+  const switchTo = (m: typeof mode) => {
+    setMode(m);
+    setError(null);
+    setSent(false);
+  };
+
+  if (mode === "forgot") {
+    return (
+      <main className="aw-auth-wrap aw-bank-login-wrap">
+        <Card className="aw-bank-login aw-wallet-auth">
+          <h2>Reset your password</h2>
+          {sent ? (
+            <p className="aw-auth-note">
+              If an account uses <b>{email.trim()}</b>, a reset link is on its way. It works for 30 minutes. Check your spam folder too.
+            </p>
+          ) : (
+            <form onSubmit={submit} className="aw-wallet-auth-form">
+              <p className="aw-auth-note">Enter the email you signed up with. We send a link to choose a new password.</p>
+              <label>
+                <span>Email</span>
+                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" autoFocus />
+              </label>
+              {error && <p className="aw-bank-error">{error}</p>}
+              <Button type="submit" disabled={busy}>
+                {busy ? "…" : "Send reset link"}
+              </Button>
+            </form>
+          )}
+          <button type="button" className="aw-onboarding-alt" onClick={() => switchTo("login")}>
+            Back to log in
+          </button>
+        </Card>
+      </main>
+    );
+  }
+
   return (
     <main className="aw-auth-wrap aw-bank-login-wrap">
       <Card className="aw-bank-login aw-wallet-auth">
         <div className="aw-wallet-auth-tabs" role="tablist">
-          <button type="button" role="tab" aria-selected={mode === "register"} className={mode === "register" ? "active" : ""} onClick={() => setMode("register")}>
+          <button type="button" role="tab" aria-selected={mode === "register"} className={mode === "register" ? "active" : ""} onClick={() => switchTo("register")}>
             Create account
           </button>
-          <button type="button" role="tab" aria-selected={mode === "login"} className={mode === "login" ? "active" : ""} onClick={() => setMode("login")}>
+          <button type="button" role="tab" aria-selected={mode === "login"} className={mode === "login" ? "active" : ""} onClick={() => switchTo("login")}>
             Log in
           </button>
         </div>
+        {(options?.google || options?.apple) && (
+          <div className="aw-auth-social">
+            {options.google && (
+              <button type="button" onClick={() => void social("google")} disabled={busy}>
+                <GoogleIcon /> Continue with Google
+              </button>
+            )}
+            {options.apple && (
+              <button type="button" className="apple" onClick={() => void social("apple")} disabled={busy}>
+                <AppleIcon /> Continue with Apple
+              </button>
+            )}
+            <span className="aw-auth-or">or with email</span>
+          </div>
+        )}
         <form onSubmit={submit} className="aw-wallet-auth-form">
           {mode === "register" && (
             <label>
@@ -67,6 +145,11 @@ export function AuthScreen({ onSignedIn }: { onSignedIn: () => void }) {
               autoComplete={mode === "register" ? "new-password" : "current-password"}
             />
           </label>
+          {mode === "login" && options?.passwordReset && (
+            <button type="button" className="aw-auth-forgot" onClick={() => switchTo("forgot")}>
+              Forgot password?
+            </button>
+          )}
           {mode === "register" && (
             <label className="aw-bank-consent">
               <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
@@ -86,6 +169,95 @@ export function AuthScreen({ onSignedIn }: { onSignedIn: () => void }) {
         </Link>
       </Card>
     </main>
+  );
+}
+
+/** Where the emailed reset link lands (?token=…, or ?error=INVALID_TOKEN when it expired). */
+export function ResetPasswordScreen() {
+  const [token, setToken] = useState<string | null>(null);
+  const [password, setPassword] = useState("");
+  const [again, setAgain] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setToken(q.get("token") ?? "");
+    if (q.get("error")) setError("This link has expired or was already used. Ask for a new one.");
+  }, []);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (password !== again) return setError("The two passwords are different");
+    setBusy(true);
+    setError(null);
+    const r = await authClient.resetPassword({ newPassword: password, token: token ?? "" });
+    setBusy(false);
+    if (r.error) setError(r.error.message ?? "Something went wrong");
+    else setDone(true);
+  }
+
+  return (
+    <main className="aw-auth-wrap aw-bank-login-wrap">
+      <Card className="aw-bank-login aw-wallet-auth">
+        <h2>Choose a new password</h2>
+        {token === null ? (
+          <Loading />
+        ) : done ? (
+          <>
+            <p className="aw-auth-note">Your password is changed, and every other device was signed out.</p>
+            <Link className="aw-button aw-button-primary" href="/login">
+              Log in
+            </Link>
+          </>
+        ) : !token ? (
+          <>
+            <p className="aw-bank-error">{error ?? "This page needs the link from the reset email."}</p>
+            <Link className="aw-onboarding-alt" href="/login">
+              Back to log in
+            </Link>
+          </>
+        ) : (
+          <form onSubmit={submit} className="aw-wallet-auth-form">
+            <label>
+              <span>
+                New password <small>(8+ characters)</small>
+              </span>
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} maxLength={128} autoComplete="new-password" autoFocus />
+            </label>
+            <label>
+              <span>Type it again</span>
+              <input type="password" value={again} onChange={(e) => setAgain(e.target.value)} required minLength={8} maxLength={128} autoComplete="new-password" />
+            </label>
+            {error && <p className="aw-bank-error">{error}</p>}
+            <Button type="submit" disabled={busy}>
+              {busy ? "…" : "Save new password"}
+            </Button>
+          </form>
+        )}
+      </Card>
+    </main>
+  );
+}
+
+function GoogleIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden>
+      <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.4h6.5a5.6 5.6 0 0 1-2.4 3.6v3h3.9c2.2-2.1 3.5-5.1 3.5-8.7z" />
+      <path fill="#34A853" d="M12 24c3.2 0 6-1.1 7.9-2.9l-3.9-3c-1 .7-2.4 1.1-4 1.1-3.1 0-5.7-2.1-6.6-4.9h-4v3.1A12 12 0 0 0 12 24z" />
+      <path fill="#FBBC05" d="M5.4 14.3a7.2 7.2 0 0 1 0-4.6V6.6h-4a12 12 0 0 0 0 10.8l4-3.1z" />
+      <path fill="#EA4335" d="M12 4.8c1.8 0 3.3.6 4.6 1.8l3.4-3.4A12 12 0 0 0 1.4 6.6l4 3.1c.9-2.8 3.5-4.9 6.6-4.9z" />
+    </svg>
+  );
+}
+
+function AppleIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden>
+      <path d="M16.4 12.6c0-2.6 2.1-3.8 2.2-3.9a4.8 4.8 0 0 0-3.8-2c-1.6-.2-3.1.9-3.9.9-.8 0-2-.9-3.4-.9a5 5 0 0 0-4.2 2.6c-1.8 3.1-.5 7.7 1.3 10.2.8 1.2 1.8 2.6 3.1 2.5 1.2 0 1.7-.8 3.2-.8s1.9.8 3.2.8c1.3 0 2.2-1.2 3-2.4a10 10 0 0 0 1.4-2.8c0-.1-2.6-1-2.6-4.2zM13.9 5c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1 .1 2.1-.6 2.8-1.4z" />
+    </svg>
   );
 }
 

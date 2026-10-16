@@ -1,6 +1,7 @@
 # Mock Bank sign-in and account API
 
-For the frontend. Google / Apple sign-in is gone: everyone signs in through the **Mock Bank**
+For the frontend. New users sign up with email and password or Google / Apple (`AuthScreen`); this
+Mock Bank sign-in stays for the team's older test accounts. It signs in through the **Mock Bank**
 (Thailand → THB / mTHB, China → CNY / mCNY). Demo only: no real bank, no real money. Every bank
 screen must show a "Demo bank — do not enter real credentials" banner.
 

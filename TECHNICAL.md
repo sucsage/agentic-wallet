@@ -323,7 +323,7 @@ Approve & lock (or Accept & pay)
 
 The app is an e-money wallet (like a mobile wallet), not a bank login:
 
-1. **Sign up** with email and password (Better Auth; passwords hashed with scrypt).
+1. **Sign up** with email and password (Better Auth; passwords hashed with scrypt), or with Google / Apple when their keys are set. A forgotten password is reset through a single-use emailed link (30 minutes, Resend); the reset signs out every other session.
 2. **KYC** (`src/lib/onboarding.ts`):
    - the user picks a country, which sets the wallet currency (TH → THB, CN → CNY);
    - they verify with the national digital ID (3.7), or type their ID details (Thai ID / Chinese resident ID with check digits, or a passport) plus date of birth (18+);
