@@ -13,6 +13,7 @@ import { usePrefs } from "./prefs";
 import { FundCompany, setActing } from "./company";
 import { GroupChat } from "./group-chat";
 import { SendMoneyDialog } from "./send-money";
+import { BlockedPanel, ReportDialog, blockPerson } from "./contact-safety";
 import { SEND_LIMITS } from "@/lib/send-limits";
 import { BalanceBar } from "./mockup-live";
 import { Button, Card, Loading, PageTitle } from "./mockup-ui";
@@ -530,6 +531,9 @@ export function LiveFriends() {
   const [myQr, setMyQr] = useState<{ image: string; url: string } | null>(null);
   const [sending, setSending] = useState(false);
   const [sendId, setSendId] = useState(() => crypto.randomUUID());
+  const [reporting, setReporting] = useState<{ userId: string; name: string } | null>(null);
+  const [safetyMsg, setSafetyMsg] = useState<string | null>(null);
+  const [blockVersion, setBlockVersion] = useState(0);
   const { me, refresh } = useAppData();
   const { data: groupsData } = useApi<{ groups: { members: { userId: string }[] }[] }>("/api/groups");
   const friends = data?.friends ?? [];
@@ -557,6 +561,17 @@ export function LiveFriends() {
       setFound([]);
       await reload();
     });
+  async function safety(action: () => Promise<string | null>) {
+    try {
+      const m = await action();
+      if (!m) return;
+      setSafetyMsg(m);
+      setBlockVersion((v) => v + 1);
+      await reload();
+    } catch (e) {
+      setSafetyMsg((e as Error).message);
+    }
+  }
   const incoming = friends.filter((f) => f.direction === "incoming");
   const outgoing = friends.filter((f) => f.direction === "outgoing");
   const mutual = friends.filter((f) => f.status === "ACCEPTED");
@@ -679,6 +694,7 @@ export function LiveFriends() {
             and kept on the deal&apos;s page to send them. They need no sign-up.
           </p>
         </section>
+        {safetyMsg && <p className="aw-live-ok aw-safety-msg">{safetyMsg}</p>}
         <Nicknames />
         <section className="aw-friends-panel aw-friend-requests">
           <header>
@@ -696,6 +712,9 @@ export function LiveFriends() {
               <div>
                 <Button variant="outline" disabled={!!busy} onClick={() => run(`x${f.friendshipId}`, () => send(`/api/friends/${f.friendshipId}`, "DELETE"), reload)}>
                   Decline
+                </Button>
+                <Button variant="outline" disabled={!!busy} onClick={() => void safety(() => blockPerson(f))}>
+                  Block
                 </Button>
                 <Button disabled={!!busy} onClick={() => run(`a${f.friendshipId}`, () => send(`/api/friends/${f.friendshipId}`, "POST"), reload)}>
                   Accept
@@ -747,10 +766,36 @@ export function LiveFriends() {
                     Remove contact
                   </Button>
                 </div>
+                <div className="aw-friend-safety">
+                  <button type="button" onClick={() => setReporting({ userId: f.userId, name: f.name })}>
+                    ⚑ Report
+                  </button>
+                  <button type="button" onClick={() => void safety(() => blockPerson(f))}>
+                    ⦸ Block
+                  </button>
+                </div>
               </article>
             ))}
           </div>
         </section>
+        <BlockedPanel
+          version={blockVersion}
+          onChange={(m) => {
+            setSafetyMsg(m);
+            void reload();
+          }}
+        />
+        {reporting && (
+          <ReportDialog
+            person={reporting}
+            onClose={() => setReporting(null)}
+            onDone={(m) => {
+              setSafetyMsg(m);
+              setBlockVersion((v) => v + 1);
+              void reload();
+            }}
+          />
+        )}
       </main>
     </div>,
     lang,
@@ -2209,6 +2254,7 @@ function InviteLinkCard({ dealId, invite, onDone }: { dealId: number; invite: No
 }
 
 export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: string) => void }) {
+  const [templateMsg, setTemplateMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const lang = useLang();
   const { me, refresh } = useAppData();
   const id = Number(dealId.replace(/\D/g, ""));
@@ -2247,10 +2293,37 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
               {data?.demoSeller ? " (acts automatically for the demo)" : ""} · review window {data?.reviewHours ?? "…"} h
             </p>
           </div>
-          <Button variant="outline" onClick={() => go("ดีลทั้งหมด")}>
-            ← All deals
-          </Button>
+          <div className="aw-d012-head-actions">
+            <Button
+              variant="outline"
+              disabled={!data}
+              onClick={async () => {
+                if (!data) return;
+                const name = window.prompt("Name this template (reuse this deal later with another person or other amounts):", data.title)?.trim();
+                if (!name) return;
+                try {
+                  await send("/api/templates", "POST", {
+                    name,
+                    side: data.role === "buyer" ? "BUY" : "SELL",
+                    kind: data.kind,
+                    title: data.title,
+                    summary: data.summary ?? "",
+                    milestones: data.milestones.map((m) => ({ name: m.name, amount: String(Number(m.amount)), delivery: m.delivers, acceptance: m.acceptance ?? "", dueDays: null })),
+                  });
+                  setTemplateMsg({ ok: true, text: `Saved template “${name}”. Use it from Deals → Templates.` });
+                } catch (e) {
+                  setTemplateMsg({ ok: false, text: (e as Error).message });
+                }
+              }}
+            >
+              ☆ Save as template
+            </Button>
+            <Button variant="outline" onClick={() => go("ดีลทั้งหมด")}>
+              ← All deals
+            </Button>
+          </div>
         </header>
+        {templateMsg && <p className={templateMsg.ok ? "aw-live-ok" : "aw-bank-error"}>{templateMsg.text}</p>}
         {data?.invite && <InviteLinkCard dealId={id} invite={data.invite} onDone={reload} />}
         {error && <p className="aw-bank-error">{error}</p>}
         {!data && !error && <Loading block text="Reading the deal from the chain…" />}

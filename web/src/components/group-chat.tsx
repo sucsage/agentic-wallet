@@ -28,6 +28,7 @@ export function GroupChat({ groupId, threshold, shared }: { groupId: string; thr
   const lang = useLang();
   const { me, refresh } = useAppData();
   const [messages, setMessages] = useState<Message[] | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [askAi, setAskAi] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -79,12 +80,15 @@ export function GroupChat({ groupId, threshold, shared }: { groupId: string; thr
 
   async function act(step: Step, d: DraftView, kind: "approve" | "discard") {
     setError(null);
+    setBusyId(d.id);
     try {
       if (kind === "discard") await api(`/api/workspace/${step.wallet}/drafts/${d.id}`, { method: "DELETE" });
       else await api(`/api/workspace/${step.wallet}/drafts/${d.id}/approve`, { method: "POST" });
       await Promise.all([load(), refresh()]);
     } catch (err) {
       setError((err as Error).message);
+    } finally {
+      setBusyId(null);
     }
   }
 
@@ -125,6 +129,7 @@ export function GroupChat({ groupId, threshold, shared }: { groupId: string; thr
                       company={shared ? { name: shared, threshold } : null}
                       onApprove={(d) => void act(s, d, "approve")}
                       onDiscard={(d) => void act(s, d, "discard")}
+                      busy={busyId === s.draft.id}
                     />
                   ) : (
                     <p className="aw-gchat-note">

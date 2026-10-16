@@ -36,6 +36,11 @@ model User {
   stripeLink      StripeLink?
   preference      UserPreference?
   groupInvites    GroupInvite[]
+  dealTemplates   DealTemplate[]
+  blocksMade      UserBlock[]      @relation("blocker")
+  blockedBy       UserBlock[]      @relation("blocked")
+  reportsMade     UserReport[]     @relation("reporter")
+  reportsAbout    UserReport[]     @relation("reported")
 }
 
 model Session {
@@ -418,6 +423,65 @@ model Friendship {
 
   @@unique([requesterId, addresseeId])
   @@index([addresseeId])
+}
+
+/// A deal saved for reuse: everything but the other party. Using one asks the AI to draft a new
+/// preview from it (another person, maybe other amounts), so it still goes through Confirm.
+model DealTemplate {
+  id         String       @id @default(cuid())
+  userId     String
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  side       DraftSide    @default(BUY)
+  kind       DealKind     @default(HIRE)
+  title      String
+  summary    String       @default("")
+  /// [{ name, amount, delivery, acceptance, dueDays }]
+  milestones Json
+  uses       Int          @default(0)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  @@index([userId])
+}
+
+/// One user blocking another: no contact requests, transfers, deals or group invites between them
+/// (both ways), and an existing contact is removed.
+model UserBlock {
+  id        String   @id @default(cuid())
+  blockerId String
+  blockedId String
+  blocker   User     @relation("blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked   User     @relation("blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([blockerId, blockedId])
+  @@index([blockedId])
+}
+
+enum ReportReason {
+  SCAM
+  SPAM
+  HARASSMENT
+  IMPERSONATION
+  NOT_DELIVERED
+  OTHER
+}
+
+/// A user reporting another from Contacts, for the admin to review.
+model UserReport {
+  id         String       @id @default(cuid())
+  reporterId String
+  reportedId String
+  reporter   User         @relation("reporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  reported   User         @relation("reported", fields: [reportedId], references: [id], onDelete: Cascade)
+  reason     ReportReason
+  details    String       @default("")
+  status     String       @default("OPEN")
+  createdAt  DateTime     @default(now())
+
+  @@index([reportedId])
+  @@index([reporterId])
 }
 
 enum GroupRole {

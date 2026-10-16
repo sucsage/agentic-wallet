@@ -12,6 +12,7 @@ import { type Recipient, SendError, cleanRecipients, payMany } from "./bank/send
 import { type TxOutcome, publicClient, send } from "./chain";
 import { db } from "./db";
 import { KycRequired, requireKycFor } from "./kyc";
+import { blockedBetween } from "./safety";
 import { primaryWalletAddress } from "./user-wallets";
 
 /**
@@ -83,6 +84,8 @@ export async function requestFriend(userId: string, currency: Currency, username
   // beyond what the bank's own username lookup already implies.
   if (!target?.userId) throw new SocialError("No app user with that username at your bank");
   if (target.userId === userId) throw new SocialError("You cannot add yourself");
+  // A block either way: the same answer as an unknown user, so a blocked person learns nothing.
+  if (await blockedBetween(userId, target.userId)) throw new SocialError("No app user with that username at your bank");
   const existing = await db.friendship.findFirst({
     where: {
       OR: [

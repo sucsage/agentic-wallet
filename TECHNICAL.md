@@ -379,6 +379,14 @@ Internally the e-money account is a ledger account. The funding saga, the reserv
   - In test mode a Mock Post parcel can be delivered immediately ("Deliver now").
 - **Invited sellers** can correct the name the buyer typed for them.
 
+### 3.14 Deal templates, blocking and reporting, files and images in the AI chat
+
+- **Deal templates** (`DealTemplate`, `web/src/lib/templates.ts`): a deal saved without its other party, from "☆ Save as template" on a draft card or a deal's page, or by asking the AI (`save_deal_template`). Deals → Templates lists them; "Use with someone" opens the AI chat with the template named, and the AI reads it (`deal_templates`) and drafts a new preview. A template never creates a deal: the preview still needs Confirm.
+- **Block** (`UserBlock`, `web/src/lib/safety.ts`): works both ways. It removes the contact and pending group invites between the two, hides each from the other's search, refuses contact requests (with the same answer as an unknown username), and takes the blocked person off the blocker's allow transfer list on-chain (best effort). Running deals are not changed.
+- **Report** (`UserReport`): Contacts → Report sends a reason and details to the admins (`/admin/reports`), optionally blocking too. Only contacts or blocked people can be reported; one report per pair per day is updated, not duplicated.
+- **Files and images in the AI chat**: ＋ (or pasting an image) attaches an image, a PDF or a text file. Images are downscaled in the browser to 1600 px JPEG. Claude reads images itself; for other models (the LLM gateway, OpenRouter) one vision call on the gateway's OpenAI-style endpoint (`web/src/lib/vision.ts`, override with `LLM_VISION_URL` / `LLM_VISION_MODEL`) turns the image into text (everything written on it, then what it shows), which the agent receives as an untrusted document and which goes through the prompt-injection scan.
+- **Private links**: when Confirm makes a link for someone without an account, the clipboard write starts inside the click (a pending `ClipboardItem`), so the link is copied as soon as it exists; every such link in the chat also has a Copy button.
+
 ## 4. The AI agent
 
 `web/src/lib/agent.ts`: an LLM tool-use loop (max 12 turns) over any Anthropic-compatible API

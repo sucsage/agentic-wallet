@@ -1755,3 +1755,46 @@
 .aw-summary-tip .green{color:#16c76b}.aw-summary-tip .red{color:#f34348}.aw-summary-tip .blue{color:#6aa8ff}
 .aw-summary-tip hr{margin:6px 0;border:0;border-top:1px solid #262626}
 .aw-summary-tip small{display:block;margin-top:5px;color:#666;font-size:10px}
+/* Draft card: Confirm in progress, save as template */
+.aw-spinner{display:inline-block;width:13px;height:13px;flex:none;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:-2px;animation:aw-spin .8s linear infinite}
+.aw-draft-busy{display:flex;align-items:center;gap:9px;margin-top:10px;padding:10px 12px;border:1px solid #2c3d5c;border-radius:10px;background:#0f1b2e;color:#b9d2ff;font-size:12px}
+.aw-draft-actions .aw-button[aria-busy=true]{display:inline-flex;align-items:center;justify-content:center;gap:7px;opacity:.85}
+.aw-draft-template{margin-top:8px;padding:4px 0;border:0;background:transparent;color:#9da9ba;font-size:12px;cursor:pointer}
+.aw-draft-template:hover{color:#fff;text-decoration:underline}
+@media(prefers-reduced-motion:reduce){.aw-spinner{animation-duration:2.4s}}
+/* Private links in the AI chat: link + copy button */
+.aw-share-link{display:inline-flex;flex-wrap:wrap;align-items:center;gap:8px;max-width:100%}
+.aw-share-link>a{word-break:break-all}
+.aw-copy-btn{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border:1px solid #3a3a3a;border-radius:8px;background:#1b1b1b;color:#eee;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
+.aw-copy-btn:hover{border-color:#666}
+.aw-copy-btn.ok{border-color:#1f7a4a;color:#5be39b}
+.aw-copy-btn.fail{border-color:#7a2a2a;color:#ff8a80}
+/* Deals → Templates */
+.aw-templates{margin-top:14px}
+.aw-templates-intro{margin:0 0 12px;padding:10px 12px;border:1px solid #2a2a2a;border-radius:10px;background:#111;color:#aaa;font-size:13px;line-height:1.5}
+.aw-templates-empty{color:#888;font-size:13px}
+.aw-template-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.aw-template-card{display:flex;flex-direction:column;gap:8px;padding:14px;border:1px solid #303030;border-radius:12px;background:#111}
+.aw-template-card header{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.aw-template-card header b{font-size:15px}
+.aw-template-card>small{color:#999;font-size:12px}
+.aw-template-card ol{margin:0;padding:0;list-style:none;display:grid;gap:4px}
+.aw-template-card li{display:flex;justify-content:space-between;gap:10px;padding:6px 8px;border-radius:8px;background:#181818;font-size:12px;color:#ccc}
+.aw-template-total{display:flex;justify-content:space-between;padding-top:6px;border-top:1px solid #262626;font-size:13px;color:#999}
+.aw-template-total b{color:#fff}
+.aw-template-card footer{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.aw-template-card footer .aw-button{min-height:34px;padding:0 12px;font-size:12px}
+.aw-d012-head-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start}
+/* Contacts: report / block */
+.aw-friend-safety{display:flex;gap:14px;margin-top:8px;padding-top:8px;border-top:1px solid #222}
+.aw-friend-safety button{padding:2px 0;border:0;background:transparent;color:#8a8a8a;font-size:12px;cursor:pointer}
+.aw-friend-safety button:hover{color:#ff8a80}
+.aw-blocked-panel .aw-friend-avatar{background:#2a1515;color:#ff8a80}
+.aw-safety-msg{margin:0 0 12px}
+.aw-report-dialog{max-width:440px}
+.aw-report-reasons{display:grid;gap:6px;margin:4px 0;padding:0;border:0}
+.aw-report-reasons legend{margin-bottom:6px;color:#999;font-size:12px}
+.aw-report-reasons label,.aw-report-block{display:flex!important;flex-direction:row!important;align-items:center;gap:8px;font-size:13px!important;color:#ddd;cursor:pointer}
+.aw-report-reasons input,.aw-report-block input{width:16px;height:16px;flex:none}
+.aw-report-details{display:grid;gap:6px;font-size:12px;color:#999}
+.aw-report-details textarea{width:100%;padding:8px 10px;border:1px solid #333;border-radius:8px;background:#0b0b0b;color:#fff;font:inherit;font-size:13px;resize:vertical}
