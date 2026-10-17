@@ -30,6 +30,7 @@ export const GUIDE_TOPICS = [
   "terms_review",
   "protection",
   "split_payment",
+  "public_link",
 ] as const;
 export type GuideTopic = (typeof GUIDE_TOPICS)[number];
 
@@ -158,6 +159,13 @@ Witnesses (optional): each side can add one under "Witnesses"; they appear on th
 3. Pay the next parts on Deals → the deal's card ("Pay part 2 now"…). Paying the last part locks the deal in escrow at once.
 4. "Stop & get my money back" returns everything paid. A part more than 7 days late ends the plan the same way.
 - A seller can offer split payment too: the buyer starts it on the offer's page. Not for a buyer paying through a private link (they pay in one go), and not together with a deposit on signing.`,
+  public_link: `Private and public links:
+- A PRIVATE link is for one person you already chose (someone without an account): made on Confirm, with a one-time code.
+- A PUBLIC link is an open call, when you do not know who yet. Ask the AI, e.g. "post a public call for a logo designer, 6,000 baht in 2 milestones, applicants send a portfolio link and 2 samples".
+1. The AI makes the post and gives you the link: share it anywhere (Facebook, LINE groups…). Anyone can open it and apply with a proposal, a price, portfolio links and up to 3 files. No account needed.
+2. Deals → "Public posts": every application, its links and files, and the contact (only you see it).
+3. "✦ AI: who fits best?" ranks them with a short reason (the AI reads what they wrote and sent; it does not open their links).
+4. "Choose <name>" drafts the deal with them. Confirm it: their private link and one-time code are made; send both to their contact (the code separately). The post then stops taking applications. "Close" stops it any time.`,
 };
 
 export function appGuide(topic: string | undefined): string {

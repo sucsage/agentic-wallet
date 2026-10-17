@@ -175,6 +175,10 @@ key (`ArbiterNotNeutral`), so the buyer's side can never judge its own dispute.
 - **Split payments cannot double-spend or strand money.** Parts sit in a per-plan holding account,
   each part's transfer is idempotent, the deal locks only from the last part (a direct accept is
   refused while a plan runs), and cancelling or lapsing returns the whole held amount.
+- **Public posts.** Anyone may apply, so the endpoint is rate-limited, has a honeypot, caps
+  applications, files and links (http/https only), and never fetches applicants' URLs (no SSRF).
+  Contacts and files are visible to the post's owner only; files are served with a sandbox CSP and
+  `nosniff`. The AI ranks applications as untrusted data.
 - **Chain access.** Besu runs **account permissioning**, so only the app's own keys can send
   transactions. Its RPC needs a signed JWT (RS256) that only the server holds. The public `/api/rpc`
   passes **read-only methods** only (no `eth_sendRawTransaction`), with bounded `eth_getLogs` ranges.

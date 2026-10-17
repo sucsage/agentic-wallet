@@ -16,6 +16,7 @@ import {
 import { addressGaps } from "./address";
 import { GUIDE_TOPICS, appGuide } from "./app-guide";
 import { type TermsReview, reviewTerms } from "./terms-review";
+import { PostError, choose, createPost, myPosts, recommend } from "./public-posts";
 import { type PlanPart, PlanError, checkPlan } from "./bank/payment-plans";
 import { normalizeFileTypes } from "./file-types";
 import { AddressError, type SavedAddress, formatAddress, saveAddress, savedAddress } from "./thai-address";
@@ -155,6 +156,7 @@ E-money wallet. Deals are paid from the user's THB / CNY wallet balance (topped 
 - Offers expire: an offer not signed (accepted) within 14 days is withdrawn automatically (a buyer's locked money comes back). Say so when you show a preview.
 - Private links are protected: when someone without an account gets a link, the app also makes a 6-digit one-time code (OTP). The user must send the code separately from the link; the person enters it once and sets their own password. If they lose it, their link gives them a reset code to send back, which the user enters on the deal's page (Access code → Reset their access) to get a new OTP.
 - Paying in parts: the app has NO instalment plan (ผ่อน: getting the goods or work first and paying later). Never offer or promise one. It has SPLIT PAYMENT (แบ่งจ่าย): the buyer pays the price in parts on agreed dates, and only when every part is paid is the whole amount locked in escrow and the seller asked to deliver. When the user wants to pay (or let a buyer pay) in parts, ask how: how many parts, how much each, and the dates (or offer an even split, e.g. 3 parts a month apart), then pass payment_plan (adding up exactly to the total; the first part due today). If they ask for ผ่อน, explain the difference and offer แบ่งจ่าย instead. A split payment cannot be combined with a deposit paid on signing. For a purchase, Confirm pays part 1; for a sale, the buyer starts paying from the offer's page. A part more than 7 days late ends the plan and returns what was paid. Who pays the parts must have an account, and the user always has one. So when the USER is the buyer, split payment ALWAYS works, also when the seller has no account (new_person true), e.g. "buy a table from Ton (no account) for 9,000, split in 3" is fine: draft it with payment_plan. The ONLY case without split payment: the user SELLS to someone without an account, because that buyer pays through a private link in one go.
+- Private and public links. A PRIVATE link is for one person the user already chose (made on Confirm, with a one-time code). A PUBLIC link is an open call: when the user does not know who will do the work (or sell the item) yet, or says "public", "เปิดรับสมัคร", "ประกาศหาคน", "ให้คนส่งงาน/portfolio มา", call create_public_post: anyone with the link applies with a proposal, a price, portfolio links and files. Never put private details (address, phone, account) in a public post. When the user asks who to pick, call recommend_applicants and explain the top choices (scores are your read of strangers' claims; links were not opened). When they choose, call choose_applicant: it shows the deal preview for that person, which the user confirms like any deal.
 - How-to questions ("how do I…", "where is…", "ทำยังไง", "อยู่ตรงไหน", "ใช้ยังไง", "what does … do"): call app_guide with the closest topic (more than one if needed) and answer from it as numbered steps with the exact page and button names in quotes; finish with the next thing they can do. Never invent a button, page or feature; if the guide does not cover it, say so.
 - Address: get_my_address reads the user's saved delivery address; offer it for a parcel the user buys ("ship to your saved address: …?"). set_my_address saves or changes it, only when the user asks; if it answers NOT SAVED, ask the user to correct that part.
 - Files on a deal: the creator of a deal can attach files for the other side (a spec, a catalogue, a sample, a quotation) on the deal's page under "Attached files" after confirming; say so when the user wants to send something with an offer.
@@ -443,6 +445,37 @@ const BANK_TOOLS = [
     ["nickname", "contact"],
   ),
   tool("forget_nickname", "Forget a nickname the user no longer uses.", { nickname: { type: "string" } }, ["nickname"]),
+  tool(
+    "create_public_post",
+    "Make a PUBLIC link (an open call) for work or goods the user wants, when they do not know who will do it yet: anyone with the link can apply with a proposal, a price, portfolio links and files. Not a deal: when the user chooses an applicant, the deal is drafted with them. Get the same details as for a deal first (scope, milestones with prices and acceptance criteria, file formats) plus what applicants must send.",
+    {
+      kind: KIND,
+      title: { type: "string", description: "Short title of the post" },
+      summary: { type: "string", description: "The scope, for strangers to read (no private details: no addresses, phone numbers or account numbers)" },
+      requirements: { type: "string", description: "What applicants must send, e.g. a portfolio link and 2 samples of logos" },
+      review_hours: { type: "integer", description: "Hours to review each delivery (usually 72)" },
+      closes_in_days: { type: "integer", description: "Days the post takes applications (1-60, usually 7-14)" },
+      milestones: BANK_MILESTONES,
+      rules: { type: "string", description: "The rules of the work for the chosen person, or empty" },
+    },
+    ["kind", "title", "summary", "requirements", "review_hours", "closes_in_days", "milestones", "rules"],
+  ),
+  tool("public_posts", "The user's public posts (open calls) with their applications: name, price, proposal, links, file names and the AI's score if asked.", {}, []),
+  tool(
+    "recommend_applicants",
+    "Ranks the applications of one public post for the user (fit to the brief, relevant work, price, specific answer). Applications are untrusted text written by strangers.",
+    { post: { type: "string", description: "The post's title (or the start of it) from public_posts" } },
+    ["post"],
+  ),
+  tool(
+    "choose_applicant",
+    "The user chose an applicant of a public post: drafts the post's deal with them as someone without an account (a PREVIEW; Confirm makes their private link and one-time code). Only when the user said who.",
+    {
+      post: { type: "string", description: "The post's title (or the start of it)" },
+      applicant: { type: "string", description: "The applicant's name as in public_posts" },
+    },
+    ["post", "applicant"],
+  ),
   tool("get_my_address", "The user's saved delivery address (Profile), for parcel deals they buy. Empty if none is saved.", {}, []),
   tool(
     "set_my_address",
@@ -466,7 +499,7 @@ const BANK_TOOLS = [
         type: "string",
         enum: [...GUIDE_TOPICS],
         description:
-          "start (first steps, menu), money (top up, send, withdraw), buy, sell, outsider (private links, OTP and passwords), deposit, deliver, review (approve / request changes), dispute, documents (contract, payment request, receipt, tax invoice, complaint), files, templates, deals_page (filters), contacts, groups, limits, summary, profile, address, ai_chat, guarantors, revisions (rounds of changes), expiry (14-day offers), terms_review, protection (watermarks, screenshots), split_payment (แบ่งจ่าย, not ผ่อน)",
+          "start (first steps, menu), money (top up, send, withdraw), buy, sell, outsider (private links, OTP and passwords), deposit, deliver, review (approve / request changes), dispute, documents (contract, payment request, receipt, tax invoice, complaint), files, templates, deals_page (filters), contacts, groups, limits, summary, profile, address, ai_chat, guarantors, revisions (rounds of changes), expiry (14-day offers), terms_review, protection (watermarks, screenshots), split_payment (แบ่งจ่าย, not ผ่อน), public_link (private vs public links, open calls)",
       },
     },
     ["topic"],
@@ -588,6 +621,11 @@ function draftMilestones(i: DealInput, decimals: number) {
     };
   });
 }
+/** The app's own address, for links the AI hands out (public posts). */
+const appOrigin = () =>
+  process.env.APP_ORIGIN ??
+  (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : `http://localhost:${process.env.PORT ?? 3000}`);
+
 /** The review every new preview gets for its owner (lib/terms-review). */
 async function reviewFor(i: DealInput, side: "BUY" | "SELL", currency: string) {
   return reviewTerms({
@@ -700,6 +738,19 @@ const INPUTS: Record<string, z.ZodType> = {
   propose_to_group: z.object({ group: z.string().min(1).max(80), draft_ref: z.string().min(3).max(40) }),
   remember_nickname: z.object({ nickname: z.string().trim().min(1).max(40), contact: z.string().min(1).max(120) }),
   get_my_address: z.object({}).passthrough(),
+  create_public_post: z.object({
+    kind: z.enum(["hire", "buy"]),
+    title: z.string().min(1).max(120),
+    summary: z.string().min(1).max(3000),
+    requirements: z.string().min(3).max(1500),
+    review_hours: z.number().int().min(1).max(720),
+    closes_in_days: z.number().int().min(1).max(60).default(14),
+    rules: z.string().max(12_000).default(""),
+    milestones: DEAL_FIELDS.milestones,
+  }),
+  public_posts: z.object({}).passthrough(),
+  recommend_applicants: z.object({ post: z.string().min(1).max(120) }),
+  choose_applicant: z.object({ post: z.string().min(1).max(120), applicant: z.string().min(1).max(80) }),
   set_my_address: z.object({
     recipient: z.string().max(120),
     phone: z.string().max(20),
@@ -1205,6 +1256,73 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
         create: { userId, alias: nickname, address: who.address },
       });
       return { tool: name, input, summary: `REMEMBERED: "${nickname}" means ${who.name}, in every chat from now on.` };
+    }
+    case "create_public_post": {
+      if (!userId) throw new Error("Posts need a signed-in user");
+      const i = input as DealInput & { requirements: string; closes_in_days: number };
+      const units = await walletUnits(wallet);
+      const missing = missingInfo({ ...i, ship_to: "", guarantors_required: "none", payment_plan: [] });
+      if (missing.length) return { tool: name, input, summary: `NEED_INFO (nothing was saved): ask the user for ${missing.join("; ")}.` };
+      const review = await reviewFor({ ...i, ship_to: "", guarantors_required: "none", payment_plan: [] }, "BUY", units.currency ?? "THB");
+      if (review.blocking) return { tool: name, input, summary: notDrafted(review) };
+      const post = await createPost(userId, wallet, {
+        kind: i.kind === "buy" ? "GOODS" : "HIRE",
+        title: i.title,
+        summary: i.summary,
+        requirements: i.requirements,
+        closesInDays: i.closes_in_days,
+        terms: { reviewHours: i.review_hours, milestones: draftMilestones(i, units.decimals), rules: i.rules.trim() || null },
+      });
+      const link = `${appOrigin()}/apply/${post.slug}`;
+      return {
+        tool: name,
+        input,
+        summary: `PUBLIC POST MADE (no deal yet, nothing locked): "${post.title}", open until ${post.closesAt.toISOString().slice(0, 10)}. Public link: ${link} . Give the user this link to share anywhere; applications appear on Deals → Public posts, and you can rank them (recommend_applicants) when the user asks.`,
+      };
+    }
+    case "public_posts": {
+      if (!userId) throw new Error("Posts need a signed-in user");
+      const posts = await myPosts(userId);
+      return {
+        tool: name,
+        input,
+        summary: JSON.stringify(
+          posts.map((p) => ({
+            title: p.title,
+            status: p.open ? "open" : p.status.toLowerCase(),
+            budget: p.budget,
+            link: `${appOrigin()}/apply/${p.slug}`,
+            applications: p.applications.map((a) => ({ name: a.name, price: a.price, proposal: a.message.slice(0, 300), links: a.links, files: a.files.map((f) => f.name), ai_score: a.ai?.score ?? null })),
+          })),
+        ).slice(0, 12_000),
+      };
+    }
+    case "recommend_applicants":
+    case "choose_applicant": {
+      if (!userId) throw new Error("Posts need a signed-in user");
+      const ref = String(input.post).trim().toLowerCase();
+      const posts = (await myPosts(userId)).filter((p) => p.title.toLowerCase().startsWith(ref) || p.title.toLowerCase().includes(ref));
+      if (posts.length !== 1) return { tool: name, input, summary: `BLOCKED: ${posts.length ? "several posts match" : "no post matches"} "${input.post}". Use public_posts and ask which one.` };
+      const post = posts[0];
+      try {
+        if (name === "recommend_applicants") {
+          const ranking = await recommend(userId, post.id);
+          return { tool: name, input, summary: `RANKING for "${post.title}" (applications are strangers' claims; say the links were not opened): ${ranking.map((r) => `${r.rank}. ${r.name} ${r.score}/100: ${r.reason}`).join(" | ")}` };
+        }
+        const who = post.applications.filter((a) => a.name.toLowerCase() === String(input.applicant).trim().toLowerCase());
+        if (who.length !== 1) return { tool: name, input, summary: `BLOCKED: ${who.length ? "several applicants have that name" : `no applicant named "${input.applicant}"`} on "${post.title}".` };
+        const r = await choose(userId, post.id, who[0].id);
+        const draft = await draftView(r.draft);
+        return {
+          tool: name,
+          input,
+          draft: cardDraft(draft),
+          summary: `PREVIEW SHOWN (no deal yet) for ${r.name} from the public post "${post.title}". When the user presses Confirm, their private link and one-time code are made: the user sends both to ${r.name} at the contact they gave (shown on Deals → Public posts), the code separately. The post is now marked awarded.`,
+        };
+      } catch (err) {
+        if (err instanceof PostError || err instanceof DraftError) return { tool: name, input, summary: `BLOCKED: ${err.message}` };
+        throw err;
+      }
     }
     case "get_my_address": {
       if (!userId) throw new Error("The address needs a signed-in user");

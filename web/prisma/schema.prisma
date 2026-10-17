@@ -502,6 +502,66 @@ model DealFile {
 /// A guarantor (ผู้ค้ำประกัน) named by one side of a deal: the person who answers for that side if it
 /// does not perform, up to an amount. One per side; printed on the contract with a guarantee clause and
 /// listed on a complaint. Demo: no identity check and no money is held from them.
+enum PublicPostStatus {
+  OPEN
+  CLOSED
+  /// Someone was chosen: a deal (with its private link) was drafted for them.
+  AWARDED
+}
+
+/// A public link (an open call): anyone with the link can apply with a message, portfolio links and
+/// files; the owner sees the applications, the AI recommends who fits, and choosing one drafts the
+/// deal with them (they then get a private link with its one-time code, like any outsider).
+model PublicPost {
+  id           String            @id @default(cuid())
+  /// The public part of the URL (/apply/<slug>): random, not a secret, can be revoked by closing.
+  slug         String            @unique
+  userId       String
+  walletAddress String
+  kind         DealKind          @default(HIRE)
+  title        String
+  summary      String
+  /// What applicants must send (e.g. "3 logo samples, a portfolio link").
+  requirements String
+  /// The deal offered to the one chosen: { reviewHours, milestones, rules?, budget? } in the draft's format.
+  terms        Json
+  status       PublicPostStatus  @default(OPEN)
+  closesAt     DateTime
+  awardedTo    String?
+  createdAt    DateTime          @default(now())
+  applications PostApplication[]
+
+  @@index([userId])
+}
+
+/// One application to a public post. Untrusted data: shown to the owner, read by the AI only as data.
+model PostApplication {
+  id        String            @id @default(cuid())
+  postId    String
+  post      PublicPost        @relation(fields: [postId], references: [id], onDelete: Cascade)
+  name      String
+  contact   String
+  message   String
+  links     String[]
+  price     Decimal?          @db.Decimal(18, 2)
+  /// The AI's read: { score 0-100, reason } (null until asked).
+  ai        Json?
+  createdAt DateTime          @default(now())
+  files     ApplicationFile[]
+
+  @@index([postId])
+}
+
+model ApplicationFile {
+  id            String          @id @default(cuid())
+  applicationId String
+  application   PostApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  name          String
+  mime          String
+  size          Int
+  data          Bytes
+}
+
 enum PaymentPlanStatus {
   ACTIVE
   /// Every part paid: the whole amount went into escrow (or is about to).

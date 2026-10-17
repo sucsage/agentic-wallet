@@ -11,6 +11,7 @@ import { fileTypesLabel } from "@/lib/file-types";
 import { SecurityCard } from "./two-factor";
 import { AddressCard } from "./address-card";
 import { PlanCard, planFromParts } from "./plan-card";
+import { PublicPostsPanel } from "./public-posts";
 import { DisplaySizeCard } from "./ui-scale";
 import { ChatMarkdown, OpenDealButton, copyText, startDeferredCopy } from "./chat-markdown";
 import { PayoutCard, type PayoutPreview } from "./payout-card";
@@ -1594,7 +1595,8 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
       setDraftBusy(false);
     }
   }
-  const [filter, setFilter] = useState<"All" | "Buying" | "Selling" | "Dispute" | "Templates">("All");
+  const [filter, setFilter] = useState<"All" | "Buying" | "Selling" | "Dispute" | "Templates" | "Public posts">("All");
+  const [postCount, setPostCount] = useState<number | null>(null);
   const [templateFrom, setTemplateFrom] = useState<TemplatePayload | null>(null);
   const [templateCount, setTemplateCount] = useState<number | null>(null);
   useEffect(() => {
@@ -1769,13 +1771,13 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
           </div>
         )}
         <div className="aw-deals-tabs" role="tablist" aria-label="Filter deals">
-          {(["All", "Buying", "Selling", "Dispute", "Templates"] as const).map((item) => (
+          {(["All", "Buying", "Selling", "Dispute", "Templates", "Public posts"] as const).map((item) => (
             <button type="button" role="tab" key={item} aria-selected={filter === item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>
-              {item} <span>{item === "Templates" ? (templateCount ?? "…") : counts[item]}</span>
+              {item} <span>{item === "Templates" ? (templateCount ?? "…") : item === "Public posts" ? (postCount ?? "·") : counts[item]}</span>
             </button>
           ))}
         </div>
-        {filter !== "Templates" && (
+        {filter !== "Templates" && filter !== "Public posts" && (
           <div className="aw-deals-filters" role="search">
             <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by deal, title or person" aria-label="Search deals" />
             <select value={stage} onChange={(e) => setStage(e.target.value as DealStage | "all")} aria-label="Status">
@@ -1818,7 +1820,17 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
           </div>
         )}
         {filter === "Templates" && <TemplatesPanel currency={currency} onCount={setTemplateCount} />}
-        <div className="aw-deals-table-wrap" hidden={filter === "Templates"}>
+        {filter === "Public posts" && (
+          <PublicPostsPanel
+            currency={currency}
+            onCount={setPostCount}
+            onChosen={(draftId, text) => {
+              setDraftMsg({ ok: true, text });
+              void refresh().then(() => setOpenDraft(draftId));
+            }}
+          />
+        )}
+        <div className="aw-deals-table-wrap" hidden={filter === "Templates" || filter === "Public posts"}>
           <table className="aw-deals-table">
             <thead>
               <tr>

@@ -431,6 +431,14 @@ The app has no instalment plan (goods first, pay later). It has split payment: t
 - **Purchase**: Confirm on the preview pays part 1 (the draft waits as DRAFT with its plan; the on-chain deal appears when it is locked). **Sale**: the offer goes on-chain as usual; the buyer starts the plan on the offer's page; the offer stays open until 7 days after the last due date, and a normal "Accept & pay" is refused while a plan runs.
 - **Ending**: "Stop & get my money back" returns everything paid; a part more than 7 days late lapses the plan the same way (the daily cron). Only a buyer with an account can split; someone paying through a private link pays in one go.
 
+### 3.19 Public links (open calls)
+
+Besides the private link (one chosen person, with a one-time code), a user can publish a public link: an open call for work or goods when they do not know who yet (`PublicPost`, `PostApplication`, `ApplicationFile`; `web/src/lib/public-posts.ts`).
+
+- **Making one**: the agent's `create_public_post` takes the same terms as a deal (milestones with prices, acceptance criteria and file formats, rules, review window) plus what applicants must send and how many days it stays open (1-60). The terms go through the same terms review. The post gets a random slug: `/apply/<slug>`.
+- **Applying** (`/apply/:slug`, `POST /api/apply/:slug`): no account; name, a contact, a proposal, up to 5 http(s) portfolio links, an optional price and up to 3 files of 4 MB. Rate-limited per IP, a hidden honeypot field drops bots, at most 200 applications, and applying again with the same contact replaces the earlier one. The page shows only the brief and the owner's display name.
+- **Owner**: Deals → Public posts lists every application with its links, files (`/api/posts/files/:id`, owner only, served like deal files) and contact (owner only). "AI: who fits best?" (`recommend`, tool `recommend_applicants`) ranks them 0-100 with a reason; applications are fenced as untrusted data, an application that tries to instruct the AI loses points, and links are not fetched (no server-side requests to strangers' URLs). "Choose" (`choose`, tool `choose_applicant`) drafts the post's deal with that person as an outsider; Confirm makes their private link and one-time code. The post is then awarded and stops taking applications; "Close" stops it any time.
+
 ## 4. The AI agent
 
 `web/src/lib/agent.ts`: an LLM tool-use loop (max 12 turns) over any Anthropic-compatible API

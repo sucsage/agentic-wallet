@@ -79,3 +79,4 @@
 .aw-guarantor-form>div{display:flex;gap:8px}
 .aw-guarantor-form small{opacity:.7}
 .aw-guarantor-err{color:#ff6b6b;margin:0}
+.inv-hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
