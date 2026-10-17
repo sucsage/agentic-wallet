@@ -42,6 +42,7 @@ model User {
   reportsMade     UserReport[]     @relation("reporter")
   reportsAbout    UserReport[]     @relation("reported")
   security        UserSecurity?
+  address       UserAddress?
 }
 
 model Session {
@@ -401,6 +402,8 @@ model DealDraft {
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
+  files          DealFile[]
+
   @@index([userId, walletAddress])
 }
 
@@ -464,6 +467,23 @@ model UserBlock {
 }
 
 /// Optional witnesses named on a deal's contract, one per side (buyer / seller).
+/// A file the deal's creator attached for the other side to see (a spec, a catalogue, a sample,
+/// a quotation). Kept with the draft, so it follows the deal; both parties (and an invited outsider
+/// through their link) can open it. At most 5 per deal, 4 MB each.
+model DealFile {
+  id        String    @id @default(cuid())
+  draftId   String
+  draft     DealDraft @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  userId    String
+  name      String
+  mime      String
+  size      Int
+  data      Bytes
+  createdAt DateTime  @default(now())
+
+  @@index([draftId])
+}
+
 model DealWitness {
   id        String   @id @default(cuid())
   escrow    String
@@ -553,6 +573,10 @@ model GroupMessage {
   userId    String?
   text      String
   steps     Json?
+  /// A file a member attached (image, PDF or text, at most about 3 MB); members can open it.
+  fileName  String?
+  fileMime  String?
+  fileData  Bytes?
   createdAt DateTime @default(now())
 
   @@index([groupId, createdAt])
@@ -1008,6 +1032,23 @@ model DealNote {
 }
 
 /// What the user chose on Profile & Privacy.
+/// The user's saved delivery address (Thai style: province, district, sub-district picked from the
+/// official list, postcode from the sub-district). Offered for parcel deals; the AI can read and
+/// change it when the user asks.
+model UserAddress {
+  userId      String   @id
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recipient   String
+  phone       String
+  /// House number, village / building, soi, road.
+  line        String
+  subdistrict String
+  district    String
+  province    String
+  postcode    String
+  updatedAt   DateTime @updatedAt
+}
+
 model UserPreference {
   userId       String   @id
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)

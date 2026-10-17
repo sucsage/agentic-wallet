@@ -14,3 +14,7 @@
  .aw-predraft-known{grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:0}
  .aw-predraft header,.aw-predraft fieldset,.aw-predraft .aw-predraft-info{margin:0}
 }
+.aw-predraft .aw-predraft-options+input{margin-top:8px;width:100%}
+.aw-predraft input+.aw-predraft-options{margin-top:8px}
+.aw-predraft-hint{display:block;margin-top:6px;color:#bbb!important}
+.aw-predraft #df-ship_to{width:100%}

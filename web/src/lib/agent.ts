@@ -12,6 +12,9 @@ import {
   transfer,
 } from "./actions";
 import { addressGaps } from "./address";
+import { GUIDE_TOPICS, appGuide } from "./app-guide";
+import { normalizeFileTypes } from "./file-types";
+import { AddressError, type SavedAddress, formatAddress, saveAddress, savedAddress } from "./thai-address";
 import { SocialError, createGroup, payoutRecipients, friendLabels, groupDetail, listFriends, listGroups, pendingVotes, proposeToGroup } from "./social";
 import { DraftError, type DraftView, createAmendDraft, createDraft, createSellDraft, discardDraft, draftView, listDrafts } from "./bank/drafts";
 import { db } from "./db";
@@ -93,8 +96,8 @@ export type PayoutPreview = {
 /** What the chat's "before I draft the deal" form shows: what is known, and what to ask for. */
 export type DealForm = {
   side: "buy" | "sell";
-  known: { counterparty?: string; kind?: string; work?: string; price?: string; milestones?: string; acceptance?: string; ship_to?: string };
-  missing: ("counterparty" | "kind" | "work" | "price" | "milestones" | "deadline" | "acceptance" | "ship_to")[];
+  known: { counterparty?: string; kind?: string; work?: string; price?: string; milestones?: string; acceptance?: string; ship_to?: string; file_types?: string; deposit?: string };
+  missing: ("counterparty" | "kind" | "work" | "price" | "milestones" | "deadline" | "acceptance" | "ship_to" | "file_types" | "deposit")[];
   /** Contact names the user can pick for the other party. */
   contacts: string[];
 };
@@ -124,7 +127,7 @@ Style: concise, professional, plain English (reply in the user's language if the
 const BANK_SYSTEM = `
 E-money wallet. Deals are paid from the user's THB / CNY wallet balance (topped up by PromptPay, card or counter service); the on-chain wallet holds no idle money (its balance is normally 0, and that is fine).
 - Two kinds of deal, keep them apart: HIRE (kind "hire") pays a person for work or a service (design, code, writing, repairs); BUY (kind "buy") pays for a thing: a digital file (delivery "file") or a physical item shipped by post (delivery "parcel", tracked with a tracking number). Say which one you drafted.
-- Before drafting, make sure you have the minimum: (1) who the other party is, (2) hire or buy, and for goods whether it is a file or a physical item, (3) what exactly is delivered, (4) the price of each milestone, (5) acceptance criteria for each milestone, (6) for a parcel, the COMPLETE delivery address: the recipient's name, phone number, house number and street, sub-district, district, province (or city) and postcode. Ask for every missing part at once, never accept a partial address, and never fill a part in yourself. If any of these is missing or unclear, do NOT call the draft tool: call ask_deal_details with what you know and what is missing (the user gets a form), or, if only one small thing is missing, ask ONE short question that lists only what is missing, and offer a sensible default where there is one (e.g. "one milestone, paid on delivery?"). Never invent prices, criteria or addresses. Due dates are optional; review_hours defaults to 72 without asking. If a tool answers NEED_INFO, ask the user exactly that.
+- Before drafting, make sure you have the minimum: (1) who the other party is, (2) hire or buy, and for goods whether it is a file or a physical item, (3) what exactly is delivered, (4) the price of each milestone, (5) acceptance criteria for each milestone, (6) for a parcel, the COMPLETE delivery address: the recipient's name, phone number, house number and street, sub-district, district, province (or city) and postcode (get_my_address has the user's saved address: offer it when they are the buyer), (7) for a file delivery, which file formats are accepted (file_types, e.g. PDF, DWG, ZIP, PNG, or the source files such as .fig / .psd / .ai), and anything else the work needs to be checked against (size, resolution, number of revisions, language, quantity). Ask for every missing part at once, in ONE numbered list, from the first reply, never accept a partial address, and never fill a part in yourself. If any of these is missing or unclear, do NOT call the draft tool: call ask_deal_details with what you know and what is missing (the user gets a form), or, if only one small thing is missing, ask ONE short question that lists only what is missing, and offer a sensible default where there is one (e.g. "one milestone, paid on delivery?"). Never invent prices, criteria or addresses. Due dates are optional; review_hours defaults to 72 without asking. If a tool answers NEED_INFO, ask the user exactly that.
 - To buy work, call propose_bank_deal. It ONLY shows a preview card: no deal or draft exists, nothing is signed or debited. The user checks it and presses Confirm; only then is the deal created and its total taken from their wallet balance and locked in the file escrow until each milestone is approved. Never say a deal was created before the user confirmed it, and never confirm for them.
 - Amounts are plain numbers in the wallet's currency (THB or CNY), e.g. 5000 means 5,000 baht. Never call them mUSDC.
 - People are referred to by name. A seller who HAS an account must be one of the payees in get_wallet_status (people the wallet may pay); if the user names such a contact who is not a payee, say they must add that person to the allow transfer list first (Contacts page). This never applies to someone without an account (new_person true): draft for them directly, no payee check (their wallet and link are made on Confirm).
@@ -133,12 +136,19 @@ E-money wallet. Deals are paid from the user's THB / CNY wallet balance (topped 
 - To SELL the user's own work, a file or an item to someone, call propose_bank_sale with the buyer's name (get_wallet_status → friends). It also only shows a preview; the user presses Confirm, which puts the offer on-chain and locks nothing. The buyer pays from their wallet balance when they accept it, and must have the user as a payee by then.
 - Changing a deal: if the user wants to change a deal that was already confirmed (in list_deals) and the other side has NOT accepted it yet (status Proposed, offered_by me), call amend_deal for THAT deal: never propose a new deal for it, which would make a second one. If it was already accepted, explain that its terms are fixed now. If the user is still looking at an unconfirmed preview (DR-…), just draft the preview again with the changes.
 - Websites and web pages: plan each design / build milestone with delivery "file" and say in its acceptance criteria that it is delivered as a single .html file (a mockup or the page itself, CSS inline). The buyer then tries it in a live browser / tablet / phone mockup on the deal page before approving. Mention this to the user.
-- Deposits (มัดจำ): when the user wants part paid up front on signing, make it the FIRST milestone with deposit true (delivery "note"): it is paid to the seller as soon as the other side accepts the offer, without a delivery. Say so in your reply.
+- Deposits (มัดจำ, เงินดาวน์, จ่ายก่อน, ค่ามัดจำตอนเซ็นสัญญา, advance, down payment, "x% up front", "pay part on signing"): the deposit is ALWAYS the FIRST milestone with deposit true and delivery "note". It is transferred to the seller AUTOMATICALLY and AT ONCE when the other side accepts the offer (signing): nobody delivers or approves it, and it is not refundable through a dispute. The remaining milestones are the installments (งวด) paid on delivery and approval.
+  · Ask for the deposit amount if the user did not give it (an amount or a percentage of the total); a percentage is of the whole price, e.g. "30% deposit on 50,000" → deposit 15,000 and 35,000 left for the other milestones. Never add a deposit the user did not ask for.
+  · Name it clearly, e.g. "Deposit on signing (30%)", and set its acceptance to "Paid automatically when the contract is signed".
+  · The milestones must add up to the agreed total: say the split in your reply, e.g. "Deposit 15,000 paid immediately on signing, then 2 installments of 17,500 on delivery".
+  · In your reply, say plainly that the deposit moves to the seller immediately when the offer is accepted, and the rest stays locked in escrow until each delivery is approved.
 - Templates: when the user asks to reuse a deal ("use my template", "same as last time", "ใช้เทมเพลต", "แบบเดิม"), call deal_templates (with the name if they gave one), then draft a NEW preview from it with propose_bank_deal / propose_bank_sale, keeping its title, summary, kind and milestones and changing only what the user asked (usually the other party, sometimes amounts or dates). A template is never a deal and has no other party: ask who it is for if the user did not say. When the user asks to save a deal for later, call save_deal_template with that deal's details.
 - Paying people from a group's or company's shared account (salaries, staff pay, reimbursements, sharing earnings) is NOT a deal: call propose_group_payment (one call for everyone being paid). It needs no payee allowlist: the signers' vote decides. Never use propose_bank_deal for a salary.
 - If the other party (seller or buyer) has no account on the app, draft as usual with their name and new_person true. Use new_person true whenever the user says the person is outside the app, has no account, or should get a link (e.g. "คนนอก", "ไม่มีบัญชี", "ไม่ได้อยู่ในแอป", "ส่งลิงก์ให้", "outsider", "no account", "send them a link"), EVEN IF a contact has the same or a similar name: never send it to that contact instead. If a name matches a contact and the user did not say which, ask once: "<name> in your contacts, or someone outside the app (they get a link)?" Do not invent a link: their private link is made only when the user presses Confirm, and it then appears on the deal's page for the user to send them.
 - Never say money moved, was paid or was locked because of a draft.
 - Groups: friends can form a group that decides purchases together. A member puts one of their purchase drafts to the group's vote; it is locked from the proposer's wallet only when enough members vote yes (the group's votes needed, at least 2), and nobody can approve it alone. Use list_groups to answer questions about groups (never guess), create_group when the user asks to form one (members must be accepted friends; ask how many yes votes are needed if they did not say), and propose_to_group to put a draft (DR-…) to a vote. You cannot vote for anyone: members vote in the app (on the group's page under Groups).
+- How-to questions ("how do I…", "where is…", "ทำยังไง", "อยู่ตรงไหน", "ใช้ยังไง", "what does … do"): call app_guide with the closest topic (more than one if needed) and answer from it as numbered steps with the exact page and button names in quotes; finish with the next thing they can do. Never invent a button, page or feature; if the guide does not cover it, say so.
+- Address: get_my_address reads the user's saved delivery address; offer it for a parcel the user buys ("ship to your saved address: …?"). set_my_address saves or changes it, only when the user asks; if it answers NOT SAVED, ask the user to correct that part.
+- Files on a deal: the creator of a deal can attach files for the other side (a spec, a catalogue, a sample, a quotation) on the deal's page under "Attached files" after confirming; say so when the user wants to send something with an offer.
 - KYC: if get_wallet_status shows identity_verified false and a deal's total is above unverified_deal_limit, you may still draft it, but tell the user they must verify their identity first (Profile page: ThaID for Thai banks, National Network Identity for Chinese banks) before "Approve & lock" will work.`;
 
 const tool = (name: string, description: string, properties: Record<string, unknown>, required: string[]) =>
@@ -230,6 +240,11 @@ const BANK_MILESTONES = {
       deposit: {
         type: "boolean",
         description: "true only for the FIRST milestone when it is a deposit (มัดจำ) paid to the seller as soon as the contract is signed (the offer accepted), with nothing to deliver",
+      },
+      file_types: {
+        type: "array",
+        items: { type: "string" },
+        description: 'For delivery "file": the file formats the buyer accepts, as extensions, e.g. [".pdf", ".dwg"] or [".zip"]. The seller cannot upload any other format. Ask the user; never guess.',
       },
     },
     required: ["name", "amount", "delivery", "due_date", "acceptance"],
@@ -385,6 +400,34 @@ const BANK_TOOLS = [
     ["nickname", "contact"],
   ),
   tool("forget_nickname", "Forget a nickname the user no longer uses.", { nickname: { type: "string" } }, ["nickname"]),
+  tool("get_my_address", "The user's saved delivery address (Profile), for parcel deals they buy. Empty if none is saved.", {}, []),
+  tool(
+    "set_my_address",
+    "Save or change the user's delivery address on their Profile, when they ask. Every part is checked against the official Thai list (province, district, sub-district, postcode).",
+    {
+      recipient: { type: "string", description: "Recipient's full name" },
+      phone: { type: "string", description: "Thai phone number, e.g. 0812345678" },
+      line: { type: "string", description: "House number, village / building, soi and road" },
+      subdistrict: { type: "string", description: "ตำบล / แขวง, without the prefix" },
+      district: { type: "string", description: "อำเภอ / เขต, without the prefix" },
+      province: { type: "string", description: "จังหวัด, without the prefix (กรุงเทพมหานคร for Bangkok)" },
+      postcode: { type: "string", description: "5 digits, or empty to fill it from the sub-district" },
+    },
+    ["recipient", "phone", "line", "subdistrict", "district", "province", "postcode"],
+  ),
+  tool(
+    "app_guide",
+    "How to use the app, step by step, with the real page and button names. Call it whenever the user asks how to do something, where something is, or what a feature does, then explain from it (never invent buttons or pages).",
+    {
+      topic: {
+        type: "string",
+        enum: [...GUIDE_TOPICS],
+        description:
+          "start (first steps, menu), money (top up, send, withdraw), buy, sell, outsider (private links), deposit, deliver, review (approve / request changes), dispute, documents (contract, payment request, receipt, tax invoice, complaint), files, templates, deals_page (filters), contacts, groups, limits, summary, profile, address, ai_chat",
+      },
+    },
+    ["topic"],
+  ),
   tool(
     "ask_deal_details",
     "When the user wants a deal but required details are missing, call this INSTEAD of asking in text: it shows the user a short form for exactly the missing details (they answer by filling it in). Pass what you already know. After calling it, reply with one short sentence and wait.",
@@ -397,10 +440,12 @@ const BANK_TOOLS = [
       milestones: { type: "string", description: "How it is paid (e.g. one payment, 2 milestones) if known, else empty" },
       acceptance: { type: "string", description: "The acceptance criteria if known, else empty" },
       ship_to: { type: "string", description: "The delivery address if known (parcels only), else empty" },
+      file_types: { type: "string", description: "Accepted file formats if known (e.g. PDF, DWG), else empty" },
+      deposit: { type: "string", description: "The deposit on signing if known (e.g. 30%), else empty" },
       missing: {
         type: "array",
-        items: { type: "string", enum: ["counterparty", "kind", "work", "price", "milestones", "deadline", "acceptance", "ship_to"] },
-        description: "Which details the user must still give",
+        items: { type: "string", enum: ["counterparty", "kind", "work", "price", "milestones", "deadline", "acceptance", "ship_to", "file_types", "deposit"] },
+        description: "Which details the user must still give. Include file_types whenever something is delivered as a file and the formats are not known yet; deposit only when the user mentioned one without its amount",
       },
     },
     ["side", "missing"],
@@ -433,6 +478,7 @@ const DEAL_FIELDS = {
         due_date: z.string().default(""),
         acceptance: z.string().max(1000).default(""),
         deposit: z.boolean().optional(),
+        file_types: z.array(z.string().max(20)).max(12).optional(),
       }),
     )
     .min(1)
@@ -445,7 +491,7 @@ type DealInput = {
   title: string;
   summary: string;
   review_hours: number;
-  milestones: { name: string; amount: number; delivery?: "file" | "parcel" | "note"; has_file?: boolean; due_date: string; acceptance: string; deposit?: boolean }[];
+  milestones: { name: string; amount: number; delivery?: "file" | "parcel" | "note"; has_file?: boolean; due_date: string; acceptance: string; deposit?: boolean; file_types?: string[] }[];
 };
 
 const DEPOSIT_ACCEPTANCE = "Deposit: paid to the seller as soon as the contract is signed (the offer accepted)";
@@ -464,6 +510,9 @@ function missingInfo(i: DealInput): string[] {
   for (const [n, m] of i.milestones.entries()) {
     if (n === 0 && m.deposit) continue;
     if (m.acceptance.trim().length < 8) missing.push(`acceptance criteria for "${m.name}" (what must be delivered for it to be approved)`);
+    if (delivery(m) === "file" && !normalizeFileTypes(m.file_types).length) {
+      missing.push(`which file formats are accepted for "${m.name}" (e.g. PDF, DWG, ZIP, PNG; the seller can upload only these)`);
+    }
   }
   if (i.milestones.some((m) => delivery(m) === "parcel")) {
     for (const gap of addressGaps(i.ship_to)) missing.push(`in the delivery address: ${gap}`);
@@ -484,6 +533,7 @@ function draftMilestones(i: DealInput, decimals: number) {
       due: m.due_date || null,
       acceptance: deposit ? m.acceptance.trim() || DEPOSIT_ACCEPTANCE : m.acceptance,
       ...(deposit ? { deposit: true } : {}),
+      ...(delivery === "file" && normalizeFileTypes(m.file_types).length ? { fileTypes: normalizeFileTypes(m.file_types) } : {}),
     };
   });
 }
@@ -558,6 +608,17 @@ const INPUTS: Record<string, z.ZodType> = {
   create_group: z.object({ name: z.string().trim().min(1).max(80), members: z.array(z.string().min(1).max(120)).min(1).max(19), votes_needed: z.number().int().min(2).max(20) }),
   propose_to_group: z.object({ group: z.string().min(1).max(80), draft_ref: z.string().min(3).max(40) }),
   remember_nickname: z.object({ nickname: z.string().trim().min(1).max(40), contact: z.string().min(1).max(120) }),
+  get_my_address: z.object({}).passthrough(),
+  set_my_address: z.object({
+    recipient: z.string().max(120),
+    phone: z.string().max(20),
+    line: z.string().max(200),
+    subdistrict: z.string().max(80),
+    district: z.string().max(80),
+    province: z.string().max(80),
+    postcode: z.string().max(10).default(""),
+  }),
+  app_guide: z.object({ topic: z.string().max(40).default("start") }),
   ask_deal_details: z
     .object({
       side: z.enum(["buy", "sell"]).default("buy"),
@@ -568,7 +629,9 @@ const INPUTS: Record<string, z.ZodType> = {
       milestones: z.string().max(120).optional(),
       acceptance: z.string().max(600).optional(),
       ship_to: z.string().max(300).optional(),
-      missing: z.array(z.enum(["counterparty", "kind", "work", "price", "milestones", "deadline", "acceptance", "ship_to"])).min(1).max(8),
+      file_types: z.string().max(120).optional(),
+      deposit: z.string().max(60).optional(),
+      missing: z.array(z.enum(["counterparty", "kind", "work", "price", "milestones", "deadline", "acceptance", "ship_to", "file_types", "deposit"])).min(1).max(10),
     })
     .passthrough(),
   forget_nickname: z.object({ nickname: z.string().trim().min(1).max(40) }),
@@ -1000,7 +1063,17 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
       };
       const form: DealForm = {
         side: input.side === "sell" ? "sell" : "buy",
-        known: { counterparty: pick("counterparty"), kind: pick("kind"), work: pick("work"), price: pick("price"), milestones: pick("milestones"), acceptance: pick("acceptance"), ship_to: pick("ship_to") },
+        known: {
+          counterparty: pick("counterparty"),
+          kind: pick("kind"),
+          work: pick("work"),
+          price: pick("price"),
+          milestones: pick("milestones"),
+          acceptance: pick("acceptance"),
+          ship_to: pick("ship_to"),
+          file_types: pick("file_types"),
+          deposit: pick("deposit"),
+        },
         missing: input.missing as DealForm["missing"],
         contacts: list.map((c) => c.name).slice(0, 12),
       };
@@ -1022,6 +1095,23 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
       });
       return { tool: name, input, summary: `REMEMBERED: "${nickname}" means ${who.name}, in every chat from now on.` };
     }
+    case "get_my_address": {
+      if (!userId) throw new Error("The address needs a signed-in user");
+      const a = await savedAddress(userId);
+      return { tool: name, input, summary: a ? `SAVED ADDRESS: ${formatAddress(a)}` : "No address saved yet (Profile & Privacy → Delivery address, or tell me and I save it)." };
+    }
+    case "set_my_address": {
+      if (!userId) throw new Error("The address needs a signed-in user");
+      try {
+        const a = await saveAddress(userId, input as unknown as SavedAddress);
+        return { tool: name, input, summary: `SAVED on the Profile: ${formatAddress(a)}` };
+      } catch (e) {
+        if (e instanceof AddressError) return { tool: name, input, summary: `NOT SAVED: ${e.message}. Ask the user to correct it.` };
+        throw e;
+      }
+    }
+    case "app_guide":
+      return { tool: name, input, summary: appGuide(String(input.topic ?? "start")) };
     case "forget_nickname": {
       if (!userId) throw new Error("Nicknames need a signed-in user");
       const nickname = String(input.nickname).trim();

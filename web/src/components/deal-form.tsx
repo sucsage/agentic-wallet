@@ -13,8 +13,8 @@ import "./pre-draft-deal.css";
 
 export type DealFormData = {
   side: "buy" | "sell";
-  known: { counterparty?: string; kind?: string; work?: string; price?: string; milestones?: string; acceptance?: string; ship_to?: string };
-  missing: ("counterparty" | "kind" | "work" | "price" | "milestones" | "deadline" | "acceptance" | "ship_to")[];
+  known: { counterparty?: string; kind?: string; work?: string; price?: string; milestones?: string; acceptance?: string; ship_to?: string; file_types?: string; deposit?: string };
+  missing: ("counterparty" | "kind" | "work" | "price" | "milestones" | "deadline" | "acceptance" | "ship_to" | "file_types" | "deposit")[];
   contacts: string[];
 };
 
@@ -27,13 +27,44 @@ const LABEL: Record<string, string> = {
   deadline: "Deadline",
   acceptance: "What counts as done?",
   ship_to: "Delivery address",
+  file_types: "Which file formats do you accept?",
+  deposit: "A deposit on signing?",
 };
-const KNOWN: Record<string, string> = { counterparty: "With", kind: "Type", work: "Work", price: "Price", milestones: "Paid in", acceptance: "Done when", ship_to: "Ship to" };
+const KNOWN: Record<string, string> = {
+  counterparty: "With",
+  kind: "Type",
+  work: "Work",
+  price: "Price",
+  milestones: "Paid in",
+  acceptance: "Done when",
+  ship_to: "Ship to",
+  file_types: "Files",
+  deposit: "Deposit",
+};
+const FORMATS = ["PDF", "PNG", "JPG", "SVG", "AI", "PSD", "FIG", "DWG", "ZIP", "DOCX", "XLSX", "MP4", "HTML"];
 
 export function DealFormCard({ form, currency, disabled, onSubmit }: { form: DealFormData; currency: "THB" | "CNY"; disabled?: boolean; onSubmit: (text: string) => void }) {
   const [v, setV] = useState<Record<string, string>>({});
   const [sent, setSent] = useState(false);
   const set = (k: string, value: string) => setV((cur) => ({ ...cur, [k]: value }));
+  const listOf = (x: string | undefined) => (x ?? "").split(/,\s*/).filter(Boolean);
+  const formats = listOf(v.file_types);
+  const toggleFormat = (f: string) =>
+    setV((cur) => {
+      const now = listOf(cur.file_types);
+      return { ...cur, file_types: (now.includes(f) ? now.filter((x) => x !== f) : [...now, f]).join(", ") };
+    });
+  const [addressNote, setAddressNote] = useState<string | null>(null);
+  async function fillSavedAddress() {
+    setAddressNote(null);
+    try {
+      const r = await fetch("/api/profile/address", { cache: "no-store" }).then((x) => x.json());
+      if (r?.text) set("ship_to", r.text);
+      else setAddressNote("No address saved yet: add one on Profile & Privacy, or type it here.");
+    } catch {
+      setAddressNote("Could not read your saved address.");
+    }
+  }
   const missing = form.missing.filter((k) => !(v[k] ?? "").trim()).length;
   const sign = currency === "THB" ? "฿" : "¥";
   const choice = (k: string, options: [string, string][]) => (
@@ -114,7 +145,36 @@ export function DealFormCard({ form, currency, disabled, onSubmit }: { form: Dea
               ["30 days", "30 days"],
             ])}
           {k === "acceptance" && <input id={`df-${k}`} maxLength={600} placeholder="e.g. 3 concepts + final AI/PNG/SVG files" value={v[k] ?? ""} onChange={(e) => set(k, e.target.value)} />}
-          {k === "ship_to" && <input id={`df-${k}`} maxLength={300} placeholder="Name, number, road, district, province, postcode" value={v[k] ?? ""} onChange={(e) => set(k, e.target.value)} />}
+          {k === "ship_to" && (
+            <>
+              <input id={`df-${k}`} maxLength={300} placeholder="Name, phone, number, road, sub-district, district, province, postcode" value={v[k] ?? ""} onChange={(e) => set(k, e.target.value)} />
+              <div className="aw-predraft-options">
+                <button type="button" onClick={() => void fillSavedAddress()}>
+                  Use my saved address
+                </button>
+              </div>
+              {addressNote && <small className="aw-predraft-hint">{addressNote}</small>}
+            </>
+          )}
+          {k === "file_types" && (
+            <>
+              <div className="aw-predraft-options">
+                {FORMATS.map((f) => (
+                  <button type="button" key={f} aria-pressed={formats.includes(f)} onClick={() => toggleFormat(f)}>
+                    {f}
+                  </button>
+                ))}
+              </div>
+              <input id={`df-${k}`} maxLength={120} placeholder="Or type them, e.g. PDF, DWG" value={v[k] ?? ""} onChange={(e) => set(k, e.target.value)} />
+            </>
+          )}
+          {k === "deposit" &&
+            choice(k, [
+              ["no deposit", "No deposit"],
+              ["20% deposit paid on signing", "20% on signing"],
+              ["30% deposit paid on signing", "30% on signing"],
+              ["50% deposit paid on signing", "50% on signing"],
+            ])}
         </fieldset>
       ))}
       <p className="aw-predraft-info">

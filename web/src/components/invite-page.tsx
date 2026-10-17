@@ -4,7 +4,10 @@ import jsQR from "jsqr";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
+import { acceptAttr, fileTypeOk, fileTypesLabel } from "@/lib/file-types";
+
 import { DisputeFlow, type DisputeFlowData, isStagedDispute } from "./dispute-flow";
+import { DealFileLinks } from "./deal-file-links";
 import "./invite.css";
 
 /**
@@ -22,6 +25,7 @@ type Milestone = {
   status: string;
   deadline: number;
   canDeliver: boolean;
+  fileTypes?: string[];
   delivery: { note: string; fileName: string | null; sha256: string } | null;
   dispute: ({ reason: string; status: string; decision: string | null; confidence: number | null; rationale: string | null; txHash: string | null } & Partial<DisputeFlowData>) | null;
 };
@@ -34,6 +38,7 @@ type Deal = {
   title: string;
   summary: string | null;
   canAccept: boolean;
+  files?: { id: string; name: string; mime: string; size: number }[];
   milestones: Milestone[];
   notes?: { kind: string; index: number | null; text: string; at: string }[];
 };
@@ -143,14 +148,21 @@ export function InvitePage({ token }: { token: string }) {
     return () => clearInterval(t);
   }, [load]);
 
-  // Someone with an account (signed in here) goes straight into the app: the deal is linked to
-  // their account and listed on their Deals page. "?stay=1" (the link from that page) stays here.
+  // Someone with an account (signed in here) goes into the app: the deal is linked to their account
+  // and listed on their Deals page. An offer waiting for them is accepted here first (the button
+  // below), then the app opens. "?stay=1" (the link from that page) stays here.
   const linkedToYou = Boolean(view?.linked?.toYou);
+  const offerWaiting = Boolean(view?.deals.some((d) => d.canAccept));
+  const stay = typeof window !== "undefined" && Boolean(new URLSearchParams(window.location.search).get("stay"));
   useEffect(() => {
-    if (!linkedToYou || new URLSearchParams(window.location.search).get("stay")) return;
+    if (!linkedToYou || offerWaiting || stay) return;
     const t = setTimeout(() => window.location.replace("/deals?from=link"), 1200);
     return () => clearTimeout(t);
-  }, [linkedToYou]);
+  }, [linkedToYou, offerWaiting, stay]);
+  // Accepted from here while linked: open the app with the deal in it.
+  const accepted = () => {
+    if (linkedToYou && !stay) setTimeout(() => window.location.replace("/deals?from=link"), 1500);
+  };
 
   const money = (amount: string | number, minor = false) => {
     const n = minor ? Number(amount) / 100 : Number(amount);
@@ -179,7 +191,13 @@ export function InvitePage({ token }: { token: string }) {
         {view?.linked?.toYou && (
           <section className="inv-card inv-linked">
             <b>✓ Linked to your Agentic Wallet account</b>
-            {typeof window !== "undefined" && !new URLSearchParams(window.location.search).get("stay") && <p className="inv-muted">Opening your account…</p>}
+            {offerWaiting ? (
+              <p className="inv-muted">
+                <b>Accept the offer below first</b>: then the app opens with this deal in it.
+              </p>
+            ) : (
+              !stay && <p className="inv-muted">Opening your account…</p>
+            )}
             <p>Earnings go straight into your wallet, {view.buyerName} is now in your contacts, and this deal is listed on your Deals page. Keep working here, or open the app.</p>
             <div className="inv-actions">
               <Link className="inv-linkbtn" href="/deals">
@@ -220,7 +238,7 @@ export function InvitePage({ token }: { token: string }) {
 
             {view.deals.length === 0 && <p className="inv-muted">No offer yet. The buyer&apos;s offer appears here as soon as they lock the money.</p>}
             {view.deals.map((d) => (
-              <DealCard key={d.id} base={base} deal={d} money={money} onDone={load} />
+              <DealCard key={d.id} base={base} deal={d} buyerName={view.buyerName} money={money} onDone={load} onAccepted={accepted} />
             ))}
             <p className="inv-foot">
               This link is your key to these deals; keep it private. It expires on {new Date(view.expiresAt).toLocaleDateString()}. Your
@@ -233,7 +251,21 @@ export function InvitePage({ token }: { token: string }) {
   );
 }
 
-function DealCard({ base, deal, money, onDone }: { base: string; deal: Deal; money: (a: string) => string; onDone: () => Promise<void> }) {
+function DealCard({
+  base,
+  deal,
+  buyerName,
+  money,
+  onDone,
+  onAccepted,
+}: {
+  base: string;
+  deal: Deal;
+  buyerName: string;
+  money: (a: string) => string;
+  onDone: () => Promise<void>;
+  onAccepted?: () => void;
+}) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   async function accept() {
@@ -246,6 +278,10 @@ function DealCard({ base, deal, money, onDone }: { base: string; deal: Deal; mon
         body: JSON.stringify({ action: "accept", dealId: deal.id }),
       });
       if (r.outcome.status !== "success") setMsg(r.outcome.error ?? r.outcome.status);
+      else {
+        setMsg("Accepted ✓ The deal is signed.");
+        onAccepted?.();
+      }
       await onDone();
     } catch (e) {
       setMsg((e as Error).message);
@@ -263,6 +299,7 @@ function DealCard({ base, deal, money, onDone }: { base: string; deal: Deal; mon
         {deal.title} · {money(deal.total)}
       </h2>
       {deal.summary && <p className="inv-muted">{deal.summary}</p>}
+      <DealFileLinks base={base} dealId={deal.id} files={deal.files ?? []} from={buyerName} />
       {deal.notes
         ?.filter((n) => n.kind === "REVISION")
         .map((n, i) => (
@@ -281,7 +318,7 @@ function DealCard({ base, deal, money, onDone }: { base: string; deal: Deal; mon
           </button>
         </div>
       )}
-      {msg && <p className="inv-error">{msg}</p>}
+      {msg && <p className={msg.startsWith("Accepted") ? "inv-ok" : "inv-error"}>{msg}</p>}
       {deal.milestones.map((m) => (
         <div className="inv-ms" key={m.index}>
           <div className="inv-ms-head">
@@ -334,14 +371,28 @@ function DealCard({ base, deal, money, onDone }: { base: string; deal: Deal; mon
               )}
             </div>
           )}
-          {m.canDeliver && <Deliver base={base} dealId={deal.id} index={m.index} again={Boolean(m.delivery)} onDone={onDone} />}
+          {m.canDeliver && <Deliver base={base} dealId={deal.id} index={m.index} again={Boolean(m.delivery)} fileTypes={m.fileTypes} onDone={onDone} />}
         </div>
       ))}
     </section>
   );
 }
 
-function Deliver({ base, dealId, index, again, onDone }: { base: string; dealId: number; index: number; again: boolean; onDone: () => Promise<void> }) {
+function Deliver({
+  base,
+  dealId,
+  index,
+  again,
+  fileTypes,
+  onDone,
+}: {
+  base: string;
+  dealId: number;
+  index: number;
+  again: boolean;
+  fileTypes?: string[];
+  onDone: () => Promise<void>;
+}) {
   const [note, setNote] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -378,8 +429,24 @@ function Deliver({ base, dealId, index, again, onDone }: { base: string; dealId:
         <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} maxLength={4000} required />
       </label>
       <label>
-        <span>File (optional, max 4 MB · encrypted; the buyer unlocks it after approving)</span>
-        <input type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+        <span>
+          File ({fileTypes?.length ? <b>{fileTypesLabel(fileTypes)} only, as agreed</b> : "optional"}, max 4 MB · encrypted; the buyer unlocks it after approving)
+        </span>
+        <input
+          type="file"
+          accept={acceptAttr(fileTypes)}
+          onChange={(e) => {
+            const f = e.target.files?.[0] ?? null;
+            if (f && !fileTypeOk(f.name, fileTypes)) {
+              setMsg({ ok: false, text: `Only ${fileTypesLabel(fileTypes)} files are accepted for this milestone.` });
+              e.target.value = "";
+              setFile(null);
+              return;
+            }
+            setMsg(null);
+            setFile(f);
+          }}
+        />
       </label>
       <button className="inv-btn" type="submit" disabled={busy || !note.trim()}>
         {busy ? "Encrypting & recording…" : "Submit delivery"}

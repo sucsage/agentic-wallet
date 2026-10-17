@@ -8,6 +8,8 @@ import type { DraftView } from "@/lib/bank/drafts";
 import { useLang } from "@/lib/i18n";
 
 import { api, useAppData } from "./app-data";
+import { ATTACH_ACCEPT, type ChatAttachment, fileToChatAttachment } from "./chat-attach";
+import { DropHint, useFileDrop } from "./file-drop";
 import { ChatMarkdown, OpenDealButton } from "./chat-markdown";
 import { DraftCard } from "./mockup-live";
 import { PayoutCard, type PayoutPreview } from "./payout-card";
@@ -15,7 +17,16 @@ import { Button, Loading } from "./mockup-ui";
 import "./group-chat.css";
 
 type Step = { tool: string; summary: string; open?: { dealId: number; title: string }; payout?: PayoutPreview; draft?: DraftView; form?: { missing: string[] }; wallet: string; mine: boolean; inVote?: boolean };
-type Message = { id: string; ai: boolean; mine: boolean; author: string; text: string; steps: Step[]; at: string };
+type Message = {
+  id: string;
+  ai: boolean;
+  mine: boolean;
+  author: string;
+  text: string;
+  file?: { name: string; mime: string; url: string } | null;
+  steps: Step[];
+  at: string;
+};
 
 const time = (iso: string) => new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 
@@ -35,7 +46,21 @@ export function GroupChat({ groupId, threshold, shared }: { groupId: string; thr
   const [thinking, setThinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const list = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [attached, setAttached] = useState<{ att: ChatAttachment; url: string | null } | null>(null);
   const currency = me?.bank.currency ?? "THB";
+
+  async function pickFile(file: File | null | undefined) {
+    if (!file) return;
+    setError(null);
+    try {
+      const att = await fileToChatAttachment(file);
+      setAttached({ att, url: att.kind === "image" ? `data:${att.mediaType};base64,${att.base64}` : null });
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+  const drop = useFileDrop((f) => void pickFile(f), !busy);
 
   const load = useCallback(async () => {
     try {
@@ -60,15 +85,24 @@ export function GroupChat({ groupId, threshold, shared }: { groupId: string; thr
   async function post(e: React.FormEvent) {
     e.preventDefault();
     const body = text.trim();
-    if (!body) return;
+    const att = attached;
+    if (!body && !att) return;
     setBusy(true);
     setError(null);
     setText("");
+    setAttached(null);
     // Show the message at once; the AI's answer follows.
-    setMessages((m) => [...(m ?? []), { id: `local-${Date.now()}`, ai: false, mine: true, author: me?.user.name ?? "You", text: body, steps: [], at: new Date().toISOString() }]);
+    setMessages((m) => [
+      ...(m ?? []),
+      { id: `local-${Date.now()}`, ai: false, mine: true, author: me?.user.name ?? "You", text: [body, att ? `📎 ${att.att.name}` : ""].filter(Boolean).join("\n"), steps: [], at: new Date().toISOString() },
+    ]);
     if (askAi) setThinking(true);
     try {
-      await api(`/api/groups/${groupId}/chat`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: body, askAi, lang }) });
+      await api(`/api/groups/${groupId}/chat`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text: body, askAi, lang, attachment: att?.att }),
+      });
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -93,7 +127,8 @@ export function GroupChat({ groupId, threshold, shared }: { groupId: string; thr
   }
 
   return (
-    <section className="aw-gchat">
+    <section className="aw-gchat aw-drop-zone" {...drop.bind}>
+      {drop.dragging && <DropHint />}
       <header>
         <div>
           <h3>Group chat</h3>
@@ -111,7 +146,18 @@ export function GroupChat({ groupId, threshold, shared }: { groupId: string; thr
               {m.ai ? "✦ AI agent" : m.mine ? "You" : m.author} · {time(m.at)}
             </small>
             <div className="aw-gchat-bubble">
-              {m.ai ? <ChatMarkdown text={m.text} /> : <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>}
+              {m.ai ? <ChatMarkdown text={m.text} /> : <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.file ? m.text.replace(/\n?📎 [^\n]*$/, "") : m.text}</ReactMarkdown>}
+              {m.file &&
+                (m.file.mime.startsWith("image/") ? (
+                  <a className="aw-gchat-file image" href={m.file.url} target="_blank" rel="noopener">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={m.file.url} alt={m.file.name} loading="lazy" />
+                  </a>
+                ) : (
+                  <a className="aw-gchat-file" href={m.file.url} download={m.file.name}>
+                    📎 {m.file.name}
+                  </a>
+                ))}
             </div>
             {m.steps.map((s, i) =>
               s.open ? (
@@ -164,10 +210,41 @@ export function GroupChat({ groupId, threshold, shared }: { groupId: string; thr
       </div>
       {error && <p className="aw-bank-error">{error}</p>}
       <form className="aw-gchat-form" onSubmit={post}>
+        {attached && (
+          <div className="aw-ai-attached">
+            {attached.url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={attached.url} alt="" />
+            ) : (
+              <span aria-hidden>📎</span>
+            )}
+            <b>{attached.att.name}</b>
+            <button type="button" aria-label="Remove attachment" onClick={() => setAttached(null)}>
+              ×
+            </button>
+          </div>
+        )}
+        <input
+          ref={fileRef}
+          type="file"
+          accept={ATTACH_ACCEPT}
+          hidden
+          onChange={(e) => {
+            void pickFile(e.target.files?.[0]);
+            e.target.value = "";
+          }}
+        />
         <textarea
+          onPaste={(e) => {
+            const f = [...e.clipboardData.files][0];
+            if (f) {
+              e.preventDefault();
+              void pickFile(f);
+            }
+          }}
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={askAi ? "Ask the AI or write to the group…" : "Write to the group…"}
+          placeholder={askAi ? "Ask the AI or write to the group… (drop or paste a file to attach it)" : "Write to the group…"}
           rows={2}
           maxLength={2000}
           onKeyDown={(e) => {
@@ -178,10 +255,13 @@ export function GroupChat({ groupId, threshold, shared }: { groupId: string; thr
           }}
         />
         <div>
+          <button type="button" className="aw-gchat-attach" aria-label="Attach an image, PDF or text file" title="Attach an image, PDF or text file" disabled={busy} onClick={() => fileRef.current?.click()}>
+            ＋
+          </button>
           <label className="aw-gchat-ai">
             <input type="checkbox" checked={askAi} onChange={(e) => setAskAi(e.target.checked)} /> Ask AI
           </label>
-          <Button type="submit" disabled={busy || !text.trim()}>
+          <Button type="submit" disabled={busy || (!text.trim() && !attached)}>
             {busy ? "…" : "Send"}
           </Button>
         </div>

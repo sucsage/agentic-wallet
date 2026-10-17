@@ -1,15 +1,19 @@
 import "server-only";
 
 /**
- * Printable documents for a deal: the contract, a receipt, a payment request (ใบเบิกเงิน) and a
- * tax invoice. Each is one self-contained HTML page (print it, or "Save as PDF" in the browser's
+ * Printable documents for a deal: the contract, a receipt, a payment request (ใบเบิกเงิน), a
+ * tax invoice and, when something went wrong, a draft complaint with its evidence (เอกสารฟ้องร้อง). Each is one self-contained HTML page (print it, or "Save as PDF" in the browser's
  * print dialog). They are built from the terms both sides saw (their sha256 is on-chain) and the
  * milestone states on-chain. Demo: not legal or tax documents.
  */
 
-export type DocType = "contract" | "receipt" | "request" | "tax";
+export type DocType = "contract" | "receipt" | "request" | "tax" | "claim";
 
-export const DOC_TYPES: DocType[] = ["contract", "receipt", "request", "tax"];
+export const DOC_TYPES: DocType[] = ["contract", "receipt", "request", "tax", "claim"];
+
+/** Milestones still owed to the seller: not paid, refunded or split yet. */
+const UNPAID = ["Pending", "Delivered", "Approved", "KeyReleased", "Disputed"];
+const READY = ["Delivered", "Approved", "KeyReleased"];
 
 export type DocInput = {
   dealId: number;
@@ -26,7 +30,22 @@ export type DocInput = {
   buyer: { name: string; taxId?: string | null };
   seller: { name: string; taxId?: string | null };
   witnesses: { side: string; name: string; contact: string }[];
-  milestones: { index: number; name: string; acceptance: string | null; amount: number; status: string; deadline: number; deposit: boolean; paidToSeller: number; deliveredAt: string | null }[];
+  milestones: {
+    index: number;
+    name: string;
+    acceptance: string | null;
+    amount: number;
+    status: string;
+    deadline: number;
+    deposit: boolean;
+    paidToSeller: number;
+    deliveredAt: string | null;
+    /** What was delivered (the evidence), for the complaint. */
+    delivery?: { note: string; fileName: string | null; sha256: string } | null;
+  }[];
+  /** Who prints the document: the complaint is written from their side. */
+  viewer?: "buyer" | "seller";
+  disputes?: { index: number; phase: string; reason: string; status: string; stage: string; decision: string | null; rationale: string | null; sellerStatement: string | null; at: string; txHash: string | null }[];
 };
 
 const TITLES: Record<DocType, [string, string]> = {
@@ -34,6 +53,7 @@ const TITLES: Record<DocType, [string, string]> = {
   receipt: ["ใบเสร็จรับเงิน", "Receipt"],
   request: ["ใบเบิกเงิน / ใบแจ้งขอรับเงิน", "Payment request"],
   tax: ["ใบกำกับภาษี", "Tax invoice"],
+  claim: ["คำร้องเรียน / ร่างคำฟ้อง พร้อมพยานหลักฐาน", "Draft complaint and evidence file"],
 };
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
@@ -44,15 +64,82 @@ function money(n: number, c: "THB" | "CNY") {
 }
 
 /** Which documents make sense for this deal now (the UI shows only these). */
-export function availableDocs(d: Pick<DocInput, "status" | "milestones">): DocType[] {
+export function availableDocs(d: Pick<DocInput, "status" | "milestones" | "disputes">): DocType[] {
   const paid = d.milestones.some((m) => m.paidToSeller > 0);
-  const payable = d.milestones.some((m) => ["Delivered", "Approved", "KeyReleased"].includes(m.status));
-  return ["contract", ...(payable ? (["request"] as const) : []), ...(paid ? (["receipt", "tax"] as const) : [])];
+  const owed = d.status !== "Cancelled" && d.milestones.some((m) => UNPAID.includes(m.status));
+  return ["contract", ...(owed ? (["request"] as const) : []), ...(paid ? (["receipt", "tax"] as const) : []), ...(d.status !== "Proposed" && d.status !== "Cancelled" ? (["claim"] as const) : [])];
+}
+
+/** What went wrong in a deal, in plain words: disputes, refunds, splits and missed deadlines. Empty: nothing to complain about. */
+export function claimGrounds(d: Pick<DocInput, "milestones" | "disputes">, now = Date.now() / 1000): string[] {
+  const out: string[] = [];
+  for (const m of d.milestones) {
+    const n = `Milestone ${m.index + 1} "${m.name}"`;
+    if (m.status === "Disputed") out.push(`${n} is in dispute.`);
+    else if (m.status === "Refunded") out.push(`${n} was refunded to the buyer after a dispute or a missed deadline.`);
+    else if (m.status === "Split") out.push(`${n} was split between the parties by the arbiter.`);
+    else if (m.status === "Pending" && m.deadline && m.deadline < now) out.push(`${n} was not delivered by its deadline.`);
+  }
+  for (const x of d.disputes ?? []) if (!d.milestones.some((m) => m.index === x.index && ["Disputed", "Refunded", "Split"].includes(m.status))) out.push(`Milestone ${x.index + 1}: a dispute was raised (${x.status.toLowerCase()}).`);
+  return out;
+}
+
+/** The complaint: who, what was agreed, what happened (from the chain and the app's records), the evidence and what is claimed. */
+function claimBody(d: DocInput, parties: string): string {
+  const c = d.currency;
+  const hire = d.kind === "HIRE";
+  const me = d.viewer ?? "buyer";
+  const claimant = me === "buyer" ? d.buyer : d.seller;
+  const respondent = me === "buyer" ? d.seller : d.buyer;
+  const grounds = claimGrounds(d);
+  const total = d.milestones.reduce((t, m) => t + m.amount, 0);
+  const paid = d.milestones.reduce((t, m) => t + m.paidToSeller, 0);
+  const refunded = d.milestones.filter((m) => m.status === "Refunded").reduce((t, m) => t + m.amount, 0);
+  const atStake = d.milestones.filter((m) => ["Disputed", "Pending", "Delivered", "Approved", "KeyReleased"].includes(m.status)).reduce((t, m) => t + m.amount, 0);
+  const events: { at: string; text: string }[] = [];
+  if (d.createdAt) events.push({ at: d.createdAt, text: `The deal's terms were written in the app (terms sha256 ${esc((d.termsHash ?? "—").slice(0, 16))}…).` });
+  for (const m of d.milestones) {
+    if (m.deliveredAt && m.deposit) events.push({ at: m.deliveredAt, text: `The deposit (milestone ${m.index + 1}) was paid to the ${hire ? "contractor" : "seller"} when the contract was signed.` });
+    else if (m.deliveredAt) events.push({ at: m.deliveredAt, text: `Milestone ${m.index + 1} delivered by the ${hire ? "contractor" : "seller"}${m.delivery?.fileName ? `: file "${esc(m.delivery.fileName)}"` : ""} (sha256 ${esc((m.delivery?.sha256 ?? "").slice(0, 16))}… recorded on-chain).` });
+  }
+  for (const x of d.disputes ?? []) {
+    events.push({ at: x.at, text: `Dispute on milestone ${x.index + 1} (${x.phase === "key" ? "the file key" : "the work"}): “${esc(x.reason)}”. Stage ${esc(x.stage.toLowerCase())}, status ${esc(x.status.toLowerCase())}${x.decision ? `, decided for the ${x.decision}` : ""}${x.rationale ? `: ${esc(x.rationale)}` : ""}${x.txHash ? ` (tx ${esc(x.txHash.slice(0, 18))}…)` : ""}.` });
+  }
+  events.sort((a, b) => +new Date(a.at) - +new Date(b.at));
+  const ms = d.milestones
+    .map((m) => `<tr><td>${m.index + 1}</td><td><b>${esc(m.name)}</b><br><small>${esc(m.acceptance ?? "")}</small></td><td>${m.deadline ? date(new Date(m.deadline * 1000)) : "—"}</td><td>${esc(m.status)}</td><td class="r">${money(m.amount, c)}</td></tr>`)
+    .join("");
+  const evidence = [
+    `The contract (CT-${String(d.dealId).padStart(5, "0")}) and its terms fingerprint: sha256 <code>${esc(d.termsHash ?? "—")}</code>.`,
+    `The escrow smart contract${d.escrow ? ` <code>${esc(d.escrow)}</code>` : ""}, deal D-${d.dealId}: every offer, acceptance, delivery, approval, dispute and payment is a transaction on the chain (see the app's explorer).`,
+    ...d.milestones.filter((m) => m.delivery && !m.deposit).map((m) => `Delivery of milestone ${m.index + 1}: ${m.delivery!.fileName ? `file "${esc(m.delivery!.fileName)}", ` : ""}sha256 <code>${esc(m.delivery!.sha256)}</code>${m.delivery!.note ? `; seller's note: “${esc(m.delivery!.note.slice(0, 300))}”` : ""}.`),
+    ...(d.disputes ?? []).filter((x) => x.sellerStatement).map((x) => `The ${hire ? "contractor" : "seller"}'s statement in the dispute on milestone ${x.index + 1}: “${esc(x.sellerStatement!.slice(0, 400))}”.`),
+    "Chat messages, emails and screenshots with the other party (attach printouts).",
+  ];
+  const line = '<span class="blank"></span>';
+  return `
+    ${parties.replace(hire ? "ผู้รับจ้าง · Contractor" : "ผู้ขาย · Seller", `${hire ? "ผู้รับจ้าง · Contractor" : "ผู้ขาย · Seller"}${me === "seller" ? " (ผู้ร้อง · claimant)" : " (ผู้ถูกร้อง · respondent)"}`).replace(hire ? "ผู้ว่าจ้าง · Client" : "ผู้ซื้อ · Buyer", `${hire ? "ผู้ว่าจ้าง · Client" : "ผู้ซื้อ · Buyer"}${me === "buyer" ? " (ผู้ร้อง · claimant)" : " (ผู้ถูกร้อง · respondent)"}`)}
+    <p class="note">For a lawyer, the police (online fraud: call 1441 or report at thaipoliceonline.go.th) or a court (small claims and consumer cases at the district court, ศาลแขวง). Fill in the blanks, sign, and attach the evidence. Demo: not legal advice.</p>
+    <h2>1. ข้อเท็จจริง · What was agreed</h2>
+    <p><b>${esc(claimant.name)}</b> and <b>${esc(respondent.name)}</b> agreed on “${esc(d.title)}” (deal D-${d.dealId}), total <b>${money(total, c)}</b>, held in escrow and paid milestone by milestone after approval.</p>
+    ${d.summary ? `<p>${esc(d.summary)}</p>` : ""}
+    <table><thead><tr><th>#</th><th>Milestone and acceptance</th><th>Due</th><th>Status now</th><th class="r">Amount</th></tr></thead><tbody>${ms}</tbody>
+    <tfoot><tr><td colspan="4">Paid to the ${hire ? "contractor" : "seller"} · refunded to the buyer</td><td class="r">${money(paid, c)} · ${money(refunded, c)}</td></tr></tfoot></table>
+    <h2>2. เหตุแห่งการร้อง · What went wrong</h2>
+    ${grounds.length ? `<ul>${grounds.map((g) => `<li>${esc(g)}</li>`).join("")}</ul>` : "<p>No dispute, refund or missed deadline is recorded for this deal.</p>"}
+    <p>In my own words: ${line}${line}${line}</p>
+    <h2>3. ลำดับเหตุการณ์ · Timeline (from the app and the chain)</h2>
+    ${events.length ? `<table><tbody>${events.map((e) => `<tr><td style="width:120px">${date(new Date(e.at))}</td><td>${e.text}</td></tr>`).join("")}</tbody></table>` : "<p>—</p>"}
+    <h2>4. พยานหลักฐาน · Evidence</h2>
+    <ol class="terms">${evidence.map((e) => `<li>${e}</li>`).join("")}</ol>
+    <h2>5. คำขอ · What I ask for</h2>
+    <p>Amount still at stake in escrow: <b>${money(atStake, c)}</b>. I ask that ${esc(respondent.name)} ${me === "buyer" ? (hire ? "deliver the work as agreed or return" : "deliver the item as agreed or return") : "pay"} ${line} (amount: ${line}), with interest and costs as the law allows.</p>
+    <section class="signs"><div class="sign"><div class="line"></div><b>${esc(claimant.name)}</b><small>ผู้ร้อง · Claimant · date ${line}</small></div><div class="sign"><div class="line"></div><b>${line}</b><small>พยาน · Witness</small></div></section>`;
 }
 
 export function renderDealDocument(type: DocType, d: DocInput): string {
   const [th, en] = TITLES[type];
-  const no = `${{ contract: "CT", receipt: "RC", request: "PR", tax: "TX" }[type]}-${String(d.dealId).padStart(5, "0")}`;
+  const no = `${{ contract: "CT", receipt: "RC", request: "PR", tax: "TX", claim: "CL" }[type]}-${String(d.dealId).padStart(5, "0")}`;
   const c = d.currency;
   const hire = d.kind === "HIRE";
   const sellerRole = hire ? "ผู้รับจ้าง · Contractor" : "ผู้ขาย · Seller";
@@ -66,7 +153,9 @@ export function renderDealDocument(type: DocType, d: DocInput): string {
   </section>`;
 
   let body = "";
-  if (type === "contract") {
+  if (type === "claim") {
+    body = claimBody(d, parties);
+  } else if (type === "contract") {
     const rows = d.milestones
       .map(
         (m) => `<tr><td>${m.index + 1}</td><td><b>${esc(m.name)}</b>${m.deposit ? " <em>(มัดจำ · deposit, paid on signing)</em>" : ""}<br><small>${esc(m.acceptance ?? "")}</small></td><td>${m.deadline ? date(new Date(m.deadline * 1000)) : "—"}</td><td class="r">${money(m.amount, c)}</td></tr>`,
@@ -93,9 +182,13 @@ export function renderDealDocument(type: DocType, d: DocInput): string {
     <p class="status">Status on-chain: <b>${esc(d.status)}</b>${d.status === "Proposed" ? " (not signed yet: waiting for the other side to accept)" : ""}</p>
     <section class="signs">${sign(buyerRole, d.buyer.name, witness("buyer"))}${sign(sellerRole, d.seller.name, witness("seller"))}</section>`;
   } else {
+    // A payment request lists what was delivered and waits for approval; before any delivery, the
+    // next milestone owed (requested on delivery).
+    const ready = d.milestones.filter((m) => READY.includes(m.status));
+    const next = d.milestones.find((m) => UNPAID.includes(m.status));
     const lines =
       type === "request"
-        ? d.milestones.filter((m) => ["Delivered", "Approved", "KeyReleased"].includes(m.status)).map((m) => ({ m, amount: m.amount }))
+        ? (ready.length ? ready : next ? [next] : []).map((m) => ({ m, amount: m.amount }))
         : d.milestones.filter((m) => m.paidToSeller > 0).map((m) => ({ m, amount: m.paidToSeller }));
     const total = lines.reduce((t, l) => t + l.amount, 0);
     // Amounts in the app include VAT where the seller is VAT-registered: 7 / 107 of the total.
@@ -103,7 +196,7 @@ export function renderDealDocument(type: DocType, d: DocInput): string {
     const rows = lines
       .map(
         ({ m, amount }) =>
-          `<tr><td>${m.index + 1}</td><td><b>${esc(m.name)}</b><br><small>${type === "request" ? `Delivered${m.deliveredAt ? ` ${date(new Date(m.deliveredAt))}` : ""} · ${esc(m.status)}` : `Paid from escrow · ${esc(m.status)}`}</small></td><td class="r">${money(type === "tax" ? amount - Math.round((amount * 7) / 107 * 100) / 100 : amount, c)}</td></tr>`,
+          `<tr><td>${m.index + 1}</td><td><b>${esc(m.name)}</b><br><small>${type === "request" ? (READY.includes(m.status) ? `Delivered${m.deliveredAt ? ` ${date(new Date(m.deliveredAt))}` : ""} · ${esc(m.status)}` : `Payable on delivery${m.deadline ? ` · due ${date(new Date(m.deadline * 1000))}` : ""} · ${esc(m.status)}`) : `Paid from escrow · ${esc(m.status)}`}</small></td><td class="r">${money(type === "tax" ? amount - Math.round((amount * 7) / 107 * 100) / 100 : amount, c)}</td></tr>`,
       )
       .join("");
     body = `
@@ -143,6 +236,8 @@ td small{color:#666}.r{text-align:right;white-space:nowrap}tfoot td{font-weight:
 .terms{font-size:12.5px;color:#333;padding-left:18px}code{font-size:10.5px;word-break:break-all}
 .status{font-size:12.5px}
 .signs{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:36px}.sign .line{border-bottom:1px solid #111;height:42px;margin-top:18px}
+.note{font-size:12px;color:#444;background:#fff8e6;border:1px solid #f0d58c;border-radius:8px;padding:8px 10px}
+.blank{display:inline-block;min-width:180px;border-bottom:1px dotted #555;margin:0 4px;height:1.2em}
 footer{margin-top:28px;font-size:10.5px;color:#777;border-top:1px solid #ddd;padding-top:6px}
 @media print{body{background:#fff}.bar{display:none}.page{margin:0;box-shadow:none;width:auto;min-height:0}}
 </style></head><body>
@@ -151,6 +246,6 @@ footer{margin-top:28px;font-size:10.5px;color:#777;border-top:1px solid #ddd;pad
 <span class="demo">DEMO · TEST MONEY</span>
 <header><h1>${th}<small>${en}</small></h1><div>No. <b>${no}</b><br>Deal D-${d.dealId}<br>Date ${today}</div></header>
 ${body}
-<footer>Agentic Wallet · generated from the deal's terms and the escrow contract's on-chain state. Demo document with test money: not a legal contract, receipt or tax invoice.</footer>
+<footer>Agentic Wallet · generated from the deal's terms and the escrow contract's on-chain state. Demo document with test money: not a legal contract, receipt, tax invoice or legal advice.</footer>
 </main></body></html>`;
 }

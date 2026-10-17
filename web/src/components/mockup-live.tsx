@@ -5,7 +5,11 @@ import { createPortal } from "react-dom";
 import { SaveTemplateDialog, type TemplatePayload, TemplatesPanel } from "./deal-templates";
 import { ATTACH_ACCEPT, type ChatAttachment, fileToChatAttachment } from "./chat-attach";
 import { toast } from "./header-tools";
+import { DropHint, useFileDrop } from "./file-drop";
+import { AGENT_LIMIT_RANGE } from "@/lib/send-limits";
+import { fileTypesLabel } from "@/lib/file-types";
 import { SecurityCard } from "./two-factor";
+import { AddressCard } from "./address-card";
 import { DisplaySizeCard } from "./ui-scale";
 import { ChatMarkdown, OpenDealButton, copyText, startDeferredCopy } from "./chat-markdown";
 import { PayoutCard, type PayoutPreview } from "./payout-card";
@@ -436,6 +440,7 @@ function LimitsEditor({
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const currency = wallet?.token.currency ?? "THB";
+  const range = AGENT_LIMIT_RANGE[currency === "CNY" ? "CNY" : "THB"];
   useEffect(() => {
     if (!editing || !wallet) return;
     // Opening the editor starts from the caps on-chain.
@@ -480,11 +485,15 @@ function LimitsEditor({
         <form onSubmit={save}>
           <label>
             <span>Per transaction</span>
-            <input aria-label="Per transaction limit" type="number" min="1" step="any" value={perTx} onChange={(e) => setPerTx(e.target.value)} />
+            <input aria-label="Per transaction limit" type="number" min={range.perTxMin} max={range.perTx} step="any" value={perTx} onChange={(e) => setPerTx(e.target.value)} />
+            <small>
+              {range.perTxMin.toLocaleString("en-US")} – {range.perTx.toLocaleString("en-US")}
+            </small>
           </label>
           <label>
             <span>Per day</span>
-            <input aria-label="Per day limit" type="number" min="1" step="any" value={perDay} onChange={(e) => setPerDay(e.target.value)} />
+            <input aria-label="Per day limit" type="number" min={range.perTxMin} max={range.perDay} step="any" value={perDay} onChange={(e) => setPerDay(e.target.value)} />
+            <small>up to {range.perDay.toLocaleString("en-US")}</small>
           </label>
           <Button type="submit" disabled={busy || !(Number(perTx) > 0) || !(Number(perDay) > 0)}>
             {busy ? "Saving on-chain…" : "Save limits"}
@@ -603,7 +612,13 @@ export function DraftCard({
           <span>
             <b>
               {m.name}
-              {m.deposit ? " · 💰 deposit, paid on signing" : (m.delivery ?? (m.hasFile ? "file" : "note")) === "parcel" ? " · 📦 parcel" : m.hasFile ? " · 📎 file" : ""}
+              {m.deposit
+                ? " · 💰 deposit, paid on signing"
+                : (m.delivery ?? (m.hasFile ? "file" : "note")) === "parcel"
+                  ? " · 📦 parcel"
+                  : m.hasFile
+                    ? ` · 📎 ${m.fileTypes?.length ? `${fileTypesLabel(m.fileTypes)} only` : "file"}`
+                    : ""}
             </b>
             <small>{m.due ? `Due ${m.due}` : m.acceptance}</small>
           </span>
@@ -837,6 +852,7 @@ export function LiveChat() {
   }, [address]);
 
   const full = chats !== null && chats.length >= maxChats;
+  const drop = useFileDrop((f) => void pickFile(f), Boolean(address) && !aiOff && !busy);
 
   async function pickFile(file: File | null | undefined) {
     if (!file) return;
@@ -1052,7 +1068,8 @@ export function LiveChat() {
           <p>{full ? `${maxChats} chats max: delete one to start another. ` : ""}Deleting a chat removes only the conversation. Your deals and evidence stay.</p>
           </div>
         </aside>
-        <section className="aw-ai-conversation">
+        <section className="aw-ai-conversation aw-drop-zone" {...drop.bind}>
+          {drop.dragging && <DropHint />}
           <header className="aw-ai-chat-heading">
             <div>
               <h1>AI Chat</h1>
@@ -1222,7 +1239,7 @@ export function LiveChat() {
                   void pickFile(f);
                 }
               }}
-              placeholder={attached ? "Say what to do with it (optional)…" : "Message AI agent… (＋ or paste to add an image or PDF)"}
+              placeholder={attached ? "Say what to do with it (optional)…" : "Message AI agent… (＋, paste or drop a file to attach it)"}
               disabled={!address || aiOff}
             />
             <button type="submit" aria-label="Send message" disabled={!address || busy || (!message.trim() && !attached)}>
@@ -1436,6 +1453,22 @@ function deliveryType(d: DraftView): "Physical" | "Digital" | "Report" {
   return modes.includes("parcel") ? "Physical" : modes.includes("file") ? "Digital" : "Report";
 }
 
+type DealStage = "draft" | "waiting" | "active" | "dispute" | "completed" | "cancelled";
+type LinkedInvite = {
+  id: string;
+  buyer: string;
+  href: string;
+  deals: { id: number; title: string; kind: "HIRE" | "GOODS" | null; total: string; status: string; offeredBy: string; milestones: { status: string; hasFile: boolean }[]; createdAt: string | null }[];
+};
+
+/** Where a deal on the chain stands, for the status filter. */
+function dealStage(status: string, milestones: { status: string }[]): DealStage {
+  if (status === "Cancelled") return "cancelled";
+  if (milestones.some((m) => m.status === "Disputed")) return "dispute";
+  if (milestones.length && milestones.every((m) => ["Released", "Split", "Refunded"].includes(m.status))) return "completed";
+  return status === "Proposed" ? "waiting" : "active";
+}
+
 export function LiveDeals({ go }: { go: (screen: string) => void }) {
   const lang = useLang();
   const { wallet, drafts, me, refresh } = useAppData();
@@ -1490,13 +1523,18 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
       .then((r) => setTemplateCount(r.templates.length))
       .catch(() => setTemplateCount(null));
   }, []);
-  // Deals someone hired the user for through a seller link, linked to this account.
-  const [linkedInvites, setLinkedInvites] = useState<{ id: string; buyer: string; href: string }[]>([]);
+  // Deals someone hired the user for through a seller link, linked to this account (each link has
+  // its own wallet: its deals are listed here and open on the link's page).
+  const [linkedInvites, setLinkedInvites] = useState<LinkedInvite[]>([]);
   useEffect(() => {
-    api<{ invites: { id: string; buyer: string; href: string }[] }>("/api/invites/claimed")
+    api<{ invites: LinkedInvite[] }>("/api/invites/claimed")
       .then((r) => setLinkedInvites(r.invites))
       .catch(() => setLinkedInvites([]));
   }, []);
+  const [query, setQuery] = useState("");
+  const [stage, setStage] = useState<DealStage | "all">("all");
+  const [typeFilter, setTypeFilter] = useState<"all" | "hire" | "buy" | "digital" | "physical">("all");
+  const [sort, setSort] = useState<"new" | "old" | "high" | "low">("new");
   const currency = me?.bank.currency ?? "THB";
   const explorer = wallet?.explorer?.replace(/\/address\/.*/, "") ?? null;
 
@@ -1516,6 +1554,11 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
         role: d.side === "SELL" ? ("Selling" as const) : ("Buying" as const),
         milestones: `0 / ${d.milestones.length}`,
         amount: tokenMoney(d.total, currency),
+        amountNum: Number(d.total),
+        // Unconfirmed previews and drafts stay above the deals; deal numbers grow with time.
+        order: 1e15 + +new Date(d.createdAt),
+        stage: "draft" as DealStage,
+        href: null as string | null,
         status:
           d.status === "PREVIEW"
             ? "AI preview · confirm to create"
@@ -1542,6 +1585,10 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
         role: d.role === "buyer" ? ("Buying" as const) : ("Selling" as const),
         milestones: `${done} / ${d.milestones.length}`,
         amount: tokenMoney(d.total, currency),
+        amountNum: Number(d.total),
+        order: d.id,
+        stage: dealStage(d.status, d.milestones),
+        href: null as string | null,
         status: d.status === "Cancelled"
           ? "Cancelled · withdrawn"
           : disputed
@@ -1556,8 +1603,62 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
         tone: d.status === "Cancelled" ? "gray" : disputed ? "red" : done === d.milestones.length ? "green" : STATUS_TONE[d.status] ?? "blue",
       };
     }),
+    // Hired through a link: the deal is on the link's own wallet and opens on the link's page.
+    ...linkedInvites.flatMap((i) =>
+      i.deals.map((d) => {
+        const done = d.milestones.filter((m) => m.status === "Released" || m.status === "Split").length;
+        const disputed = d.milestones.some((m) => m.status === "Disputed");
+        const stage = dealStage(d.status, d.milestones);
+        return {
+          key: `link-${i.id}-${d.id}`,
+          draftId: null as string | null,
+          id: `D-${d.id}`,
+          title: d.title,
+          kind: d.kind,
+          type: d.milestones.some((m) => m.hasFile) ? ("Digital" as const) : null,
+          person: `${i.buyer} · via link`,
+          role: "Selling" as const,
+          milestones: `${done} / ${d.milestones.length}`,
+          amount: tokenMoney(d.total, currency),
+          amountNum: Number(d.total),
+          order: d.id,
+          stage,
+          href: `${i.href}?stay=1`,
+          status:
+            stage === "cancelled"
+              ? "Cancelled · withdrawn"
+              : disputed
+                ? "Dispute"
+                : stage === "completed"
+                  ? "Completed · paid"
+                  : d.status === "Proposed"
+                    ? "Offer to you · open to accept"
+                    : "In progress",
+          tone: stage === "cancelled" ? "gray" : disputed ? "red" : stage === "completed" ? "green" : d.status === "Proposed" ? "blue" : "violet",
+        };
+      }),
+    ),
   ];
-  const visible = rows.filter((r) => filter === "All" || (filter === "Dispute" ? r.status === "Dispute" : r.role === filter));
+  const q = query.trim().toLowerCase();
+  const visible = rows
+    .filter((r) => filter === "All" || (filter === "Dispute" ? r.status === "Dispute" : r.role === filter))
+    .filter((r) => stage === "all" || r.stage === stage)
+    .filter((r) =>
+      typeFilter === "all"
+        ? true
+        : typeFilter === "hire"
+          ? r.kind === "HIRE"
+          : typeFilter === "buy"
+            ? r.kind === "GOODS"
+            : typeFilter === "physical"
+              ? r.type === "Physical"
+              : r.type === "Digital",
+    )
+    .filter((r) => !q || [r.id, r.title, r.person, r.status].some((x) => x?.toLowerCase().includes(q)))
+    .sort((a, b) =>
+      sort === "high" ? b.amountNum - a.amountNum : sort === "low" ? a.amountNum - b.amountNum : sort === "old" ? a.order - b.order : b.order - a.order,
+    );
+  const filtered = Boolean(q) || stage !== "all" || typeFilter !== "all";
   const counts = {
     All: rows.length,
     Buying: rows.filter((r) => r.role === "Buying").length,
@@ -1593,6 +1694,48 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
             </button>
           ))}
         </div>
+        {filter !== "Templates" && (
+          <div className="aw-deals-filters" role="search">
+            <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by deal, title or person" aria-label="Search deals" />
+            <select value={stage} onChange={(e) => setStage(e.target.value as DealStage | "all")} aria-label="Status">
+              <option value="all">Any status</option>
+              <option value="draft">Previews and drafts</option>
+              <option value="waiting">Waiting to be accepted</option>
+              <option value="active">In progress</option>
+              <option value="dispute">In dispute</option>
+              <option value="completed">Completed</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+            <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as typeof typeFilter)} aria-label="Type">
+              <option value="all">Any type</option>
+              <option value="hire">Hire (work)</option>
+              <option value="buy">Buy (goods)</option>
+              <option value="digital">Digital file</option>
+              <option value="physical">Physical parcel</option>
+            </select>
+            <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} aria-label="Sort">
+              <option value="new">Newest first</option>
+              <option value="old">Oldest first</option>
+              <option value="high">Amount: high to low</option>
+              <option value="low">Amount: low to high</option>
+            </select>
+            {filtered && (
+              <button
+                type="button"
+                onClick={() => {
+                  setQuery("");
+                  setStage("all");
+                  setTypeFilter("all");
+                }}
+              >
+                Clear
+              </button>
+            )}
+            <small>
+              {visible.length} of {rows.length}
+            </small>
+          </div>
+        )}
         {filter === "Templates" && <TemplatesPanel currency={currency} onCount={setTemplateCount} />}
         <div className="aw-deals-table-wrap" hidden={filter === "Templates"}>
           <table className="aw-deals-table">
@@ -1616,7 +1759,7 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
               )}
               {wallet && visible.length === 0 && (
                 <tr>
-                  <td colSpan={6}>No deals yet. Ask the AI agent in the chat to draft one.</td>
+                  <td colSpan={6}>{rows.length ? "No deal matches these filters." : "No deals yet. Ask the AI agent in the chat to draft one."}</td>
                 </tr>
               )}
               {visible.map((r) => (
@@ -1624,10 +1767,11 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
                   key={r.key}
                   tabIndex={0}
                   className={r.draftId && openDraft === r.draftId ? "selected" : undefined}
-                  onClick={() => (r.draftId ? setOpenDraft(openDraft === r.draftId ? null : r.draftId) : go(`รายละเอียดดีล ${r.id}`))}
+                  onClick={() => (r.href ? (window.location.href = r.href) : r.draftId ? setOpenDraft(openDraft === r.draftId ? null : r.draftId) : go(`รายละเอียดดีล ${r.id}`))}
                   onKeyDown={(e) => {
                     if (e.key !== "Enter" && e.key !== " ") return;
-                    if (r.draftId) setOpenDraft(openDraft === r.draftId ? null : r.draftId);
+                    if (r.href) window.location.href = r.href;
+                    else if (r.draftId) setOpenDraft(openDraft === r.draftId ? null : r.draftId);
                     else go(`รายละเอียดดีล ${r.id}`);
                   }}
                 >
@@ -1912,6 +2056,7 @@ export function LivePrivacy() {
           </Card>
           <KycCard />
           <SecurityCard />
+          <AddressCard />
           <DisplaySizeCard />
           <StripeLinkCard />
           <Card className="aw-profile-passbooks">

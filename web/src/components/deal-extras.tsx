@@ -1,8 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+
+import { localizeMockupNode, useLang } from "@/lib/i18n";
 
 import { api } from "./app-data";
+import { kb } from "./deal-file-links";
 import { Button } from "./mockup-ui";
 
 const DEVICES = {
@@ -78,13 +81,19 @@ const DOCS = [
   ["request", "🧾 Payment request", "ใบเบิกเงิน"],
   ["receipt", "✓ Receipt", "ใบเสร็จ"],
   ["tax", "🏛 Tax invoice", "ใบกำกับภาษี"],
+  ["claim", "⚖ Complaint", "เอกสารฟ้องร้อง"],
 ] as const;
 
+/** Milestones still owed to the seller (the payment request lists the delivered ones, or the next one). */
+const UNPAID = ["Pending", "Delivered", "Approved", "KeyReleased", "Disputed"];
+
 /** Export buttons: each opens a printable page (Print / Save as PDF). */
-export function DealDocuments({ dealId, milestones }: { dealId: number; milestones: { status: string; split?: unknown }[] }) {
+export function DealDocuments({ dealId, status, milestones }: { dealId: number; status: string; milestones: { status: string; split?: unknown }[] }) {
   const paid = milestones.some((m) => m.status === "Released" || m.status === "Split");
-  const payable = milestones.some((m) => ["Delivered", "Approved", "KeyReleased"].includes(m.status));
-  const ok = { contract: true, request: payable, receipt: paid, tax: paid };
+  const owed = status !== "Cancelled" && milestones.some((m) => UNPAID.includes(m.status));
+  const signed = status !== "Proposed" && status !== "Cancelled";
+  const trouble = milestones.some((m) => ["Disputed", "Refunded", "Split"].includes(m.status));
+  const ok = { contract: true, request: owed, receipt: paid, tax: paid, claim: signed };
   return (
     <section className="aw-deal-docs">
       <b>Export documents</b>
@@ -92,12 +101,22 @@ export function DealDocuments({ dealId, milestones }: { dealId: number; mileston
         {DOCS.map(([type, label, th]) => (
           <a
             key={type}
-            className={`aw-doc-btn${ok[type] ? "" : " off"}`}
+            className={`aw-doc-btn${ok[type] ? "" : " off"}${type === "claim" && trouble ? " alert" : ""}`}
             href={ok[type] ? `/api/deals/${dealId}/document?type=${type}` : undefined}
             target="_blank"
             rel="noopener"
             aria-disabled={!ok[type]}
-            title={ok[type] ? `Open the ${th} to print or save as PDF` : type === "request" ? "After a delivery" : "After a milestone is paid"}
+            title={
+              ok[type]
+                ? type === "claim"
+                  ? "A draft complaint with the deal's evidence, for a lawyer, the police or a court"
+                  : `Open the ${th} to print or save as PDF`
+                : type === "request"
+                  ? "Nothing is owed on this deal"
+                  : type === "claim"
+                    ? "Once the deal is signed (accepted)"
+                    : "After a milestone is paid"
+            }
           >
             {label}
             <small>{th}</small>
@@ -191,5 +210,89 @@ export function WitnessPanel({
       </div>
       {error && <p className="aw-bank-error">{error}</p>}
     </section>
+  );
+}
+
+type DealFileRow = { id: string; name: string; mime: string; size: number; mine?: boolean };
+
+
+/** Files the deal's creator attached (a spec, a catalogue, a sample): the creator adds and removes them, both sides open them. */
+export function DealFiles({ dealId }: { dealId: number }) {
+  const lang = useLang();
+  const [data, setData] = useState<{ canAdd: boolean; files: DealFileRow[] } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const load = useCallback(async () => {
+    try {
+      setData(await api<{ canAdd: boolean; files: DealFileRow[] }>(`/api/deals/${dealId}/attachments`));
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }, [dealId]);
+  useEffect(() => {
+    // Reading the list when the deal opens is what this effect is for.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load();
+  }, [load]);
+  async function add(file: File | undefined) {
+    if (!file) return;
+    if (file.size > 4 * 1024 * 1024) return setError("Files up to 4 MB");
+    setBusy(true);
+    setError(null);
+    try {
+      const form = new FormData();
+      form.set("file", file);
+      await api(`/api/deals/${dealId}/attachments`, { method: "POST", body: form });
+      await load();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function remove(id: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/api/deals/${dealId}/attachments/${id}`, { method: "DELETE" });
+      await load();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  if (!data || (!data.canAdd && data.files.length === 0)) return error ? <p className="aw-bank-error">{error}</p> : null;
+  return localizeMockupNode(
+    <section className="aw-deal-files">
+      <b>
+        Attached files <small>({data.canAdd ? "you attached these for the other side" : "attached by the other side"})</small>
+      </b>
+      {data.files.length === 0 && <small>None yet. Attach a spec, a catalogue, a sample or a quotation (up to 5 files, 4 MB each).</small>}
+      <ul>
+        {data.files.map((f) => (
+          <li key={f.id}>
+            <a href={`/api/deals/${dealId}/attachments/${f.id}`} target="_blank" rel="noopener">
+              📎 {f.name}
+            </a>
+            <small>{kb(f.size)}</small>
+            {data.canAdd && f.mine && (
+              <button type="button" disabled={busy} onClick={() => void remove(f.id)}>
+                Remove
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {data.canAdd && data.files.length < 5 && (
+        <label className="aw-deal-files-add">
+          <input type="file" disabled={busy} onChange={(e) => void add(e.target.files?.[0]).finally(() => (e.target.value = ""))} />
+          <span>{busy ? "Uploading…" : "＋ Attach a file"}</span>
+        </label>
+      )}
+      {error && <p className="aw-bank-error">{error}</p>}
+      <small>Not part of the signed terms. Both sides can open these files.</small>
+    </section>,
+    lang,
   );
 }

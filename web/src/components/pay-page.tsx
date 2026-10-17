@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { DealFileLinks } from "./deal-file-links";
 import "./invite.css";
 
 /**
@@ -21,7 +22,17 @@ type Milestone = {
   canApprove: boolean;
   delivery: { note: string; fileName: string | null; mime: string | null; parcel: { carrierLabel: string; tracking: string; status: string; delivered: boolean | null } | null } | null;
 };
-type Deal = { id: number; status: string; total: string; title: string; summary: string | null; shipTo: string | null; canPay: boolean; milestones: Milestone[] };
+type Deal = {
+  id: number;
+  status: string;
+  total: string;
+  title: string;
+  summary: string | null;
+  shipTo: string | null;
+  canPay: boolean;
+  files?: { id: string; name: string; mime: string; size: number }[];
+  milestones: Milestone[];
+};
 type View = { name: string; sellerName: string; currency: "THB" | "CNY"; expiresAt: string; balance: string; deals: Deal[] };
 
 const SIGN = { THB: "฿", CNY: "¥" } as const;
@@ -202,6 +213,7 @@ export function PayPage({ token }: { token: string }) {
               {d.title} · {money(d.total)}
             </h2>
             {d.summary && <p className="inv-muted">{d.summary}</p>}
+            <DealFileLinks base={base} dealId={d.id} files={d.files ?? []} from={view.sellerName} />
             {d.shipTo && <p className="inv-muted">Ship to: {d.shipTo}</p>}
             {d.milestones.map((m) => (
               <div className="inv-milestone" key={m.index}>

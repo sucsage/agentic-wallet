@@ -64,3 +64,5 @@
 .inv-linkbtn.ghost{background:transparent;color:#f2f2f2!important;border-color:#444}
 .inv-linkbtn.ghost:hover{border-color:#888}
 .inv-app p{margin:0}
+.inv-files{display:grid;gap:6px;margin:10px 0;padding:10px 12px;border:1px solid #2c2c2c;border-radius:10px}
+.inv-files a{color:#cfe1ff;text-decoration:none;font-size:14px}.inv-files a small{color:#888}

@@ -2,6 +2,7 @@ import "server-only";
 
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 
+import { after } from "next/server";
 import { type Address, type Hex, decodeEventLog, encodeFunctionData, getAddress, keccak256, toHex } from "viem";
 
 import { agentWalletAbi, fileEscrowAbi, mockTHBAbi } from "../abis";
@@ -9,6 +10,7 @@ import { type TxOutcome, atFreshBlock, publicClient, roleAddresses, send } from 
 import { config } from "../config";
 import { db } from "../db";
 import { type FileDealView, readFileDeals, walletUnits } from "../state";
+import { fileTypeOk, fileTypesLabel } from "../file-types";
 import { CARRIER_LABEL, type Carrier, bookParcel, checkTracking, deliveredShippedAt, trackParcel } from "../post";
 import { type DraftMilestone, deliveryOf } from "./drafts";
 import { type Mandate, mintCapError, ownerSignMandate } from "./funding";
@@ -284,7 +286,11 @@ export async function deliver(
   if (!m) throw new DealError("No such milestone");
   if (m.status !== "Pending" && m.status !== "Delivered") throw new DealError(`This milestone is already ${m.status}`);
   const terms = await dealTerms(dealId, getAddress(deal.counterparty), wallet);
-  const parcelMilestone = deliveryOf((terms?.milestones as DraftMilestone[] | undefined)?.[index]) === "parcel";
+  const agreed = (terms?.milestones as DraftMilestone[] | undefined)?.[index];
+  const parcelMilestone = deliveryOf(agreed) === "parcel";
+  if (input.file && !fileTypeOk(input.file.name, agreed?.fileTypes)) {
+    throw new DealError(`This milestone accepts only ${fileTypesLabel(agreed?.fileTypes)} files (agreed in the deal). "${input.file.name}" is not one of them.`);
+  }
   if (parcelMilestone && !input.parcel) throw new DealError("This milestone ships a parcel: book it with Mock Post or enter the tracking number");
   if (m.hasFile && !input.file) throw new DealError("This milestone needs a file");
   if (!input.file && !input.parcel && !input.note.trim()) throw new DealError("Describe what you delivered");
@@ -541,6 +547,20 @@ const syncing = new Map<number, Promise<void>>();
  * key release and claim, and bank settlement on both sides. Safe from any request: concurrent calls
  * for the same deal share one run, and every step re-reads the chain first.
  */
+/**
+ * syncDeal after the response, kept alive until it finishes (on Vercel a bare promise is cut off when
+ * the response is sent, so a deposit due on signing would wait for the next visit). Outside a request
+ * (scripts) it just runs.
+ */
+export function syncDealLater(wallet: Address, dealId: number): void {
+  const run = () => syncDeal(wallet, dealId).catch((e) => console.error("syncDeal", dealId, e));
+  try {
+    after(run);
+  } catch {
+    void run();
+  }
+}
+
 export function syncDeal(_wallet: Address, dealId: number): Promise<void> {
   const running = syncing.get(dealId);
   if (running) return running;

@@ -39,6 +39,8 @@ export type DraftMilestone = {
   acceptance: string;
   /** A deposit: paid to the seller as soon as the contract is signed (the offer accepted), no delivery needed. First milestone only. */
   deposit?: boolean;
+  /** For a file milestone: the formats the buyer accepts, e.g. [".pdf", ".dwg"] (lib/file-types). Empty or missing: any file. */
+  fileTypes?: string[];
 };
 
 export const deliveryOf = (m: Pick<DraftMilestone, "hasFile" | "delivery"> | undefined) => m?.delivery ?? (m?.hasFile ? "file" : "note");

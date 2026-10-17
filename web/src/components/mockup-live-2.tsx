@@ -14,9 +14,10 @@ import { FundCompany, setActing } from "./company";
 import { GroupChat } from "./group-chat";
 import { SendMoneyDialog } from "./send-money";
 import { BlockDialog, BlockedPanel, ReportDialog } from "./contact-safety";
-import { DealDocuments, SiteMockup, WitnessPanel } from "./deal-extras";
+import { DealDocuments, DealFiles, SiteMockup, WitnessPanel } from "./deal-extras";
 import { SaveTemplateDialog, type TemplatePayload } from "./deal-templates";
 import { SEND_LIMITS } from "@/lib/send-limits";
+import { acceptAttr, fileTypeOk, fileTypesLabel } from "@/lib/file-types";
 import { BalanceBar } from "./mockup-live";
 import { Button, Card, Loading, PageTitle } from "./mockup-ui";
 
@@ -1541,7 +1542,7 @@ type Summary = {
     topups: number;
     count: number;
   }[];
-  deals: { title: string; spent: number; refunded: number }[];
+  deals: { id: number; title: string; role: "buyer" | "seller"; status: string; total: number; paid: number; refunded: number; locked: number }[];
   tax: { kind: string; year: number; income: number; taxable: number; tax: number; vatWarning: string | null; notes: string[] } | null;
 };
 
@@ -1757,24 +1758,41 @@ export function LiveSummary() {
         <section className="aw-summary-activity">
           <header>
             <b>By deal</b>
+            <small>Every deal, live from the escrow</small>
           </header>
           <div className="aw-summary-table-wrap">
             <table>
               <thead>
                 <tr>
                   <th>Deal</th>
-                  <th>Spent</th>
+                  <th>Status</th>
+                  <th>Total</th>
+                  <th>Paid out</th>
                   <th>Refunded</th>
+                  <th>Still locked</th>
                 </tr>
               </thead>
               <tbody>
+                {data && data.deals.length === 0 && (
+                  <tr>
+                    <td colSpan={6}>No deals yet.</td>
+                  </tr>
+                )}
                 {(data?.deals ?? []).map((d) => (
-                  <tr key={d.title}>
+                  <tr key={d.id} className="aw-summary-deal" onClick={() => (window.location.href = `/deals/D-${d.id}`)}>
                     <td>
-                      <b>{d.title}</b>
+                      <b>
+                        D-{d.id} · {d.title}
+                      </b>
+                      <small> {d.role === "seller" ? "Selling" : "Buying"}</small>
                     </td>
-                    <td className="debit">{tokenMoney(d.spent, c)}</td>
-                    <td className="credit">{tokenMoney(d.refunded, c)}</td>
+                    <td>
+                      <span className={`aw-deal-status ${d.status === "Completed" ? "green" : d.status === "Dispute" ? "red" : d.status === "Cancelled" ? "gray" : d.status === "Waiting" ? "blue" : "violet"}`}>{d.status}</span>
+                    </td>
+                    <td>{tokenMoney(d.total, c)}</td>
+                    <td className={d.role === "seller" ? "credit" : "debit"}>{tokenMoney(d.paid, c)}</td>
+                    <td className={d.role === "buyer" ? "credit" : "debit"}>{tokenMoney(d.refunded, c)}</td>
+                    <td>{tokenMoney(d.locked, c)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1829,6 +1847,8 @@ type DealDetail = {
     canPreview: boolean;
     canMockup?: boolean;
     deposit?: boolean;
+    /** The formats agreed for a file milestone ([] = any). */
+    fileTypes?: string[];
     delivery: {
       note: string;
       fileName: string | null;
@@ -1949,7 +1969,19 @@ function DisputeForm({ dealId, index, onDone, onCancel }: { dealId: number; inde
 }
 
 /** The seller's delivery form for one milestone: evidence note plus an optional file (max 4 MB). */
-function DeliverForm({ dealId, index, parcel, onDone }: { dealId: number; index: number; parcel: boolean; onDone: () => Promise<void> }) {
+function DeliverForm({
+  dealId,
+  index,
+  parcel,
+  fileTypes,
+  onDone,
+}: {
+  dealId: number;
+  index: number;
+  parcel: boolean;
+  fileTypes?: string[];
+  onDone: () => Promise<void>;
+}) {
   const [note, setNote] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [carrier, setCarrier] = useState("MOCK_POST");
@@ -2031,8 +2063,24 @@ function DeliverForm({ dealId, index, parcel, onDone }: { dealId: number; index:
         <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} maxLength={4000} required />
       </label>
       <label>
-        <span>File (optional, max 4 MB · encrypted, the buyer unlocks it after approving)</span>
-        <input type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+        <span>
+          File ({fileTypes?.length ? <b>{fileTypesLabel(fileTypes)} only, as agreed</b> : "optional"}, max 4 MB · encrypted, the buyer unlocks it after approving)
+        </span>
+        <input
+          type="file"
+          accept={acceptAttr(fileTypes)}
+          onChange={(e) => {
+            const f = e.target.files?.[0] ?? null;
+            if (f && !fileTypeOk(f.name, fileTypes)) {
+              setMsg({ ok: false, text: `Only ${fileTypesLabel(fileTypes)} files are accepted for this milestone.` });
+              e.target.value = "";
+              setFile(null);
+              return;
+            }
+            setMsg(null);
+            setFile(f);
+          }}
+        />
       </label>
       <Button type="submit" disabled={busy || !note.trim()}>
         {busy ? "Encrypting & anchoring…" : "Submit delivery"}
@@ -2378,7 +2426,8 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
         {data?.summary && <p>{data.summary}</p>}
         {data && data.status !== "Cancelled" && (
           <div className="aw-deal-paper">
-            <DealDocuments dealId={id} milestones={data.milestones} />
+            <DealDocuments dealId={id} status={data.status} milestones={data.milestones} />
+            <DealFiles dealId={id} />
             <WitnessPanel dealId={id} role={data.role} witnesses={data.witnesses ?? []} onDone={reload} />
           </div>
         )}
@@ -2395,6 +2444,7 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
               <h2>
                 {m.index + 1}. {m.name}
                 {m.deposit && <span className="aw-deposit-tag">💰 Deposit · paid on signing</span>}
+                {m.delivers === "file" && (m.fileTypes?.length ?? 0) > 0 && <span className="aw-filetype-tag">📄 {fileTypesLabel(m.fileTypes)} only</span>}
               </h2>
               <div className="aw-d012-payout">
                 <span>
@@ -2484,7 +2534,7 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
                   <small>There is no automatic confirmation from you: report a problem (dispute) if anything is missing or damaged.</small>
                 </fieldset>
               )}
-              {m.moves.includes("deliver") && <DeliverForm dealId={id} index={m.index} parcel={m.delivers === "parcel"} onDone={after} />}
+              {m.moves.includes("deliver") && <DeliverForm dealId={id} index={m.index} parcel={m.delivers === "parcel"} fileTypes={m.fileTypes} onDone={after} />}
               {disputing === m.index && m.moves.includes("dispute") && (
                 <DisputeForm
                   dealId={id}

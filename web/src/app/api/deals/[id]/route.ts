@@ -83,6 +83,7 @@ export async function GET(req: Request, ctx: RouteContext<"/api/deals/[id]">) {
         // A web page (.html) is tried in a browser / phone mockup instead.
         canMockup: isSiteDelivery(deliveries[i]),
         deposit: terms?.milestones[i]?.deposit === true,
+        fileTypes: terms?.milestones[i]?.fileTypes ?? [],
         moves: moves(deal.role, deal.status, m.status, m.deadline),
         delivery: deliveries[i],
         dispute: disputeView(disputes[i]),

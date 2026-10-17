@@ -4,12 +4,11 @@ import { z } from "zod";
 import { agentWalletAbi } from "@/lib/abis";
 import { account, publicClient, send } from "@/lib/chain";
 import { HttpError, errorResponse, rateLimit, requireBankWallet } from "@/lib/guard";
+import { AGENT_LIMIT_RANGE } from "@/lib/send-limits";
 import { walletUnits } from "@/lib/state";
 
 export const maxDuration = 120;
 
-/** Highest caps a user can set: the Mock Bank's own per-mint cap bounds a single deal anyway. */
-const MAX = { THB: { perTx: 10_000, perDay: 100_000 }, CNY: { perTx: 2_000, perDay: 20_000 } } as const;
 
 const Input = z.object({ maxPerTx: z.number().positive(), dailyLimit: z.number().positive() });
 
@@ -21,12 +20,13 @@ export async function PUT(req: Request) {
     const body = Input.safeParse(await req.json().catch(() => null));
     if (!body.success) throw new HttpError(400, "Send { maxPerTx, dailyLimit } in your currency");
     const units = await walletUnits(wallet);
-    const max = MAX[units.currency ?? "THB"];
+    const max = AGENT_LIMIT_RANGE[units.currency ?? "THB"];
     const { maxPerTx, dailyLimit } = body.data;
     if (maxPerTx > dailyLimit) throw new HttpError(400, "The per-transaction cap cannot exceed the daily cap");
-    if (maxPerTx > max.perTx || dailyLimit > max.perDay) {
-      throw new HttpError(400, `Caps are limited to ${max.perTx} per transaction and ${max.perDay} per day`);
+    if (maxPerTx < max.perTxMin || maxPerTx > max.perTx) {
+      throw new HttpError(400, `Per transaction: between ${max.perTxMin.toLocaleString("en-US")} and ${max.perTx.toLocaleString("en-US")}`);
     }
+    if (dailyLimit > max.perDay) throw new HttpError(400, `Per day: at most ${max.perDay.toLocaleString("en-US")}`);
     const agent = account("agent").address;
     const [expiresAt] = await publicClient().readContract({ address: wallet, abi: agentWalletAbi, functionName: "sessions", args: [agent] });
     const outcome = await send("owner", {

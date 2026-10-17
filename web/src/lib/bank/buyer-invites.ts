@@ -13,7 +13,7 @@ import { db } from "../db";
 import { sealToken } from "../link-seal";
 import { readFileDeals } from "../state";
 import { accountOf, openAccount, transfer } from "./ledger";
-import { acceptAndPay, buyerAction, dealTerms, deliveryInfo, syncDeal } from "./deals";
+import { acceptAndPay, buyerAction, dealTerms, deliveryInfo, syncDealLater } from "./deals";
 import { stripe } from "./topup";
 
 /**
@@ -99,6 +99,8 @@ export async function buyerInviteView(invite: BuyerInvite) {
           summary: terms?.summary ?? null,
           shipTo: terms?.shipTo ?? null,
           canPay: d.status === "Proposed" && d.offeredBy === "them",
+          // What the seller attached for the buyer (a spec, a catalogue, a sample).
+          files: terms ? await db.dealFile.findMany({ where: { draftId: terms.id }, orderBy: { createdAt: "asc" }, select: { id: true, name: true, mime: true, size: true } }) : [],
           milestones: await Promise.all(
             d.milestones.map(async (m, i) => ({
               index: m.index,
@@ -172,7 +174,8 @@ export async function payOffer(invite: BuyerInvite, dealId: number) {
   await ownDeal(invite, dealId);
   const wallet = getAddress(invite.buyerWallet);
   const r = await acceptAndPay(wallet, dealId);
-  void syncDeal(wallet, dealId).catch(() => null);
+  // A deposit due on signing is paid by this sync.
+  syncDealLater(wallet, dealId);
   return r;
 }
 
@@ -181,6 +184,6 @@ export async function approveAsInvitedBuyer(invite: BuyerInvite, dealId: number,
   await ownDeal(invite, dealId);
   const wallet = getAddress(invite.buyerWallet);
   const r = await buyerAction(wallet, dealId, "approve", index);
-  void syncDeal(wallet, dealId).catch(() => null);
+  syncDealLater(wallet, dealId);
   return r;
 }

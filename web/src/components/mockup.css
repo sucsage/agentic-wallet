@@ -413,6 +413,11 @@
 .aw-deals-heading p{margin:0;color:#999;font-size:13px}
 .aw-deals-heading>.aw-button{height:37px;display:inline-flex;align-items:center;gap:8px;padding:0 15px;border-radius:9px;font-size:12px}
 .aw-deals-heading>.aw-button svg{width:15px;height:15px;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.aw-deals-filters{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:-6px 0 16px}
+.aw-deals-filters input,.aw-deals-filters select{height:34px;padding:0 10px;border:1px solid #333;border-radius:10px;background:#111;color:#eee;font-size:13px}
+.aw-deals-filters input{flex:1 1 220px;min-width:0}
+.aw-deals-filters button{height:34px;padding:0 12px;border:1px solid #444;border-radius:10px;background:transparent;color:#ddd;font-size:13px;cursor:pointer}
+.aw-deals-filters small{color:#777;font-size:12px;margin-left:auto}
 .aw-deals-tabs{width:max-content;max-width:100%;display:flex;align-items:center;gap:2px;padding:4px;border:1px solid #303030;border-radius:24px;margin-bottom:19px}
 .aw-deals-tabs button{height:29px;display:inline-flex;align-items:center;gap:5px;padding:0 12px;border:0;border-radius:18px;background:transparent;color:#777;font-size:11px;white-space:nowrap;cursor:pointer}
 .aw-deals-tabs button.active{background:#242424;color:#f4f4f4;font-weight:650}
@@ -1807,6 +1812,7 @@
 .aw-doc-btn{display:flex;flex-direction:column;gap:1px;min-width:120px;padding:8px 12px;border:1px solid #3a3a3a;border-radius:10px;background:#181818;color:#eee!important;font-size:13px;font-weight:650;text-decoration:none!important}
 .aw-doc-btn small{color:#999;font-weight:500;font-size:11px}
 .aw-doc-btn:hover:not(.off){border-color:#777;background:#202020}
+.aw-doc-btn.alert{border-color:#7a3b3b;background:#221416}
 .aw-doc-btn.off{opacity:.4;cursor:not-allowed}
 .aw-witness-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid #222;font-size:13px;color:#aaa}
 .aw-witness-value{display:flex;align-items:center;gap:8px;color:#eee}
@@ -1889,3 +1895,29 @@
 .aw-scale-card{display:flex;flex-direction:column;gap:8px}.aw-scale-card small{color:#888}
 .aw-scale-card .aw-profile-segment{flex-wrap:wrap}
 .aw-deal-status.gray{background:#1c1c1c;color:#8a8a8a}
+.aw-summary-activity>header small{color:#777;font-size:12px;margin-left:10px}
+.aw-summary-deal{cursor:pointer}.aw-summary-deal:hover td{background:#161616}
+.aw-summary-deal td small{color:#888;font-size:12px}
+.aw-drop-zone{position:relative}
+.aw-drop-hint{position:absolute;inset:8px;z-index:40;display:grid;place-content:center;justify-items:center;gap:6px;border:2px dashed #8b7cf6;border-radius:16px;background:#0b0a12e6;color:#e6e1ff;pointer-events:none}
+.aw-drop-hint span{font-size:30px}.aw-drop-hint small{color:#aaa}
+.aw-filetype-tag{display:inline-block;margin-left:8px;padding:2px 8px;border:1px solid #2f4a6b;border-radius:999px;background:#0f1a26;color:#9cc7ff;font-size:11px;font-weight:600}
+.aw-deal-files{display:grid;gap:8px;margin-top:12px;padding:14px;border:1px solid #2c2c2c;border-radius:12px;background:#121212}
+.aw-deal-files b small,.aw-deal-files>small{color:#888;font-size:12px;font-weight:500}
+.aw-deal-files ul{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.aw-deal-files li{display:flex;align-items:center;gap:10px;font-size:13px}
+.aw-deal-files li a{color:#cfe1ff!important}.aw-deal-files li small{color:#777}
+.aw-deal-files li button{margin-left:auto;padding:3px 10px;border:1px solid #444;border-radius:8px;background:none;color:#ccc;font-size:12px;cursor:pointer}
+.aw-deal-files-add{position:relative;display:inline-flex;width:max-content;cursor:pointer}
+.aw-deal-files-add input{position:absolute;opacity:0;width:1px;height:1px}
+.aw-deal-files-add span{padding:7px 12px;border:1px dashed #555;border-radius:10px;color:#ddd;font-size:13px}
+.aw-deal-files-add:focus-within span{outline:2px solid #8b7cf6}
+.aw-address-card>header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.aw-address-card h2{margin:0 0 4px}.aw-address-card header small{color:#888}
+.aw-address-text{margin:12px 0 0;color:#ddd;line-height:1.6}
+.aw-address-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:14px}
+.aw-address-form label{display:grid;gap:4px;font-size:12px;color:#999}
+.aw-address-form label.wide,.aw-address-actions{grid-column:1/-1}
+.aw-address-form input,.aw-address-form select{height:38px;padding:0 10px;border:1px solid #333;border-radius:10px;background:#0c0c0c;color:#fff;font-size:14px}
+.aw-address-actions{display:flex;gap:8px}
+@media(max-width:640px){.aw-address-form{grid-template-columns:1fr}}

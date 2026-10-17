@@ -153,6 +153,15 @@ key (`ArbiterNotNeutral`), so the buyer's side can never judge its own dispute.
 - **Amendments cannot double-charge.** Confirming an amendment withdraws the old offer first and
   refuses if the other side accepted it in the meantime; the deposit flag is part of the hashed terms
   both sides saw.
+- **Deal files and chat files.** A file on a deal is readable only through a wallet that is a party
+  of that deal on-chain (the user's own, or an outsider's link wallet), and only the deal's creator
+  adds or removes them. Group chat files are readable by members only. Both are served with
+  `X-Content-Type-Options: nosniff` and a sandbox CSP; anything that is not an image or a PDF is a
+  download, so an uploaded HTML or SVG never runs in the app's origin.
+- **Agreed file formats are enforced on the server.** A file milestone's formats are part of the
+  hashed terms, and a delivery in any other format is refused before it is encrypted or anchored.
+- **Addresses are checked** against the official Thai province / district / sub-district list
+  before they are saved; the AI can change the saved address only through the same check.
 - **Chain access.** Besu runs **account permissioning**, so only the app's own keys can send
   transactions. Its RPC needs a signed JWT (RS256) that only the server holds. The public `/api/rpc`
   passes **read-only methods** only (no `eth_sendRawTransaction`), with bounded `eth_getLogs` ranges.

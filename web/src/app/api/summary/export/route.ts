@@ -1,12 +1,12 @@
 import { errorResponse, requireActingCustomer } from "@/lib/guard";
-import { buildSummary, range, summaryCsv } from "@/lib/summary";
+import { buildSummary, range, summaryCsv, summaryWallet } from "@/lib/summary";
 
 /** The summary as a CSV file (opens in Excel / Sheets). */
 export async function GET(req: Request) {
   try {
-    const { user, customer } = await requireActingCustomer();
+    const { user, customer, company } = await requireActingCustomer();
     const { from, to } = range(req);
-    const csv = summaryCsv(await buildSummary(user.id, customer, from, to));
+    const csv = summaryCsv(await buildSummary(user.id, customer, from, to, await summaryWallet(user.id, company)));
     return new Response(csv, {
       headers: {
         "content-type": "text/csv; charset=utf-8",

@@ -2,8 +2,19 @@ import "server-only";
 
 import type { BankCustomerType, Currency } from "@/generated/prisma/client";
 
+import { type Address, getAddress } from "viem";
+
+import { dealTerms } from "./bank/deals";
 import { db } from "./db";
 import { HttpError } from "./guard";
+import { readFileDeals } from "./state";
+import { primaryWalletAddress } from "./user-wallets";
+
+/** The wallet whose deals the summary lists: the company's when acting as one, else the user's own. */
+export async function summaryWallet(userId: string, company: { walletAddress: string } | null): Promise<Address | undefined> {
+  if (company) return getAddress(company.walletAddress);
+  return (await primaryWalletAddress(userId)) ?? undefined;
+}
 
 /**
  * Income and spending from the Mock Bank ledger of the user's linked accounts, plus a rough tax
@@ -17,8 +28,23 @@ export type Summary = {
   totals: { income: number; spent: number; refunds: number; net: number; openingDeposits: number; dealIncome: number; transfersIn: number; transfersOut: number };
   /** The last six months up to now. income = paid by deals + money sent to you; spent = locked into deals + money you sent. */
   months: Month[];
-  deals: { title: string; spent: number; refunded: number }[];
+  /** Every deal of the wallet (from the chain, so a deal that just finished is here at once), newest first. */
+  deals: DealLine[];
   tax: TaxEstimate | null;
+};
+
+export type DealLine = {
+  id: number;
+  title: string;
+  role: "buyer" | "seller";
+  status: "Waiting" | "In progress" | "Dispute" | "Completed" | "Cancelled";
+  total: number;
+  /** Paid out to the seller (earned, for a sale). */
+  paid: number;
+  /** Returned to the buyer. */
+  refunded: number;
+  /** Still held in escrow. */
+  locked: number;
 };
 
 export type Month = {
@@ -89,10 +115,11 @@ export function thaiTax(kind: "personal" | "company", income: number, expenses: 
 }
 
 export async function buildSummary(
-  userId: string,
+  _userId: string,
   customer: { id: string; currency: Currency; type: BankCustomerType },
   from: Date,
   to: Date,
+  wallet?: Address,
 ): Promise<Summary> {
   const accounts = await db.bankAccount.findMany({ where: { customerId: customer.id, linkedAt: { not: null } }, select: { id: true } });
   const ids = accounts.map((a) => a.id);
@@ -100,9 +127,6 @@ export async function buildSummary(
     where: { createdAt: { gte: from, lt: to }, OR: [{ fromId: { in: ids } }, { toId: { in: ids } }] },
     orderBy: { createdAt: "asc" },
   });
-  const drafts = await db.dealDraft.findMany({ where: { userId, fundingId: { not: null } }, select: { title: true, fundingId: true } });
-  const titleByFunding = new Map(drafts.map((d) => [d.fundingId!, d.title]));
-
   const totals = { income: 0, spent: 0, refunds: 0, net: 0, openingDeposits: 0, dealIncome: 0, transfersIn: 0, transfersOut: 0 };
   const blank = (month: string): Month => ({ month, income: 0, spent: 0, refunds: 0, dealIncome: 0, transfersIn: 0, dealSpent: 0, transfersOut: 0, topups: 0, count: 0 });
   // Always the last six months (empty ones too), so this month's bar is there before anything happens.
@@ -112,7 +136,6 @@ export async function buildSummary(
     const d = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() - i, 1));
     if (d >= new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), 1))) months.set(d.toISOString().slice(0, 7), blank(d.toISOString().slice(0, 7)));
   }
-  const deals = new Map<string, { title: string; spent: number; refunded: number }>();
   for (const t of rows) {
     const amount = baht(t.amount);
     const incoming = t.toId !== null && ids.includes(t.toId);
@@ -140,11 +163,6 @@ export async function buildSummary(
       totals.spent += amount;
       m.spent += amount;
       m.dealSpent += amount;
-      const fundingId = t.idempotencyKey.match(/^funding:(0x[0-9a-f]+):debit$/)?.[1];
-      const title = (fundingId && titleByFunding.get(fundingId)) || "Other deal";
-      const d = deals.get(title) ?? { title, spent: 0, refunded: 0 };
-      d.spent += amount;
-      deals.set(title, d);
     } else if (t.kind === "REFUND" && incoming) {
       totals.refunds += amount;
       m.refunds += amount;
@@ -171,16 +189,59 @@ export async function buildSummary(
     to: to.toISOString(),
     totals,
     months: [...months.values()].sort((a, b) => a.month.localeCompare(b.month)).slice(-6),
-    deals: [...deals.values()].sort((a, b) => b.spent - a.spent),
+    deals: wallet ? await dealLines(wallet) : [],
     tax,
   };
+}
+
+/** The wallet's deals as the escrow sees them now: what was paid, refunded and is still locked. */
+async function dealLines(wallet: Address): Promise<DealLine[]> {
+  const deals = await readFileDeals(wallet).catch(() => []);
+  const lines = await Promise.all(
+    deals
+      .sort((a, b) => b.id - a.id)
+      .slice(0, 60)
+      .map(async (d): Promise<DealLine> => {
+        const buyer = d.role === "buyer" ? wallet : d.counterparty;
+        const seller = d.role === "seller" ? wallet : d.counterparty;
+        const terms = await dealTerms(d.id, buyer, seller).catch(() => null);
+        let paid = 0;
+        let refunded = 0;
+        let locked = 0;
+        for (const m of d.milestones) {
+          const amount = Number(m.amount);
+          if (m.status === "Released") paid += amount;
+          else if (m.status === "Refunded") refunded += amount;
+          else if (m.status === "Split") {
+            paid += Number(m.split?.toSeller ?? 0);
+            refunded += Number(m.split?.toBuyer ?? 0);
+          } else if (d.status === "Active") locked += amount;
+        }
+        const settled = d.milestones.length > 0 && d.milestones.every((m) => ["Released", "Refunded", "Split"].includes(m.status));
+        const status =
+          d.status === "Cancelled"
+            ? "Cancelled"
+            : d.milestones.some((m) => m.status === "Disputed")
+              ? "Dispute"
+              : settled
+                ? "Completed"
+                : d.status === "Proposed"
+                  ? "Waiting"
+                  : "In progress";
+        return { id: d.id, title: terms?.title ?? `Deal D-${d.id}`, role: d.role, status, total: Number(d.total), paid, refunded, locked };
+      }),
+  );
+  return lines;
 }
 
 export function summaryCsv(s: Summary): string {
   const lines = [
     "section,key,income,spent,refunds",
     ...s.months.map((m) => `month,${m.month},${m.income},${m.spent},${m.refunds}`),
-    ...s.deals.map((d) => `deal,"${d.title.replace(/"/g, '""')}",,${d.spent},${d.refunded}`),
+    ...s.deals.map(
+      (d) =>
+        `deal,"D-${d.id} ${d.title.replace(/"/g, '""')} (${d.role === "seller" ? "sold" : "bought"}; ${d.status.toLowerCase()})",${d.role === "seller" ? d.paid : ""},${d.role === "buyer" ? d.paid + d.locked : ""},${d.role === "buyer" ? d.refunded : ""}`,
+    ),
     `total,${s.currency},${s.totals.income},${s.totals.spent},${s.totals.refunds}`,
   ];
   if (s.tax) lines.push(`tax_estimate,${s.tax.kind} ${s.tax.year},${s.tax.income},,${s.tax.tax}`);
