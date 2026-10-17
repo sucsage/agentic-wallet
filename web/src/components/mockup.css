@@ -1948,3 +1948,14 @@
 .aw-draft-review.warn{border-color:#6b5320;background:#1a1407;color:#ffd98a}
 .aw-draft-review.block{border-color:#6b2a2a;background:#1d0d0d;color:#ffb3b3}
 .aw-draft-review p{margin:0}.aw-draft-review ul{margin:6px 0 0;padding-left:4px;list-style:none;display:grid;gap:4px}
+.aw-plan{display:grid;gap:10px;margin:12px 0;padding:14px;border:1px solid #2f3a55;border-radius:14px;background:#0d111b}
+.aw-plan header{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.aw-plan-status{padding:3px 10px;border-radius:999px;background:#1c2540;color:#a9c1ff;font-size:12px;font-weight:600}
+.aw-plan-status.complete{background:#0f2a1a;color:#7ee2a4}.aw-plan-status.lapsed,.aw-plan-status.cancelled{background:#2a1515;color:#ffaaaa}
+.aw-plan ol{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.aw-plan li{display:grid;grid-template-columns:1fr auto 70px;gap:10px;align-items:center;padding:8px 10px;border-radius:10px;background:#121828;font-size:13px;color:#ccd}
+.aw-plan li.paid{background:#0f1f17;color:#9fe0b6}.aw-plan li.late{background:#2a1515;color:#ffb3b3}
+.aw-plan li small{text-align:right;font-size:12px}
+.aw-plan-bar{height:6px;border-radius:999px;background:#1c2236;overflow:hidden}.aw-plan-bar i{display:block;height:100%;background:#6f8cff}
+.aw-plan-note{color:#8a93a8;font-size:12px;line-height:1.5}
+.aw-plan-actions{display:flex;flex-wrap:wrap;gap:8px}

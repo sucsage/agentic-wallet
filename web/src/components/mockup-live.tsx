@@ -10,6 +10,7 @@ import { AGENT_LIMIT_RANGE } from "@/lib/send-limits";
 import { fileTypesLabel } from "@/lib/file-types";
 import { SecurityCard } from "./two-factor";
 import { AddressCard } from "./address-card";
+import { PlanCard, planFromParts } from "./plan-card";
 import { DisplaySizeCard } from "./ui-scale";
 import { ChatMarkdown, OpenDealButton, copyText, startDeferredCopy } from "./chat-markdown";
 import { PayoutCard, type PayoutPreview } from "./payout-card";
@@ -543,6 +544,7 @@ export function DraftCard({
   company = null,
   busy = false,
   onSaveTemplate,
+  onPlanChanged,
 }: {
   draft: DraftView;
   currency: "THB" | "CNY";
@@ -556,6 +558,8 @@ export function DraftCard({
   busy?: boolean;
   /** Shows "Save as template" (the deal without its other party). */
   onSaveTemplate?: (d: DraftView) => void;
+  /** A split payment part was paid or stopped: reload. */
+  onPlanChanged?: () => void;
 }) {
   const funded = draft.status === "FUNDED";
   if (draft.status === "CANCELLED") {
@@ -659,6 +663,14 @@ export function DraftCard({
           </p>
         </div>
       )}
+      {draft.paymentPlan && (
+        <PlanCard
+          plan={planFromParts(draft.paymentPlan, draft.plan)}
+          currency={currency}
+          payer={!sell && draft.status !== "PREVIEW"}
+          onChanged={() => onPlanChanged?.()}
+        />
+      )}
       {(draft.rules || draft.guarantorsRequired) && (
         <div className="aw-draft-rules">
           {draft.guarantorsRequired && (
@@ -731,7 +743,9 @@ export function DraftCard({
             ) : (
               <>
                 {preview && (draft.replacesDealId !== null ? `Confirm change to D-${draft.replacesDealId} · ` : "Confirm · ")}
-                {failed
+                {!sell && draft.paymentPlan && !company
+                  ? `Pay part 1 of ${draft.paymentPlan.length} · ${tokenMoney(Number(draft.paymentPlan[0].amount), currency)}`
+                  : failed
                   ? "Try again"
                   : company
                     ? `Submit to ${company.name} signers · ${tokenMoney(draft.total, currency)}`
@@ -988,7 +1002,24 @@ export function LiveChat() {
         funding?: FundingResult;
         companyVote?: { status: string; yes: number; threshold: number; company: string };
         invite?: { kind: "seller" | "buyer"; name: string; link: string | null; access?: { required: boolean; otp?: string | null } } | null;
+        plan?: { id: string; paidParts: number; status: string };
       }>(`/api/workspace/${address}/drafts/${d.id}/approve`, { method: "POST" });
+      if (res.plan && res.draft.paymentPlan) {
+        const parts = res.draft.paymentPlan;
+        toast({ text: `Part 1 of ${parts.length} paid`, tone: "ok" });
+        setItems((cur) => [
+          ...cur,
+          {
+            kind: "agent",
+            at: now(),
+            steps: [],
+            text: `✓ **Part 1 of ${parts.length} paid** (split payment). The money waits in a holding account; nothing is locked or delivered yet. Pay the next parts by their dates on **Deals** (the deal's card): ${parts
+              .slice(1)
+              .map((p, i) => `part ${i + 2} ${tokenMoney(Number(p.amount), currency)} by ${p.due}`)
+              .join(", ")}. When the last part is paid, the whole amount is locked in escrow and the seller is asked to deliver.`,
+          },
+        ]);
+      }
       if (res.invite?.link) {
         const inv = res.invite;
         const dealNo = res.draft.dealId;
@@ -1532,8 +1563,14 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
           funding?: FundingResult;
           companyVote?: { status: string; yes: number; threshold: number; company: string };
           invite?: { kind: "seller" | "buyer"; name: string; link: string | null; access?: { required: boolean; otp?: string | null } } | null;
+          plan?: { id: string; paidParts: number; status: string };
         }>(`/api/workspace/${address}/drafts/${d.id}/approve`, { method: "POST" });
         const v = r.companyVote;
+        if (r.plan) {
+          setDraftMsg({ ok: true, text: `Part 1 of ${d.paymentPlan?.length ?? "?"} paid (split payment). Pay the next parts here by their dates; the deal is locked when the last part is paid.` });
+          await refresh();
+          return;
+        }
         const link = r.invite?.link ?? null;
         copy?.resolve(link);
         const copied = link ? (copy ? await copy.done : await copyText(link)) : false;
@@ -1604,6 +1641,8 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
         status:
           d.status === "PREVIEW"
             ? "AI preview · confirm to create"
+            : d.status === "DRAFT" && d.paymentPlan
+              ? `Split payment · ${d.plan?.paidParts ?? 0}/${d.paymentPlan.length} paid${d.plan && d.plan.status !== "ACTIVE" ? ` · ${d.plan.status.toLowerCase()}` : ""}`
             : d.status === "DRAFT"
               ? "Awaiting your approval"
               : d.side === "SELL"
@@ -1861,6 +1900,7 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
                 onDiscard={(x) => void draftAction(x, "discard")}
                 busy={draftBusy}
                 onSaveTemplate={(x) => setTemplateFrom(templateFromDraft(x))}
+                onPlanChanged={() => void refresh()}
               />
               {draftBusy && <Loading text="Working on it…" />}
             </div>

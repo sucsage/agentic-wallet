@@ -72,6 +72,9 @@ export type DraftView = {
   rules: string | null;
   guarantorsRequired: string | null;
   review: { ok: boolean; blocking: boolean; issues: { level: "block" | "warn"; text: string }[] } | null;
+  /** Split payment: the agreed parts, and how far the buyer got (null: paid in one go). */
+  paymentPlan: { amount: string; due: string }[] | null;
+  plan: { id: string; status: string; paidParts: number } | null;
   result: unknown;
   createdAt: Date;
 };
@@ -110,6 +113,8 @@ export async function draftView(d: DealDraft, sellerLabel = ""): Promise<DraftVi
     rules: d.rules,
     guarantorsRequired: d.guarantorsRequired,
     review: (d.review as DraftView["review"]) ?? null,
+    paymentPlan: (d.paymentPlan as DraftView["paymentPlan"]) ?? null,
+    plan: d.paymentPlan ? await db.paymentPlan.findUnique({ where: { draftId: d.id }, select: { id: true, status: true, paidParts: true } }) : null,
     result: d.result,
     createdAt: d.createdAt,
   };
@@ -117,7 +122,13 @@ export async function draftView(d: DealDraft, sellerLabel = ""): Promise<DraftVi
 
 /** What the termsHash commits to. Older drafts hashed only the first four fields. */
 /** The rules of the contract and whose guarantor it requires: part of the terms both sides sign. */
-export type ExtraTerms = { rules?: string | null; guarantorsRequired?: "buyer" | "seller" | "both" | null; review?: unknown };
+export type ExtraTerms = {
+  rules?: string | null;
+  guarantorsRequired?: "buyer" | "seller" | "both" | null;
+  review?: unknown;
+  /** Split payment (แบ่งจ่าย): the parts the buyer pays before anything is locked (lib/bank/payment-plans). */
+  paymentPlan?: { amount: string; due: string }[] | null;
+};
 
 function termsOf(input: { kind?: string; shipTo?: string | null; title: string; summary: string; reviewHours: number; milestones: DraftMilestone[] } & ExtraTerms) {
   const base = { title: input.title, summary: input.summary, milestones: input.milestones, reviewHours: input.reviewHours };
@@ -128,6 +139,7 @@ function termsOf(input: { kind?: string; shipTo?: string | null; title: string; 
     ...(input.shipTo ? { shipTo: input.shipTo } : {}),
     ...(input.rules ? { rules: input.rules } : {}),
     ...(input.guarantorsRequired ? { guarantorsRequired: input.guarantorsRequired } : {}),
+    ...(input.paymentPlan?.length ? { paymentPlan: input.paymentPlan } : {}),
   };
 }
 
@@ -135,6 +147,7 @@ const extraData = (input: ExtraTerms) => ({
   rules: input.rules?.trim().slice(0, 12_000) || null,
   guarantorsRequired: input.guarantorsRequired ?? null,
   review: input.review === undefined ? Prisma.JsonNull : (input.review as Prisma.InputJsonValue),
+  paymentPlan: input.paymentPlan?.length ? (input.paymentPlan as Prisma.InputJsonValue) : Prisma.JsonNull,
 });
 
 /** Saves the agent's draft as a PREVIEW (nothing exists until the user confirms it). Refuses sellers the wallet does not allowlist, so approval cannot fail on that. */
@@ -252,6 +265,7 @@ export async function createAmendDraft(
     milestones,
     rules: changes.rules === undefined ? old.rules : changes.rules,
     guarantorsRequired: changes.guarantorsRequired === undefined ? (old.guarantorsRequired as ExtraTerms["guarantorsRequired"]) : changes.guarantorsRequired,
+    paymentPlan: changes.paymentPlan === undefined ? (old.paymentPlan as ExtraTerms["paymentPlan"]) : changes.paymentPlan,
     review: changes.review,
   };
   const termsHash = createHash("sha256").update(JSON.stringify(termsOf(input))).digest("hex");
@@ -298,11 +312,18 @@ export async function approveDraft(
   userId: string,
   wallet: Address,
   draftId: string,
-  opts: { viaGroup?: boolean } = {},
+  opts: { viaGroup?: boolean; fromPlan?: boolean } = {},
 ): Promise<{ draft: DealDraft; funding: FundingResult }> {
   const draft = await db.dealDraft.findFirst({ where: { id: draftId, userId, walletAddress: wallet } });
   if (!draft) throw new DraftError("Draft not found");
   if (draft.status === "CANCELLED") throw new DraftError("This draft was cancelled");
+  // A purchase paid in parts is locked only by its last part (lib/bank/payment-plans).
+  if (draft.side === "BUY" && draft.paymentPlan && !opts.fromPlan) {
+    const plan = await db.paymentPlan.findUnique({ where: { draftId: draft.id } });
+    if (!plan || plan.status !== "ACTIVE" || plan.paidParts < (draft.paymentPlan as unknown[]).length) {
+      throw new DraftError("This purchase is paid in parts: it is locked when the last part is paid");
+    }
+  }
   // The terms review found the deal makes no sense or puts its owner at a clear disadvantage.
   if ((draft.review as { blocking?: boolean } | null)?.blocking) throw new DraftError("The terms review stopped this deal: ask the AI to fix the points it listed, then confirm the new preview");
   // A draft put to a group's vote is locked by the vote, not by its proposer alone.

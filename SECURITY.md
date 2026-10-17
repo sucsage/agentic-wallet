@@ -172,6 +172,9 @@ key (`ArbiterNotNeutral`), so the buyer's side can never judge its own dispute.
 - **Screenshots and inspection.** Previews are heavily watermarked with the deal number and grain;
   the browser guard only deters (blur on focus loss, blocked shortcuts). The original file stays
   encrypted until approval, which is the protection that does not depend on the browser.
+- **Split payments cannot double-spend or strand money.** Parts sit in a per-plan holding account,
+  each part's transfer is idempotent, the deal locks only from the last part (a direct accept is
+  refused while a plan runs), and cancelling or lapsing returns the whole held amount.
 - **Chain access.** Besu runs **account permissioning**, so only the app's own keys can send
   transactions. Its RPC needs a signed JWT (RS256) that only the server holds. The public `/api/rpc`
   passes **read-only methods** only (no `eth_sendRawTransaction`), with bounded `eth_getLogs` ranges.

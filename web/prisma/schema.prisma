@@ -290,6 +290,9 @@ enum BankTransferKind {
   WITHDRAW
   /// Money paid in by card through Stripe (test mode), credited once per Checkout Session.
   TOPUP
+  /// Split payment (แบ่งจ่าย): a part moved from the buyer's account into the plan's holding
+  /// account, or the whole held amount moved back when the plan completes, lapses or is cancelled.
+  PLAN
 }
 
 model BankAccount {
@@ -408,6 +411,10 @@ model DealDraft {
   rules          String?
   /// Whose guarantor the deal requires before it can be signed: "buyer", "seller", "both" or null.
   guarantorsRequired String?
+  /// Split payment (แบ่งจ่าย), part of the terms: [{ amount, due }] adding up to the total. The buyer
+  /// pays every part before anything is locked in escrow and before the seller delivers.
+  paymentPlan    Json?
+  plan           PaymentPlan?
   /// The AI's review of the terms for the user: { ok, blocking, issues: [{ level, text }] }.
   review         Json?
   files          DealFile[]
@@ -495,6 +502,34 @@ model DealFile {
 /// A guarantor (ผู้ค้ำประกัน) named by one side of a deal: the person who answers for that side if it
 /// does not perform, up to an amount. One per side; printed on the contract with a guarantee clause and
 /// listed on a complaint. Demo: no identity check and no money is held from them.
+enum PaymentPlanStatus {
+  ACTIVE
+  /// Every part paid: the whole amount went into escrow (or is about to).
+  COMPLETE
+  CANCELLED
+  /// A part was more than 7 days late: what was paid went back to the buyer.
+  LAPSED
+}
+
+/// The running state of a split payment (แบ่งจ่าย): which parts the buyer paid into the plan's
+/// holding account. Nothing is in escrow and nothing is delivered until every part is paid; then the
+/// whole amount is locked like any deal. Cancelling or lapsing returns what was paid.
+model PaymentPlan {
+  id          String            @id @default(cuid())
+  draftId     String            @unique
+  draft       DealDraft         @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  /// The wallet that pays the parts (the buyer's).
+  payerWallet String
+  payerUserId String
+  /// The Mock Bank account holding the parts paid so far (owner "plan:<id>").
+  heldAccountId String?
+  paidParts   Int               @default(0)
+  status      PaymentPlanStatus @default(ACTIVE)
+  completedAt DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+}
+
 model DealGuarantor {
   id        String   @id @default(cuid())
   escrow    String

@@ -29,6 +29,7 @@ export const GUIDE_TOPICS = [
   "expiry",
   "terms_review",
   "protection",
+  "split_payment",
 ] as const;
 export type GuideTopic = (typeof GUIDE_TOPICS)[number];
 
@@ -150,6 +151,13 @@ Witnesses (optional): each side can add one under "Witnesses"; they appear on th
   protection: `Previews and copying:
 - Delivered images are shown only as small, grainy previews marked "PREVIEW D-<deal>" all over; the original file unlocks after you approve.
 - Previews and website mockups blur when the window loses focus, and right-click, view-source and developer-tools shortcuts are blocked. A browser cannot fully stop screenshots, so the real protection is that the original stays encrypted until approval.`,
+  split_payment: `Split payment (แบ่งจ่าย), not instalments (ผ่อน):
+- ผ่อน (get the item first, pay later) does not exist in the app. แบ่งจ่าย does: you pay the price in parts on dates you choose, and only after the last part is the whole amount locked in escrow and the seller asked to deliver.
+1. Tell the AI how to split, e.g. "3 equal parts a month apart" or "5,000 today and 4,000 on 30 Nov". The preview shows the parts and the button "Pay part 1 of N".
+2. Confirm pays part 1. The parts wait in a holding account (not your balance), so they cannot be spent twice.
+3. Pay the next parts on Deals → the deal's card ("Pay part 2 now"…). Paying the last part locks the deal in escrow at once.
+4. "Stop & get my money back" returns everything paid. A part more than 7 days late ends the plan the same way.
+- A seller can offer split payment too: the buyer starts it on the offer's page. Not for a buyer paying through a private link (they pay in one go), and not together with a deposit on signing.`,
 };
 
 export function appGuide(topic: string | undefined): string {

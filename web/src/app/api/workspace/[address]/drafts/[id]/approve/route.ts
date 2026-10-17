@@ -1,4 +1,5 @@
 import { DraftError, approveDraft, draftView } from "@/lib/bank/drafts";
+import { PlanError, startPlan } from "@/lib/bank/payment-plans";
 import { inviteLinkFor } from "@/lib/bank/invites";
 import { companyOfWallet } from "@/lib/company";
 import { db } from "@/lib/db";
@@ -30,6 +31,15 @@ export async function POST(req: Request, ctx: RouteContext<"/api/workspace/[addr
           });
       const draft = await db.dealDraft.findUniqueOrThrow({ where: { id } });
       const body = { draft: await draftView(draft), companyVote: { ...vote, threshold: company.group.threshold, company: company.name } };
+      return new Response(JSON.stringify(body, (_k, v) => (typeof v === "bigint" ? v.toString() : v)), { headers: { "content-type": "application/json" } });
+    }
+    // A purchase paid in parts (แบ่งจ่าย): Confirm pays part 1 into the plan; nothing is locked yet.
+    if (pending && pending.side === "BUY" && pending.paymentPlan) {
+      const plan = await startPlan(user.id, wallet, pending).catch((e) => {
+        throw e instanceof PlanError ? new HttpError(400, e.message) : e;
+      });
+      const fresh = await db.dealDraft.update({ where: { id }, data: { status: "DRAFT" } });
+      const body = { draft: await draftView(fresh), plan: { id: plan.id, paidParts: plan.paidParts, status: plan.status } };
       return new Response(JSON.stringify(body, (_k, v) => (typeof v === "bigint" ? v.toString() : v)), { headers: { "content-type": "application/json" } });
     }
     const { draft, funding } = await approveDraft(user.id, wallet, id).catch((e) => {

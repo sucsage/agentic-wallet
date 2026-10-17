@@ -1,6 +1,7 @@
 import { after } from "next/server";
 
 import { disputeOf, disputeView } from "@/lib/bank/arbiter";
+import { planOf, planView } from "@/lib/bank/payment-plans";
 import { revisionsAllowed } from "@/lib/file-types";
 import { DealError, OFFER_DAYS, dealForWallet, dealTerms, deliveryInfo, demoDeliverable, isSiteDelivery, syncDeal } from "@/lib/bank/deals";
 import { deliveryOf, draftView } from "@/lib/bank/drafts";
@@ -67,6 +68,13 @@ export async function GET(req: Request, ctx: RouteContext<"/api/deals/[id]">) {
       offerExpiresAt: deal.status === "Proposed" && draft ? new Date(+(draft.offeredAt ?? draft.updatedAt) + OFFER_DAYS * 86_400_000) : null,
       rules: draft?.rules ?? null,
       guarantorsRequired: draft?.guarantorsRequired ?? null,
+      // Split payment (แบ่งจ่าย): the parts, what is paid, and whether this user is the one paying.
+      paymentPlan: await (async () => {
+        const parts = draft ? planOf(draft) : null;
+        if (!draft || !parts) return null;
+        const plan = await db.paymentPlan.findUnique({ where: { draftId: draft.id } });
+        return { ...planView(parts, plan), payer: plan ? plan.payerUserId === user.id : deal.role === "buyer" };
+      })(),
       replacedBy: (await db.dealDraft.findFirst({ where: { replacesDealId: id, status: "FUNDED" }, select: { dealId: true } }))?.dealId ?? null,
       title: terms?.title ?? `File deal #${id}`,
       summary: terms?.summary ?? null,

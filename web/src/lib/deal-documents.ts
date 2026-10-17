@@ -45,6 +45,8 @@ export type DocInput = {
     /** What was delivered (the evidence), for the complaint. */
     delivery?: { note: string; fileName: string | null; sha256: string } | null;
   }[];
+  /** Split payment (แบ่งจ่าย): the parts the buyer pays before anything is delivered. */
+  paymentPlan?: { amount: string; due: string }[] | null;
   /** The written rules and conditions, and the guarantors named by each side. */
   rules?: string | null;
   guarantors?: { side: string; name: string; contact: string; relation: string; amount: number | null }[];
@@ -186,6 +188,7 @@ export function renderDealDocument(type: DocType, d: DocInput): string {
       ${d.milestones[0]?.deposit ? `<li>Milestone 1 is a deposit, paid as soon as this contract is signed (the offer accepted on-chain).</li>` : ""}
       <li>Signing: acceptance of the offer on-chain is the signature of both parties. Terms fingerprint: sha256 <code>${esc(d.termsHash ?? "—")}</code>.</li>
     </ol>
+    ${d.paymentPlan?.length ? `<h2>การแบ่งจ่าย · Split payment</h2><p>The ${hire ? "client" : "buyer"} pays the price in ${d.paymentPlan.length} parts. Nothing is delivered before every part is paid; then the whole amount is locked in escrow. This is not an instalment plan. A part more than 7 days late ends the plan and what was paid is returned.</p><table><thead><tr><th>#</th><th>กำหนดชำระ · Due</th><th class="r">จำนวน · Amount</th></tr></thead><tbody>${d.paymentPlan.map((p, i) => `<tr><td>${i + 1}</td><td>${esc(p.due)}</td><td class="r">${money(Number(p.amount), c)}</td></tr>`).join("")}</tbody></table>` : ""}
     ${d.rules ? `<h2>กฎระเบียบและข้อตกลง · Rules and conditions</h2><div class="rules">${esc(d.rules).replace(/\n/g, "<br>")}</div>` : ""}
     ${(d.guarantors ?? []).length ? `<h2>ผู้ค้ำประกัน · Guarantors</h2><ol class="terms">${(d.guarantors ?? []).map((g) => `<li><b>${esc(g.name)}</b> (${esc(g.relation)}, ${esc(g.contact)}) guarantees the obligations of the ${g.side === "buyer" ? buyerRole : sellerRole} under this contract${g.amount ? `, up to ${money(g.amount, c)}` : ", in full"}: if that party does not perform and does not make it good, the guarantor answers for it to the other party.</li>`).join("")}</ol>` : ""}
     <p class="status">Status on-chain: <b>${esc(d.status)}</b>${d.status === "Proposed" ? " (not signed yet: waiting for the other side to accept)" : ""}</p>

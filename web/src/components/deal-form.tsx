@@ -14,7 +14,7 @@ import "./pre-draft-deal.css";
 export type DealFormData = {
   side: "buy" | "sell";
   known: { counterparty?: string; kind?: string; work?: string; price?: string; milestones?: string; acceptance?: string; ship_to?: string; file_types?: string; deposit?: string };
-  missing: ("counterparty" | "kind" | "work" | "price" | "milestones" | "deadline" | "acceptance" | "ship_to" | "file_types" | "deposit" | "rules" | "revisions" | "guarantors")[];
+  missing: ("counterparty" | "kind" | "work" | "price" | "milestones" | "deadline" | "acceptance" | "ship_to" | "file_types" | "deposit" | "rules" | "revisions" | "guarantors" | "payment_plan")[];
   contacts: string[];
 };
 
@@ -32,6 +32,7 @@ const LABEL: Record<string, string> = {
   rules: "Rules of the work",
   revisions: "How many rounds of changes?",
   guarantors: "A guarantor (ผู้ค้ำประกัน)?",
+  payment_plan: "How to split the payment (แบ่งจ่าย)?",
 };
 const KNOWN: Record<string, string> = {
   counterparty: "With",
@@ -199,6 +200,18 @@ export function DealFormCard({ form, currency, disabled, onSubmit }: { form: Dea
               ["5 rounds of changes per milestone", "5"],
               ["10 rounds of changes per milestone (the most)", "10"],
             ])}
+          {k === "payment_plan" && (
+            <>
+              {choice(k, [
+                ["pay in one go", "One go"],
+                ["2 equal parts, one month apart, the first today", "2 parts"],
+                ["3 equal parts, one month apart, the first today", "3 parts"],
+                ["4 equal parts, one month apart, the first today", "4 parts"],
+              ])}
+              <input id={`df-${k}`} maxLength={300} placeholder="Or your own split, e.g. 5,000 today, 4,000 on 30 Nov" value={/equal parts|one go/.test(v[k] ?? "") ? "" : (v[k] ?? "")} onChange={(e) => set(k, e.target.value)} />
+              <small className="aw-predraft-hint">Split payment: you pay every part first; the item is delivered after the last part. Not pay-later.</small>
+            </>
+          )}
           {k === "guarantors" &&
             choice(k, [
               ["no guarantor", "None"],

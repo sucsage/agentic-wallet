@@ -196,7 +196,7 @@ const certainFailure = (o: TxOutcome) => o.status === "reverted" || (o.status ==
  * which locks it. Every step is keyed by the deal, so pressing again resumes instead of paying
  * twice. If the accept certainly failed, the minted tokens are burned and the bank is refunded.
  */
-export async function acceptAndPay(wallet: Address, dealId: number): Promise<AcceptResult> {
+export async function acceptAndPay(wallet: Address, dealId: number, opts: { fromPlan?: boolean } = {}): Promise<AcceptResult> {
   const d = await getDeal(dealId);
   if (getAddress(d.buyer) !== wallet) throw new DealError("Only the buyer can accept this offer");
   const steps: AcceptResult["steps"] = [];
@@ -207,6 +207,12 @@ export async function acceptAndPay(wallet: Address, dealId: number): Promise<Acc
   const seller = getAddress(d.seller);
   await refuseIfExpired(dealId, wallet, seller);
   await (await import("../guarantors")).requireGuarantorBeforeSigning(dealId, "buyer", wallet, seller);
+  // Being paid in parts: only its last part accepts the offer (lib/bank/plan-actions).
+  if (!opts.fromPlan) {
+    const terms = await dealTerms(dealId, wallet, seller);
+    const plan = terms ? await db.paymentPlan.findUnique({ where: { draftId: terms.id } }) : null;
+    if (plan?.status === "ACTIVE") throw new DealError("You are paying this offer in parts: it is accepted when the last part is paid (or stop the split payment first)");
+  }
   const allowed = await publicClient().readContract({ address: wallet, abi: agentWalletAbi, functionName: "allowedRecipient", args: [seller] });
   if (!allowed) throw new DealError("Add the seller as a payee first (Friends → Make payee)");
   const units = await walletUnits(wallet);
@@ -622,7 +628,17 @@ export const OFFER_DAYS = 14;
 export async function offerExpiresAt(dealId: number, buyer: Address, seller: Address): Promise<Date | null> {
   const terms = await dealTerms(dealId, buyer, seller);
   if (!terms) return null;
-  return new Date(+(terms.offeredAt ?? terms.updatedAt) + OFFER_DAYS * 86_400_000);
+  const base = new Date(+(terms.offeredAt ?? terms.updatedAt) + OFFER_DAYS * 86_400_000);
+  // An offer paid in parts stays open while its split payment runs (until the last part is late).
+  const parts = terms.paymentPlan as { due: string }[] | null;
+  if (parts?.length) {
+    const plan = await db.paymentPlan.findUnique({ where: { draftId: terms.id } });
+    if (plan?.status === "ACTIVE" || plan?.status === "COMPLETE") {
+      const end = new Date(new Date(`${parts[parts.length - 1].due}T23:59:59+07:00`).getTime() + 7 * 86_400_000);
+      return end > base ? end : base;
+    }
+  }
+  return base;
 }
 
 async function refuseIfExpired(dealId: number, buyer: Address, seller: Address) {

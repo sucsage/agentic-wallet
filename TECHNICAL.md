@@ -422,6 +422,15 @@ Internally the e-money account is a ledger account. The funding saga, the reserv
 - **Capture guard** (`CaptureGuard`): no context menu, the developer-tools / view-source / save shortcuts are swallowed, Print Screen blanks the page and empties the clipboard, protected content (`.aw-protect`: previews, website mockups) blurs when the window loses focus or docked developer tools are detected, and the app does not print. A browser cannot really prevent screenshots or inspection; these are deterrents on top of the server-side protection.
 - **Dispute test cases** (`docs/DISPUTE-TEST-CASES.md`, `npm run dispute-cases [-- --llm]`): the majority rules in code and ten model cases (complete, partial, nothing delivered, new requirements, prompt injection by either side, a parcel never sent) with the share each must get. The case file builder (`caseText`) is shared with the real arbiter.
 
+### 3.18 Split payment (แบ่งจ่าย), not instalments (ผ่อน)
+
+The app has no instalment plan (goods first, pay later). It has split payment: the buyer pays the price in parts on agreed dates and nothing is locked in escrow or delivered before the last part (`web/src/lib/bank/payment-plans.ts`, `plan-actions.ts`).
+
+- **Terms**: `DealDraft.paymentPlan` = `[{ amount, due }]`, 2-12 parts adding up exactly to the total, the first due today (Bangkok date), dates in order; part of the hashed terms; printed on the contract. It cannot be combined with a deposit on signing. The agent asks how to split (or offers an even split) and refuses "ผ่อน", explaining the difference; the pre-draft form has a split-payment field.
+- **Money**: each part moves from the buyer's account to the plan's own holding account (`plan:<id>`, transfer kind `PLAN`, idempotent per part), so it cannot be spent twice. Paying the last part moves the held amount back and, in the same request, locks the deal the normal way: a purchase is confirmed (`approveDraft` with `fromPlan`), a seller's offer accepted (`acceptAndPay` with `fromPlan`). If locking fails the money is in the buyer's balance and "Lock now" retries.
+- **Purchase**: Confirm on the preview pays part 1 (the draft waits as DRAFT with its plan; the on-chain deal appears when it is locked). **Sale**: the offer goes on-chain as usual; the buyer starts the plan on the offer's page; the offer stays open until 7 days after the last due date, and a normal "Accept & pay" is refused while a plan runs.
+- **Ending**: "Stop & get my money back" returns everything paid; a part more than 7 days late lapses the plan the same way (the daily cron). Only a buyer with an account can split; someone paying through a private link pays in one go.
+
 ## 4. The AI agent
 
 `web/src/lib/agent.ts`: an LLM tool-use loop (max 12 turns) over any Anthropic-compatible API

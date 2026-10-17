@@ -16,6 +16,7 @@ import {
 import { addressGaps } from "./address";
 import { GUIDE_TOPICS, appGuide } from "./app-guide";
 import { type TermsReview, reviewTerms } from "./terms-review";
+import { type PlanPart, PlanError, checkPlan } from "./bank/payment-plans";
 import { normalizeFileTypes } from "./file-types";
 import { AddressError, type SavedAddress, formatAddress, saveAddress, savedAddress } from "./thai-address";
 import { SocialError, createGroup, payoutRecipients, friendLabels, groupDetail, listFriends, listGroups, pendingVotes, proposeToGroup } from "./social";
@@ -100,7 +101,7 @@ export type PayoutPreview = {
 export type DealForm = {
   side: "buy" | "sell";
   known: { counterparty?: string; kind?: string; work?: string; price?: string; milestones?: string; acceptance?: string; ship_to?: string; file_types?: string; deposit?: string };
-  missing: ("counterparty" | "kind" | "work" | "price" | "milestones" | "deadline" | "acceptance" | "ship_to" | "file_types" | "deposit" | "rules" | "revisions" | "guarantors")[];
+  missing: ("counterparty" | "kind" | "work" | "price" | "milestones" | "deadline" | "acceptance" | "ship_to" | "file_types" | "deposit" | "rules" | "revisions" | "guarantors" | "payment_plan")[];
   /** Contact names the user can pick for the other party. */
   contacts: string[];
 };
@@ -139,10 +140,10 @@ E-money wallet. Deals are paid from the user's THB / CNY wallet balance (topped 
 - To SELL the user's own work, a file or an item to someone, call propose_bank_sale with the buyer's name (get_wallet_status → friends). It also only shows a preview; the user presses Confirm, which puts the offer on-chain and locks nothing. The buyer pays from their wallet balance when they accept it, and must have the user as a payee by then.
 - Changing a deal: if the user wants to change a deal that was already confirmed (in list_deals) and the other side has NOT accepted it yet (status Proposed, offered_by me), call amend_deal for THAT deal: never propose a new deal for it, which would make a second one. If it was already accepted, explain that its terms are fixed now. If the user is still looking at an unconfirmed preview (DR-…), just draft the preview again with the changes.
 - Websites and web pages: plan each design / build milestone with delivery "file" and say in its acceptance criteria that it is delivered as a single .html file (a mockup or the page itself, CSS inline). The buyer then tries it in a live browser / tablet / phone mockup on the deal page before approving. Mention this to the user.
-- Deposits (มัดจำ, เงินดาวน์, จ่ายก่อน, ค่ามัดจำตอนเซ็นสัญญา, advance, down payment, "x% up front", "pay part on signing"): the deposit is ALWAYS the FIRST milestone with deposit true and delivery "note". It is transferred to the seller AUTOMATICALLY and AT ONCE when the other side accepts the offer (signing): nobody delivers or approves it, and it is not refundable through a dispute. The remaining milestones are the installments (งวด) paid on delivery and approval.
+- Deposits (มัดจำ, เงินดาวน์, จ่ายก่อน, ค่ามัดจำตอนเซ็นสัญญา, advance, down payment, "x% up front", "pay part on signing"): the deposit is ALWAYS the FIRST milestone with deposit true and delivery "note". It is transferred to the seller AUTOMATICALLY and AT ONCE when the other side accepts the offer (signing): nobody delivers or approves it, and it is not refundable through a dispute. The remaining milestones (งวดงาน) are paid from escrow on delivery and approval; they are not instalments (ผ่อน): the money is locked before the work starts.
   · Ask for the deposit amount if the user did not give it (an amount or a percentage of the total); a percentage is of the whole price, e.g. "30% deposit on 50,000" → deposit 15,000 and 35,000 left for the other milestones. Never add a deposit the user did not ask for.
   · Name it clearly, e.g. "Deposit on signing (30%)", and set its acceptance to "Paid automatically when the contract is signed".
-  · The milestones must add up to the agreed total: say the split in your reply, e.g. "Deposit 15,000 paid immediately on signing, then 2 installments of 17,500 on delivery".
+  · The milestones must add up to the agreed total: say the split in your reply, e.g. "Deposit 15,000 paid immediately on signing, then 2 milestones of 17,500, each paid on delivery".
   · In your reply, say plainly that the deposit moves to the seller immediately when the offer is accepted, and the rest stays locked in escrow until each delivery is approved.
 - Templates: when the user asks to reuse a deal ("use my template", "same as last time", "ใช้เทมเพลต", "แบบเดิม"), call deal_templates (with the name if they gave one), then draft a NEW preview from it with propose_bank_deal / propose_bank_sale, keeping its title, summary, kind and milestones and changing only what the user asked (usually the other party, sometimes amounts or dates). A template is never a deal and has no other party: ask who it is for if the user did not say. When the user asks to save a deal for later, call save_deal_template with that deal's details.
 - Paying people from a group's or company's shared account (salaries, staff pay, reimbursements, sharing earnings) is NOT a deal: call propose_group_payment (one call for everyone being paid). It needs no payee allowlist: the signers' vote decides. Never use propose_bank_deal for a salary.
@@ -153,6 +154,7 @@ E-money wallet. Deals are paid from the user's THB / CNY wallet balance (topped 
 - Fairness check: every preview goes through a terms review for the user (does it make sense, is the user disadvantaged). If a tool answers NOT DRAFTED, do not try to slip the same terms through: explain each point simply and propose a fair fix (e.g. a smaller deposit, a longer review window, mutual termination terms, criteria for the other side too). Draft again only after the user agrees. Terms that make sense and are fair go through as usual.
 - Offers expire: an offer not signed (accepted) within 14 days is withdrawn automatically (a buyer's locked money comes back). Say so when you show a preview.
 - Private links are protected: when someone without an account gets a link, the app also makes a 6-digit one-time code (OTP). The user must send the code separately from the link; the person enters it once and sets their own password. If they lose it, their link gives them a reset code to send back, which the user enters on the deal's page (Access code → Reset their access) to get a new OTP.
+- Paying in parts: the app has NO instalment plan (ผ่อน: getting the goods or work first and paying later). Never offer or promise one. It has SPLIT PAYMENT (แบ่งจ่าย): the buyer pays the price in parts on agreed dates, and only when every part is paid is the whole amount locked in escrow and the seller asked to deliver. When the user wants to pay (or let a buyer pay) in parts, ask how: how many parts, how much each, and the dates (or offer an even split, e.g. 3 parts a month apart), then pass payment_plan (adding up exactly to the total; the first part due today). If they ask for ผ่อน, explain the difference and offer แบ่งจ่าย instead. A split payment cannot be combined with a deposit paid on signing. For a purchase, Confirm pays part 1; for a sale, the buyer starts paying from the offer's page. A part more than 7 days late ends the plan and returns what was paid. Who pays the parts must have an account, and the user always has one. So when the USER is the buyer, split payment ALWAYS works, also when the seller has no account (new_person true), e.g. "buy a table from Ton (no account) for 9,000, split in 3" is fine: draft it with payment_plan. The ONLY case without split payment: the user SELLS to someone without an account, because that buyer pays through a private link in one go.
 - How-to questions ("how do I…", "where is…", "ทำยังไง", "อยู่ตรงไหน", "ใช้ยังไง", "what does … do"): call app_guide with the closest topic (more than one if needed) and answer from it as numbered steps with the exact page and button names in quotes; finish with the next thing they can do. Never invent a button, page or feature; if the guide does not cover it, say so.
 - Address: get_my_address reads the user's saved delivery address; offer it for a parcel the user buys ("ship to your saved address: …?"). set_my_address saves or changes it, only when the user asks; if it answers NOT SAVED, ask the user to correct that part.
 - Files on a deal: the creator of a deal can attach files for the other side (a spec, a catalogue, a sample, a quotation) on the deal's page under "Attached files" after confirming; say so when the user wants to send something with an offer.
@@ -285,6 +287,16 @@ const BANK_TOOLS = [
         description: "The contract's rules and conditions in full (duties, what is not allowed, confidentiality, fraud, termination, liability), as the user gave them or as you drafted them with the user; empty when the user wants none",
       },
       guarantors_required: { type: "string", enum: ["none", "buyer", "seller", "both"], description: "Whose guarantor (ผู้ค้ำประกัน) must be named before the deal can be signed. Ask the user; none if they do not want one" },
+      payment_plan: {
+        type: "array",
+        description: "Split payment (แบ่งจ่าย), only when the user asks to pay in parts: the parts the BUYER pays BEFORE anything is locked or delivered, adding up exactly to the total. First part due today (empty date), then YYYY-MM-DD in order; 2-12 parts. Empty array: paid in one go",
+        items: {
+          type: "object",
+          properties: { amount: { type: "number" }, due_date: { type: "string", description: "YYYY-MM-DD, or empty for today (the first part)" } },
+          required: ["amount", "due_date"],
+          additionalProperties: false,
+        },
+      },
     },
     ["seller", "kind", "ship_to", "title", "summary", "review_hours", "milestones"],
   ),
@@ -305,6 +317,16 @@ const BANK_TOOLS = [
         description: "The contract's rules and conditions in full (duties, what is not allowed, confidentiality, fraud, termination, liability), as the user gave them or as you drafted them with the user; empty when the user wants none",
       },
       guarantors_required: { type: "string", enum: ["none", "buyer", "seller", "both"], description: "Whose guarantor (ผู้ค้ำประกัน) must be named before the deal can be signed. Ask the user; none if they do not want one" },
+      payment_plan: {
+        type: "array",
+        description: "Split payment (แบ่งจ่าย), only when the user asks to pay in parts: the parts the BUYER pays BEFORE anything is locked or delivered, adding up exactly to the total. First part due today (empty date), then YYYY-MM-DD in order; 2-12 parts. Empty array: paid in one go",
+        items: {
+          type: "object",
+          properties: { amount: { type: "number" }, due_date: { type: "string", description: "YYYY-MM-DD, or empty for today (the first part)" } },
+          required: ["amount", "due_date"],
+          additionalProperties: false,
+        },
+      },
     },
     ["buyer", "kind", "ship_to", "title", "summary", "review_hours", "milestones"],
   ),
@@ -444,7 +466,7 @@ const BANK_TOOLS = [
         type: "string",
         enum: [...GUIDE_TOPICS],
         description:
-          "start (first steps, menu), money (top up, send, withdraw), buy, sell, outsider (private links, OTP and passwords), deposit, deliver, review (approve / request changes), dispute, documents (contract, payment request, receipt, tax invoice, complaint), files, templates, deals_page (filters), contacts, groups, limits, summary, profile, address, ai_chat, guarantors, revisions (rounds of changes), expiry (14-day offers), terms_review, protection (watermarks, screenshots)",
+          "start (first steps, menu), money (top up, send, withdraw), buy, sell, outsider (private links, OTP and passwords), deposit, deliver, review (approve / request changes), dispute, documents (contract, payment request, receipt, tax invoice, complaint), files, templates, deals_page (filters), contacts, groups, limits, summary, profile, address, ai_chat, guarantors, revisions (rounds of changes), expiry (14-day offers), terms_review, protection (watermarks, screenshots), split_payment (แบ่งจ่าย, not ผ่อน)",
       },
     },
     ["topic"],
@@ -465,8 +487,8 @@ const BANK_TOOLS = [
       deposit: { type: "string", description: "The deposit on signing if known (e.g. 30%), else empty" },
       missing: {
         type: "array",
-        items: { type: "string", enum: ["counterparty", "kind", "work", "price", "milestones", "deadline", "acceptance", "ship_to", "file_types", "deposit", "rules", "revisions", "guarantors"] },
-        description: "Which details the user must still give. Include file_types whenever something is delivered as a file and the formats are not known yet; deposit only when the user mentioned one without its amount",
+        items: { type: "string", enum: ["counterparty", "kind", "work", "price", "milestones", "deadline", "acceptance", "ship_to", "file_types", "deposit", "rules", "revisions", "guarantors", "payment_plan"] },
+        description: "Which details the user must still give. Include file_types whenever something is delivered as a file and the formats are not known yet; deposit only when the user mentioned one without its amount; payment_plan when the user wants to pay in parts but did not say how",
       },
     },
     ["side", "missing"],
@@ -490,6 +512,7 @@ const DEAL_FIELDS = {
   review_hours: z.number().int().min(1).max(720),
   rules: z.string().max(12_000).default(""),
   guarantors_required: z.enum(["none", "buyer", "seller", "both"]).default("none"),
+  payment_plan: z.array(z.object({ amount: z.number().positive(), due_date: z.string().max(10).default("") })).max(12).default([]),
   milestones: z
     .array(
       z.object({
@@ -512,6 +535,7 @@ const DEAL_FIELDS = {
 type DealInput = {
   rules: string;
   guarantors_required: "none" | "buyer" | "seller" | "both";
+  payment_plan: { amount: number; due_date: string }[];
   kind: "hire" | "buy";
   ship_to: string;
   title: string;
@@ -582,11 +606,27 @@ async function reviewFor(i: DealInput, side: "BUY" | "SELL", currency: string) {
 const notDrafted = (r: TermsReview) =>
   `NOT DRAFTED: the terms review stopped it. ${r.issues.map((x) => `[${x.level}] ${x.text}`).join(" ")} Explain these to the user plainly, suggest how to fix each blocking point, and draft again once they agree. Nothing was saved.`;
 
-const extraOf = (i: DealInput, review: TermsReview) => ({
+const extraOf = (i: DealInput, review: TermsReview, paymentPlan: PlanPart[] | null) => ({
   rules: i.rules.trim() || null,
   guarantorsRequired: i.guarantors_required === "none" ? null : i.guarantors_required,
   review,
+  paymentPlan,
 });
+
+/** The split payment, checked: null when paid in one go, a message when it does not add up. */
+function planFor(i: DealInput): PlanPart[] | null | string {
+  if (!i.payment_plan?.length) return null;
+  if (i.milestones.some((m) => m.deposit)) return "a split payment and a deposit on signing cannot be combined: with a split payment the buyer pays everything before anything is delivered";
+  try {
+    return checkPlan(
+      i.payment_plan.map((p) => ({ amount: p.amount, due: p.due_date })),
+      Math.round(i.milestones.reduce((t, m) => t + m.amount, 0) * 100) / 100,
+    );
+  } catch (e) {
+    if (e instanceof PlanError) return e.message;
+    throw e;
+  }
+}
 
 const INPUTS: Record<string, z.ZodType> = {
   get_wallet_status: z.object({}).passthrough(),
@@ -682,7 +722,7 @@ const INPUTS: Record<string, z.ZodType> = {
       ship_to: z.string().max(400).optional(),
       file_types: z.string().max(200).optional(),
       deposit: z.string().max(200).optional(),
-      missing: z.array(z.enum(["counterparty", "kind", "work", "price", "milestones", "deadline", "acceptance", "ship_to", "file_types", "deposit", "rules", "revisions", "guarantors"])).min(1).max(13),
+      missing: z.array(z.enum(["counterparty", "kind", "work", "price", "milestones", "deadline", "acceptance", "ship_to", "file_types", "deposit", "rules", "revisions", "guarantors", "payment_plan"])).min(1).max(14),
     })
     .passthrough(),
   forget_nickname: z.object({ nickname: z.string().trim().min(1).max(40) }),
@@ -902,7 +942,7 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
       const dealId = Number(String(i.deal).replace(/[^0-9]/g, ""));
       const units = await walletUnits(wallet);
       if (i.milestones) {
-        const missing = missingInfo({ kind: i.kind ?? "hire", ship_to: i.ship_to ?? "", title: "", summary: "", review_hours: 72, milestones: i.milestones, rules: "", guarantors_required: "none" });
+        const missing = missingInfo({ kind: i.kind ?? "hire", ship_to: i.ship_to ?? "", title: "", summary: "", review_hours: 72, milestones: i.milestones, rules: "", guarantors_required: "none", payment_plan: [] });
         if (missing.length) return { tool: name, input, summary: `NEED_INFO (nothing was saved): ask the user for ${missing.join("; ")}.` };
       }
       // Changes to single milestones are merged into the deal's current terms.
@@ -1236,11 +1276,13 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
       if (!who.payee && !sharedWallet) return { tool: name, input, summary: `BLOCKED: ${who.name} is not a payee yet. The user must add them to the allow transfer list on the Contacts page first.` };
       const missing = missingInfo(i);
       if (missing.length) return { tool: name, input, summary: `NEED_INFO (nothing was saved): ask the user for ${missing.join("; ")}.` };
+      const plan = planFor(i);
+      if (typeof plan === "string") return { tool: name, input, summary: `NEED_INFO (nothing was saved): the split payment does not work: ${plan}. Ask the user how to split it.` };
       const review = await reviewFor(i, "BUY", units.currency ?? "THB");
       if (review.blocking) return { tool: name, input, summary: notDrafted(review) };
       try {
         const d = await createDraft(userId, wallet, {
-          ...extraOf(i, review),
+          ...extraOf(i, review, plan),
           seller: who.address,
           inviteName: i.new_person ? who.name : null,
           kind: i.kind === "buy" ? "GOODS" : "HIRE",
@@ -1270,11 +1312,14 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
       if (typeof who === "string") return { tool: name, input, summary: `BLOCKED: ${who}. If they have no account on the app, draft again with new_person true.` };
       const missing = missingInfo(i);
       if (missing.length) return { tool: name, input, summary: `NEED_INFO (nothing was saved): ask the user for ${missing.join("; ")}.` };
+      const plan = planFor(i);
+      if (typeof plan === "string") return { tool: name, input, summary: `NEED_INFO (nothing was saved): the split payment does not work: ${plan}. Ask the user how to split it.` };
+      if (plan && i.new_person) return { tool: name, input, summary: "BLOCKED: a split payment needs a buyer with an account; someone paying through a private link pays in one go. Ask the user which they prefer." };
       const review = await reviewFor(i, "SELL", units.currency ?? "THB");
       if (review.blocking) return { tool: name, input, summary: notDrafted(review) };
       try {
         const d = await createSellDraft(userId, wallet, {
-          ...extraOf(i, review),
+          ...extraOf(i, review, plan),
           buyer: who.address,
           inviteName: i.new_person ? who.name : null,
           kind: i.kind === "buy" ? "GOODS" : "HIRE",

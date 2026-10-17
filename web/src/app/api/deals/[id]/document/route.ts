@@ -59,6 +59,7 @@ export async function GET(req: Request, ctx: RouteContext<"/api/deals/[id]/docum
       witnesses: witnesses.map((w) => ({ side: w.side, name: w.name, contact: w.contact })),
       viewer: deal.role,
       rules: draft?.rules ?? null,
+      paymentPlan: (draft?.paymentPlan as { amount: string; due: string }[] | null) ?? null,
       guarantors: guarantors.map((g) => ({ side: g.side, name: g.name, contact: g.contact, relation: g.relation, amount: g.amount === null ? null : Number(g.amount) })),
       disputes: disputes.map((x) => ({
         index: x.index,

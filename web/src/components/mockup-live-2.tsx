@@ -16,6 +16,7 @@ import { SendMoneyDialog } from "./send-money";
 import { BlockDialog, BlockedPanel, ReportDialog } from "./contact-safety";
 import { DealDocuments, DealFiles, SiteMockup, WitnessPanel } from "./deal-extras";
 import { GuarantorForm } from "./guarantor-form";
+import { PlanCard, type PlanViewData } from "./plan-card";
 import { SaveTemplateDialog, type TemplatePayload } from "./deal-templates";
 import { SEND_LIMITS } from "@/lib/send-limits";
 import { acceptAttr, fileTypeOk, fileTypesLabel } from "@/lib/file-types";
@@ -1841,6 +1842,7 @@ type DealDetail = {
   offerExpiresAt?: string | null;
   rules?: string | null;
   guarantorsRequired?: string | null;
+  paymentPlan?: (PlanViewData & { payer: boolean }) | null;
   guarantors?: { side: string; name: string; contact: string; relation: string; amount: number | null; mine: boolean }[];
   canAccept: boolean;
   declined: "me" | "them" | null;
@@ -2503,6 +2505,24 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
               </div>
             );
           })()}
+        {data?.paymentPlan && (
+          <PlanCard
+            plan={data.paymentPlan}
+            currency={me?.bank.currency === "CNY" ? "CNY" : "THB"}
+            payer={data.paymentPlan.payer && data.role === "buyer"}
+            onStart={
+              data.status === "Proposed" && data.role === "buyer"
+                ? async () => {
+                    await api("/api/plans/start", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ dealId: id }) });
+                  }
+                : undefined
+            }
+            onChanged={async () => {
+              await reload();
+              await refresh();
+            }}
+          />
+        )}
         {data?.offerExpiresAt && (
           <p className="aw-dd-note">
             ⏳ This offer must be signed (accepted) by <b>{new Date(data.offerExpiresAt).toLocaleDateString()}</b>. If it is not signed within 14 days it is withdrawn
