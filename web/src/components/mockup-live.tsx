@@ -726,7 +726,10 @@ export function LiveChat() {
   const [maxChats, setMaxChats] = useState(5);
   const [chatId, setChatId] = useState<string | null>(null);
   const [loadingChat, setLoadingChat] = useState(false);
-  const [agentOpen, setAgentOpen] = useState(true);
+  // Both side panels start closed: on desktop they open while hovered (the agent's toggle pins it).
+  const [agentOpen, setAgentOpen] = useState(false);
+  const [agentHover, setAgentHover] = useState(false);
+  const agentShown = agentOpen || agentHover;
   const [limitsEditing, setLimitsEditing] = useState(false);
   const [attached, setAttached] = useState<{ att: ChatAttachment; url: string | null } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -1008,8 +1011,19 @@ export function LiveChat() {
   return localizeMockupNode(
     <div className="aw-ai-chat-page">
       <BalanceBar />
-      <div className={`aw-ai-chat-layout${agentOpen ? "" : " agent-panel-collapsed"}`}>
+      <div className={`aw-ai-chat-layout aw-hover-panels${agentShown ? "" : " agent-panel-collapsed"}`}>
         <aside className="aw-v08-chats" aria-label="Saved chats">
+          <div className="aw-chats-strip" aria-hidden="true">
+            <span className="aw-chats-strip-icon">
+              <svg viewBox="0 0 24 24" fill="none">
+                <path d="M4 5h16v11H8l-4 4V5Z" />
+                <path d="M8 9h8M8 12h5" />
+              </svg>
+            </span>
+            {chats && <small>{chats.length}</small>}
+            <span className="aw-chats-strip-new">＋</span>
+          </div>
+          <div className="aw-chats-panel">
           <header>
             <b>Chats</b>
             {chats && (
@@ -1046,6 +1060,7 @@ export function LiveChat() {
             ))}
           </div>
           <p>{full ? `${maxChats} chats max: delete one to start another. ` : ""}Deleting a chat removes only the conversation. Your deals and evidence stay.</p>
+          </div>
         </aside>
         <section className="aw-ai-conversation">
           <header className="aw-ai-chat-heading">
@@ -1226,8 +1241,12 @@ export function LiveChat() {
             <small>AI checks your balance and policy before any payment.</small>
           </form>
         </section>
-        <aside className={`aw-v08-agent-rail${agentOpen ? " expanded" : ""}`}>
-          <button className="aw-v08-agent-toggle" type="button" aria-label={agentOpen ? "Collapse agent details" : "Expand agent details"} aria-expanded={agentOpen} aria-controls="aw-agent-details" onClick={() => setAgentOpen((o) => !o)}>
+        <aside
+          className={`aw-v08-agent-rail${agentShown ? " expanded" : ""}${agentOpen ? " pinned" : ""}`}
+          onMouseEnter={() => window.matchMedia("(hover: hover) and (min-width: 1051px)").matches && setAgentHover(true)}
+          onMouseLeave={() => setAgentHover(false)}
+        >
+          <button className="aw-v08-agent-toggle" type="button" aria-label={agentOpen ? "Unpin agent details" : "Keep agent details open"} aria-pressed={agentOpen} aria-expanded={agentShown} aria-controls="aw-agent-details" onClick={() => setAgentOpen((o) => !o)}>
             <svg viewBox="0 0 18 18" fill="none" aria-hidden="true">
               <rect x="2.5" y="2.5" width="13" height="13" rx="2" />
               <path d="M7 2.5v13M10 6h3M10 9h3M10 12h3" />
@@ -1260,7 +1279,7 @@ export function LiveChat() {
               {tier}
             </button>
           ))}
-          <div id="aw-agent-details" className="aw-v08-agent-details" aria-hidden={!agentOpen} inert={!agentOpen}>
+          <div id="aw-agent-details" className="aw-v08-agent-details" aria-hidden={!agentShown} inert={!agentShown}>
             <h2>What the agent can do</h2>
             {TIER_TEXT.map((text, tier) => (
               <p key={text} className="aw-v08-agent-tier-row">

@@ -120,7 +120,7 @@
 .aw-v08-chats header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
 .aw-v08-chats header>b{font-size:16px}
 .aw-v08-chats header>span{padding:2px 10px;background:#252525;border-radius:16px;font-size:12px;color:#999}
-.aw-v08-chats>.aw-button{width:100%;margin-bottom:8px;font-size:14px}
+.aw-chats-panel>.aw-button{width:100%;margin-bottom:8px;font-size:14px}
 .aw-v08-chat-list>div{display:flex;align-items:center;gap:4px;padding:10px;border-radius:10px}
 .aw-v08-chat-list>div.selected{background:#222}
 .aw-v08-chat-list button{border:0;background:transparent;color:#999;min-width:0;padding:0;text-align:left}
@@ -129,7 +129,7 @@
 .aw-v08-chat-list small{font-size:12px;display:block;line-height:1.5;color:#777}
 .aw-v08-chat-list button:last-child{flex:none;width:24px;height:32px;display:grid;place-items:center}
 .aw-v08-chat-list svg{width:18px;height:18px;stroke:currentColor;stroke-width:1.6}
-.aw-v08-chats>p{font-size:12px;line-height:1.5;color:#777;margin:14px 0 0}
+.aw-chats-panel>p{font-size:12px;line-height:1.5;color:#777;margin:14px 0 0}
 .aw-v08 .aw-ai-conversation{height:clamp(420px,calc(100dvh / var(--aw-zoom,1) - var(--v08-header) - 130px),840px);min-height:0;max-height:none;display:flex;flex-direction:column;gap:14px;overflow:hidden;padding:24px;border:1px solid #333;border-radius:16px;background:#111}
 .aw-v08 .aw-ai-conversation>:is(.aw-ai-chat-heading,.aw-acting-row,.aw-ai-composer){flex-shrink:0}
 .aw-v08 .aw-ai-chat-heading{height:auto;min-height:40px;align-items:flex-start;padding-bottom:14px;flex-wrap:wrap;gap:8px}
@@ -306,8 +306,8 @@
  .aw-v08-chats{grid-column:1/-1}
  .aw-v08-chat-list{display:flex;gap:8px;overflow-x:auto}
  .aw-v08-chat-list>div{min-width:170px;flex:1}
- .aw-v08 .aw-v08-chats>p{margin-top:8px}
- .aw-v08 .aw-v08-chats>.aw-button{width:auto;min-width:150px}
+ .aw-v08 .aw-chats-panel>p{margin-top:8px}
+ .aw-v08 .aw-chats-panel>.aw-button{width:auto;min-width:150px}
  .aw-v08 .aw-profile-top,.aw-v08 .aw-profile-bottom{grid-template-columns:1fr}
  .aw-v08 .aw-profile-data,.aw-v08 .aw-policy-tiers{grid-template-columns:repeat(2,minmax(0,1fr))}
  .aw-v08 .aw-ai-user-message{width:92%}
@@ -693,3 +693,30 @@
 .aw-ai-attached button{border:0;background:transparent;color:#999;font-size:18px;cursor:pointer}
 .aw-ai-user-image{display:block;max-width:220px;max-height:220px;margin:6px 0 4px auto;border-radius:10px;border:1px solid #333;object-fit:contain;background:#000}
 .aw-ai-user-file{display:inline-block;margin:6px 0 2px;padding:4px 8px;border-radius:8px;background:#1d1d1d;font-size:12px;color:#ccc}
+
+/* AI chat side panels: both start closed. With a mouse on a wide screen they are 64 px strips and the
+   full panel slides over the conversation while hovered or focused (the agent's toggle pins it). */
+.aw-chats-strip{display:none}
+.aw-chats-panel{display:contents}
+@media (min-width:1051px) and (hover:hover){
+ .aw-app.aw-v08 .aw-ai-chat-layout.aw-hover-panels,.aw-app.aw-v08 .aw-ai-chat-layout.aw-hover-panels.agent-panel-collapsed,
+ .aw-v08 .aw-ai-chat-layout.aw-hover-panels,.aw-v08 .aw-ai-chat-layout.aw-hover-panels.agent-panel-collapsed{grid-template-columns:64px minmax(0,1fr) 64px!important;transition:none}
+ .aw-v08 .aw-hover-panels .aw-v08-chats{position:relative;z-index:30;display:flex;flex-direction:column;align-items:center;width:64px;height:336px;padding:16px 0;overflow:visible!important;max-height:none}
+ .aw-hover-panels .aw-chats-strip{display:flex;flex-direction:column;align-items:center;gap:12px;color:#bbb}
+ .aw-chats-strip-icon,.aw-chats-strip-new{display:grid;place-items:center;width:40px;height:40px;border:1px solid #333;border-radius:12px;background:#151515}
+ .aw-chats-strip-icon svg{width:20px;height:20px;stroke:currentColor;stroke-width:1.6;stroke-linejoin:round;stroke-linecap:round}
+ .aw-chats-strip small{padding:2px 8px;border-radius:999px;background:#252525;color:#999;font-size:12px}
+ .aw-chats-strip-new{font-size:18px}
+ .aw-hover-panels .aw-chats-panel{display:block;position:absolute;left:0;top:0;width:300px;max-height:calc(100dvh / var(--aw-zoom,1) - var(--v08-header,80px) - 140px);overflow-y:auto;padding:16px;border:1px solid #333;border-radius:16px;background:#111;box-shadow:0 18px 48px #000c;opacity:0;visibility:hidden;transform:translateX(-10px);transition:opacity .18s ease,transform .22s ease,visibility 0s linear .22s}
+ .aw-hover-panels .aw-v08-chats:hover .aw-chats-panel,.aw-hover-panels .aw-v08-chats:focus-within .aw-chats-panel{opacity:1;visibility:visible;transform:none;transition:opacity .18s ease,transform .22s ease,visibility 0s}
+ .aw-hover-panels .aw-v08-chats:hover .aw-chats-strip,.aw-hover-panels .aw-v08-chats:focus-within .aw-chats-strip{visibility:hidden}
+
+ .aw-v08 .aw-hover-panels .aw-v08-agent-rail,.aw-v08 .aw-hover-panels .aw-v08-agent-rail.expanded{position:relative;z-index:30;display:flex;width:64px;height:336px;padding:16px 0;overflow:visible!important;max-height:none;transition:none}
+ .aw-hover-panels .aw-v08-agent-rail.expanded>:is(.aw-v08-agent-symbol,.aw-v08-tier,.aw-v08-limits-btn){opacity:1;visibility:visible;pointer-events:auto}
+ .aw-hover-panels .aw-v08-agent-rail>.aw-v08-agent-toggle{position:relative;inset:auto;z-index:32}
+ .aw-hover-panels .aw-v08-agent-rail>.aw-v08-agent-symbol{margin-top:0}
+ .aw-hover-panels .aw-v08-agent-rail.pinned>.aw-v08-agent-toggle{outline:1px solid #8b7cf6}
+ .aw-hover-panels .aw-v08-agent-details{left:auto;right:0;top:0;width:340px;max-height:calc(100dvh / var(--aw-zoom,1) - var(--v08-header,80px) - 140px);overflow-y:auto;padding:22px;border:1px solid #333;border-radius:16px;background:#111;box-shadow:0 18px 48px #000c;transform:translateX(10px);transition:opacity .18s ease,transform .22s ease,visibility 0s linear .22s}
+ .aw-hover-panels .aw-v08-agent-rail.expanded .aw-v08-agent-details{transform:none;transition:opacity .18s ease,transform .22s ease,visibility 0s}
+}
+@media (min-width:1051px) and (hover:hover) and (prefers-reduced-motion:reduce){.aw-hover-panels :is(.aw-chats-panel,.aw-v08-agent-details){transition:none!important;transform:none!important}}
