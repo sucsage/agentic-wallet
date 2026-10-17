@@ -43,6 +43,53 @@ async function call<T>(url: string, init?: RequestInit): Promise<T> {
   return body;
 }
 
+/** The buyer corrects the name the seller typed for them (shown to the seller). */
+function BuyerNameEditor({ token, name, onDone }: { token: string; name: string; onDone: () => Promise<void> | void }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(name);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  if (!editing) {
+    return (
+      <button type="button" className="inv-name-edit" onClick={() => (setValue(name), setEditing(true))}>
+        Not your name? Change it
+      </button>
+    );
+  }
+  return (
+    <form
+      className="inv-name-form"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setBusy(true);
+        setErr(null);
+        try {
+          const res = await fetch(`/api/pay/${token}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "name", name: value }) });
+          if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? "Could not save");
+          await onDone();
+          setEditing(false);
+        } catch (e2) {
+          setErr((e2 as Error).message);
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <label>
+        Your name (shown to the seller)
+        <input value={value} onChange={(e) => setValue(e.target.value)} minLength={2} maxLength={80} autoFocus autoComplete="name" />
+      </label>
+      <button type="submit" disabled={busy || value.trim().length < 2}>
+        {busy ? "Saving…" : "Save"}
+      </button>
+      <button type="button" onClick={() => setEditing(false)} disabled={busy}>
+        Cancel
+      </button>
+      {err && <p className="inv-error">{err}</p>}
+    </form>
+  );
+}
+
 export function PayPage({ token }: { token: string }) {
   const base = `/api/pay/${token}`;
   const [view, setView] = useState<View | null>(null);
@@ -137,6 +184,7 @@ export function PayPage({ token }: { token: string }) {
           <div>
             <small>Agentic Wallet · buyer link</small>
             <h1>{view ? `Hi ${view.name}` : error ? "Link unavailable" : "Loading…"}</h1>
+            {view && <BuyerNameEditor token={token} name={view.name} onDone={load} />}
             {view && (
               <p>
                 <b>{view.sellerName}</b> offers you the deal below. No account needed: pay by card, and your money waits in escrow until you approve the delivery.

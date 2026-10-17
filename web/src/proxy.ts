@@ -39,6 +39,9 @@ const PUBLIC_UNDER_APP = ["/groups/join/"];
 /** Pages whose URL holds a secret token. */
 const SECRET_URLS = ["/invite/", "/pay/", "/reset-password", "/groups/join/", "/api/auth/reset-password/"];
 
+/** Sandboxed previews of a delivered web page (framed by the deal page / buyer link page only). */
+const SITE_PREVIEW = /^\/api\/(deals\/\d+|pay\/[^/]+)\/site\//;
+
 const UNSAFE = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 const under = (path: string, prefixes: string[]) => prefixes.some((p) => path === p || path.startsWith(p.endsWith("/") ? p : `${p}/`));
@@ -46,7 +49,8 @@ const under = (path: string, prefixes: string[]) => prefixes.some((p) => path ==
 function withHeaders(res: NextResponse, req: NextRequest): NextResponse {
   const path = req.nextUrl.pathname;
   res.headers.set("X-Content-Type-Options", "nosniff");
-  res.headers.set("X-Frame-Options", "DENY");
+  // Delivered websites are previewed in a device mockup inside this app (their own CSP sandboxes them).
+  res.headers.set("X-Frame-Options", SITE_PREVIEW.test(path) ? "SAMEORIGIN" : "DENY");
   res.headers.set("Referrer-Policy", SECRET_URLS.some((p) => path.startsWith(p)) ? "no-referrer" : "strict-origin-when-cross-origin");
   // The QR scanners read photos (file input), so no live camera access is needed.
   res.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");

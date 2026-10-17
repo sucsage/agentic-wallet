@@ -2,8 +2,11 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
-import { TemplatesPanel } from "./deal-templates";
+import { SaveTemplateDialog, type TemplatePayload, TemplatesPanel } from "./deal-templates";
 import { ATTACH_ACCEPT, type ChatAttachment, fileToChatAttachment } from "./chat-attach";
+import { toast } from "./header-tools";
+import { SecurityCard } from "./two-factor";
+import { DisplaySizeCard } from "./ui-scale";
 import { ChatMarkdown, OpenDealButton, copyText, startDeferredCopy } from "./chat-markdown";
 import { PayoutCard, type PayoutPreview } from "./payout-card";
 import ReactMarkdown from "react-markdown";
@@ -353,6 +356,7 @@ type ChatItem =
 const TOOL_LABEL: Record<string, string> = {
   get_wallet_status: "Checking your wallet, limits and payees",
   deal_templates: "Reading your deal templates",
+  amend_deal: "Preparing the change to your deal",
   save_deal_template: "Saving a deal template",
   list_deals: "Reading your deals",
   propose_bank_deal: "Drafting the deal",
@@ -501,33 +505,22 @@ function LimitsEditor({
   );
 }
 
-/** Saves a draft (without its other party) as a deal template, asking for a name. */
-export async function saveDraftTemplate(d: DraftView): Promise<{ ok: boolean; text: string } | null> {
-  const name = window.prompt("Name this template (reuse it later with another person or other amounts):", d.title)?.trim();
-  if (!name) return null;
-  try {
-    await api("/api/templates", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        name,
-        side: d.side,
-        kind: d.kind,
-        title: d.title,
-        summary: d.summary ?? "",
-        milestones: d.milestones.map((m) => ({
-          name: m.name,
-          amount: String(Number(m.amount)),
-          delivery: m.delivery ?? (m.hasFile ? "file" : "note"),
-          acceptance: m.acceptance ?? "",
-          dueDays: m.due ? Math.max(0, Math.round((new Date(m.due).getTime() - new Date(d.createdAt).getTime()) / 86_400_000)) : null,
-        })),
-      }),
-    });
-    return { ok: true, text: `Saved template “${name}”. Use it from Deals → Templates.` };
-  } catch (e) {
-    return { ok: false, text: (e as Error).message };
-  }
+/** A draft as a template (everything but the other party), for the Save as template dialog. */
+export function templateFromDraft(d: DraftView): TemplatePayload {
+  return {
+    name: d.title,
+    side: d.side,
+    kind: d.kind,
+    title: d.title,
+    summary: d.summary ?? "",
+    milestones: d.milestones.map((m) => ({
+      name: m.name,
+      amount: String(Number(m.amount)),
+      delivery: m.delivery ?? (m.hasFile ? "file" : "note"),
+      acceptance: m.acceptance ?? "",
+      dueDays: m.due ? Math.max(0, Math.round((new Date(m.due).getTime() - new Date(d.createdAt).getTime()) / 86_400_000)) : null,
+    })),
+  };
 }
 
 type FundingResult = { status: string; dealId?: number | string; steps: { step: string; outcome?: { url?: string | null; hash?: string } }[]; error?: string };
@@ -575,6 +568,7 @@ export function DraftCard({
     <section className="aw-deal-draft">
       <div className="aw-draft-topline">
         <small>
+          {draft.replacesDealId !== null && !funded ? `CHANGE TO D-${draft.replacesDealId} · ` : ""}
           {preview ? (sell ? "PREVIEW · OFFER TO SELL" : "PREVIEW · DEAL") : sell ? "DRAFT OFFER TO SELL" : "DRAFT DEAL"} · DR-{draft.id.slice(-6).toUpperCase()}
         </small>
         <span>
@@ -609,7 +603,7 @@ export function DraftCard({
           <span>
             <b>
               {m.name}
-              {(m.delivery ?? (m.hasFile ? "file" : "note")) === "parcel" ? " · 📦 parcel" : m.hasFile ? " · 📎 file" : ""}
+              {m.deposit ? " · 💰 deposit, paid on signing" : (m.delivery ?? (m.hasFile ? "file" : "note")) === "parcel" ? " · 📦 parcel" : m.hasFile ? " · 📎 file" : ""}
             </b>
             <small>{m.due ? `Due ${m.due}` : m.acceptance}</small>
           </span>
@@ -652,6 +646,8 @@ export function DraftCard({
       <div className="aw-draft-notice">
         ⓘ &nbsp;
         {preview && "The AI only proposed this: no deal exists until you confirm. "}
+        {draft.replacesDealId !== null && !funded && `Confirming withdraws D-${draft.replacesDealId} (not accepted yet${sell ? "" : "; its locked money comes back"}) and replaces it with this, same person and same link. `}
+        {draft.milestones[0]?.deposit && !funded && `The deposit (${tokenMoney(draft.milestones[0].amount, currency)}) is paid to ${sell ? "you" : "the seller"} as soon as the offer is accepted. `}
         {company && !sell
           ? `Submitting counts your yes. The total is taken from the ${company.name} account only after ${company.threshold} signers approve.`
           : company && sell
@@ -684,7 +680,7 @@ export function DraftCard({
               </>
             ) : (
               <>
-                {preview && "Confirm · "}
+                {preview && (draft.replacesDealId !== null ? `Confirm change to D-${draft.replacesDealId} · ` : "Confirm · ")}
                 {failed
                   ? "Try again"
                   : company
@@ -912,10 +908,8 @@ export function LiveChat() {
     }
   }
 
-  async function saveAsTemplate(d: DraftView) {
-    const r = await saveDraftTemplate(d);
-    if (r) setItems((cur) => [...cur, r.ok ? { kind: "agent", at: now(), steps: [], text: r.text } : { kind: "error", text: r.text }]);
-  }
+  const [templateFrom, setTemplateFrom] = useState<TemplatePayload | null>(null);
+  const saveAsTemplate = (d: DraftView) => setTemplateFrom(templateFromDraft(d));
 
   async function discard(d: DraftView) {
     if (!address) return;
@@ -947,6 +941,7 @@ export function LiveChat() {
         // Copied by the write the Confirm click started (or a plain copy); the message keeps a Copy button too.
         copy?.resolve(inv.link!);
         const copied = copy ? await copy.done : await copyText(inv.link!);
+        toast(copied ? { text: `Private link for ${inv.name} copied to your clipboard`, tone: "ok" } : { text: `Private link for ${inv.name} is ready: press Copy link in the chat`, tone: "info" });
         setItems((cur) => [
           ...cur,
           {
@@ -1292,6 +1287,14 @@ export function LiveChat() {
           </div>
         </aside>
       </div>
+      {templateFrom && (
+        <SaveTemplateDialog
+          payload={templateFrom}
+          currency={currency}
+          onClose={() => setTemplateFrom(null)}
+          onSaved={(text) => setItems((cur) => [...cur, { kind: "agent", at: now(), steps: [], text }])}
+        />
+      )}
       {confirm &&
         typeof document !== "undefined" &&
         createPortal(
@@ -1471,6 +1474,7 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
     }
   }
   const [filter, setFilter] = useState<"All" | "Buying" | "Selling" | "Dispute" | "Templates">("All");
+  const [templateFrom, setTemplateFrom] = useState<TemplatePayload | null>(null);
   const [templateCount, setTemplateCount] = useState<number | null>(null);
   useEffect(() => {
     api<{ templates: unknown[] }>("/api/templates")
@@ -1491,6 +1495,7 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
     ...drafts
       // The AI's previews too: they are confirmed (or discarded) here, not only in the chat.
       .filter((d) => d.status === "PREVIEW" || d.status === "DRAFT" || d.status === "FAILED")
+      .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
       .map((d) => ({
         key: `draft-${d.id}`,
         draftId: d.id,
@@ -1512,7 +1517,8 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
                 : "Failed · refunded",
         tone: STATUS_TONE[d.status],
       })),
-    ...(wallet?.fileDeals ?? []).map((d) => {
+    // Newest first: a higher deal number is a newer deal.
+    ...[...(wallet?.fileDeals ?? [])].sort((a, b) => b.id - a.id).map((d) => {
       const done = d.milestones.filter((m) => m.status === "Released" || m.status === "Split").length;
       const disputed = d.milestones.some((m) => m.status === "Disputed");
       const draft = drafts.find((x) => x.dealId === d.id);
@@ -1527,7 +1533,9 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
         role: d.role === "buyer" ? ("Buying" as const) : ("Selling" as const),
         milestones: `${done} / ${d.milestones.length}`,
         amount: tokenMoney(d.total, currency),
-        status: disputed
+        status: d.status === "Cancelled"
+          ? "Cancelled · withdrawn"
+          : disputed
           ? "Dispute"
           : done === d.milestones.length
             ? "Completed · paid"
@@ -1536,7 +1544,7 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
                 ? "Offer to you · open to accept"
                 : d.role === "buyer" ? "Waiting for seller" : "Waiting for buyer"
               : "In progress",
-        tone: disputed ? "red" : done === d.milestones.length ? "green" : STATUS_TONE[d.status] ?? "blue",
+        tone: d.status === "Cancelled" ? "gray" : disputed ? "red" : done === d.milestones.length ? "green" : STATUS_TONE[d.status] ?? "blue",
       };
     }),
   ];
@@ -1563,7 +1571,7 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
           <div className="aw-linked-invites">
             <b>Hired through a link</b>
             {linkedInvites.map((i) => (
-              <a key={i.id} href={i.href}>
+              <a key={i.id} href={`${i.href}${i.href.includes("?") ? "&" : "?"}stay=1`}>
                 {i.buyer} hired you · open →
               </a>
             ))}
@@ -1643,6 +1651,7 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
           </table>
         </div>
         {draftMsg && <p className={draftMsg.ok ? "aw-live-ok" : "aw-bank-error"}>{draftMsg.text}</p>}
+        {templateFrom && <SaveTemplateDialog payload={templateFrom} currency={currency} onClose={() => setTemplateFrom(null)} onSaved={(text) => setDraftMsg({ ok: true, text })} />}
         {(() => {
           const d = drafts.find((x) => x.id === openDraft && (x.status === "PREVIEW" || x.status === "DRAFT" || x.status === "FAILED"));
           if (!d) return null;
@@ -1656,7 +1665,7 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
                 onApprove={(x) => void draftAction(x, "approve")}
                 onDiscard={(x) => void draftAction(x, "discard")}
                 busy={draftBusy}
-                onSaveTemplate={(x) => void saveDraftTemplate(x).then((m) => setDraftMsg(m))}
+                onSaveTemplate={(x) => setTemplateFrom(templateFromDraft(x))}
               />
               {draftBusy && <Loading text="Working on it…" />}
             </div>
@@ -1893,6 +1902,8 @@ export function LivePrivacy() {
             </div>
           </Card>
           <KycCard />
+          <SecurityCard />
+          <DisplaySizeCard />
           <StripeLinkCard />
           <Card className="aw-profile-passbooks">
             <header>

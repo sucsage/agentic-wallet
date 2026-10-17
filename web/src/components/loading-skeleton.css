@@ -1,5 +1,5 @@
 /* V0.8 S-01: two 548x270 cards followed by one 1112x270 card. */
-.aw-loading-page{box-sizing:border-box;min-height:calc(100dvh - 154px);padding:28px var(--v08-gutter,40px) 64px;background:#000;color:#eee}
+.aw-loading-page{box-sizing:border-box;min-height:calc(100dvh / var(--aw-zoom,1) - 154px);padding:28px var(--v08-gutter,40px) 64px;background:#000;color:#eee}
 .aw-loading-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:16px;row-gap:24px}
 .aw-loading-card{box-sizing:border-box;min-width:0;height:270px;padding:24px;border:1px solid #333;border-radius:16px;background:#111}
 .aw-loading-card-wide{grid-column:1/-1}
@@ -17,7 +17,7 @@
 .aw-loading-notice{margin-top:24px;padding:20px;border:1px solid #393344;border-radius:12px;background:#17131f;font-size:14px}
 .aw-loading-notice p{margin:0 0 12px}
 .aw-loading-notice button,.aw-loading-notice a{display:inline-block;padding:8px 14px;margin-right:12px;border:1px solid #64548b;border-radius:8px;background:transparent;color:#c4b5fd;text-decoration:none;cursor:pointer}
-.aw-navigation-error{padding:40px var(--v08-gutter,40px);background:#000;min-height:calc(100dvh - 80px);color:#eee}
+.aw-navigation-error{padding:40px var(--v08-gutter,40px);background:#000;min-height:calc(100dvh / var(--aw-zoom,1) - 80px);color:#eee}
 .aw-navigation-error h1{font-size:28px;font-weight:600;margin:0 0 12px}
 .aw-navigation-error p{color:#aaa;margin-bottom:20px}
 .aw-navigation-error .aw-actions{gap:12px}

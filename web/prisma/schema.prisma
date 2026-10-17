@@ -41,6 +41,7 @@ model User {
   blockedBy       UserBlock[]      @relation("blocked")
   reportsMade     UserReport[]     @relation("reporter")
   reportsAbout    UserReport[]     @relation("reported")
+  security        UserSecurity?
 }
 
 model Session {
@@ -392,6 +393,9 @@ model DealDraft {
   /// The SellerInvite (a purchase) or BuyerInvite (a sale) made for them on Confirm.
   inviteId       String?
   dealId         Int?
+  /// An amendment: confirming this draft first withdraws that deal (still an unaccepted offer),
+  /// then makes this one with the same other party (and the same private link).
+  replacesDealId Int?
   /// Last funding result (steps, tx hashes, error), for the UI.
   result         Json?
   createdAt      DateTime        @default(now())
@@ -457,6 +461,38 @@ model UserBlock {
 
   @@unique([blockerId, blockedId])
   @@index([blockedId])
+}
+
+/// Optional witnesses named on a deal's contract, one per side (buyer / seller).
+model DealWitness {
+  id        String   @id @default(cuid())
+  escrow    String
+  dealId    Int
+  side      String
+  name      String
+  contact   String   @default("")
+  addedById String?
+  createdAt DateTime @default(now())
+
+  @@unique([escrow, dealId, side])
+}
+
+/// Second factors (demo). PIN: scrypt hash. Face / fingerprint / passkey: a WebAuthn credential id
+/// on this device (the signature is not verified server-side in the demo). SMS: simulated. Email
+/// OTP: a 6-digit code mailed (shown on screen when no mailer is configured).
+model UserSecurity {
+  userId        String    @id
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  enabled       Boolean   @default(false)
+  /// Methods turned on: "pin" | "face" | "fingerprint" | "passkey" | "sms" | "email"
+  methods       String[]  @default([])
+  pinHash       String?
+  credentialIds String[]  @default([])
+  phone         String?
+  otpHash       String?
+  otpExpires    DateTime?
+  otpTries      Int       @default(0)
+  updatedAt     DateTime  @updatedAt
 }
 
 enum ReportReason {

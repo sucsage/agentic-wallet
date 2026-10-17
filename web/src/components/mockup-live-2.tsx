@@ -13,7 +13,9 @@ import { usePrefs } from "./prefs";
 import { FundCompany, setActing } from "./company";
 import { GroupChat } from "./group-chat";
 import { SendMoneyDialog } from "./send-money";
-import { BlockedPanel, ReportDialog, blockPerson } from "./contact-safety";
+import { BlockDialog, BlockedPanel, ReportDialog } from "./contact-safety";
+import { DealDocuments, SiteMockup, WitnessPanel } from "./deal-extras";
+import { SaveTemplateDialog, type TemplatePayload } from "./deal-templates";
 import { SEND_LIMITS } from "@/lib/send-limits";
 import { BalanceBar } from "./mockup-live";
 import { Button, Card, Loading, PageTitle } from "./mockup-ui";
@@ -532,6 +534,7 @@ export function LiveFriends() {
   const [sending, setSending] = useState(false);
   const [sendId, setSendId] = useState(() => crypto.randomUUID());
   const [reporting, setReporting] = useState<{ userId: string; name: string } | null>(null);
+  const [blocking, setBlocking] = useState<{ userId: string; name: string } | null>(null);
   const [safetyMsg, setSafetyMsg] = useState<string | null>(null);
   const [blockVersion, setBlockVersion] = useState(0);
   const { me, refresh } = useAppData();
@@ -561,17 +564,6 @@ export function LiveFriends() {
       setFound([]);
       await reload();
     });
-  async function safety(action: () => Promise<string | null>) {
-    try {
-      const m = await action();
-      if (!m) return;
-      setSafetyMsg(m);
-      setBlockVersion((v) => v + 1);
-      await reload();
-    } catch (e) {
-      setSafetyMsg((e as Error).message);
-    }
-  }
   const incoming = friends.filter((f) => f.direction === "incoming");
   const outgoing = friends.filter((f) => f.direction === "outgoing");
   const mutual = friends.filter((f) => f.status === "ACCEPTED");
@@ -713,7 +705,7 @@ export function LiveFriends() {
                 <Button variant="outline" disabled={!!busy} onClick={() => run(`x${f.friendshipId}`, () => send(`/api/friends/${f.friendshipId}`, "DELETE"), reload)}>
                   Decline
                 </Button>
-                <Button variant="outline" disabled={!!busy} onClick={() => void safety(() => blockPerson(f))}>
+                <Button variant="outline" disabled={!!busy} onClick={() => setBlocking({ userId: f.userId, name: f.name })}>
                   Block
                 </Button>
                 <Button disabled={!!busy} onClick={() => run(`a${f.friendshipId}`, () => send(`/api/friends/${f.friendshipId}`, "POST"), reload)}>
@@ -770,7 +762,7 @@ export function LiveFriends() {
                   <button type="button" onClick={() => setReporting({ userId: f.userId, name: f.name })}>
                     ⚑ Report
                   </button>
-                  <button type="button" onClick={() => void safety(() => blockPerson(f))}>
+                  <button type="button" onClick={() => setBlocking({ userId: f.userId, name: f.name })}>
                     ⦸ Block
                   </button>
                 </div>
@@ -785,6 +777,17 @@ export function LiveFriends() {
             void reload();
           }}
         />
+        {blocking && (
+          <BlockDialog
+            person={blocking}
+            onClose={() => setBlocking(null)}
+            onDone={(m) => {
+              setSafetyMsg(m);
+              setBlockVersion((v) => v + 1);
+              void reload();
+            }}
+          />
+        )}
         {reporting && (
           <ReportDialog
             person={reporting}
@@ -1794,6 +1797,9 @@ type DealDetail = {
   offeredBy: "me" | "them";
   /** The other side has no account and this user invited them: their private link. */
   invite: { kind: "seller" | "buyer"; name: string; link: string | null; expiresAt: string; linked: boolean } | null;
+  witnesses?: { side: string; name: string; contact: string; mine: boolean }[];
+  /** This offer was withdrawn and replaced by an amended one. */
+  replacedBy?: number | null;
   title: string;
   summary: string | null;
   kind: "HIRE" | "GOODS";
@@ -1821,6 +1827,8 @@ type DealDetail = {
     moves: string[];
     delivers: "file" | "parcel" | "note";
     canPreview: boolean;
+    canMockup?: boolean;
+    deposit?: boolean;
     delivery: {
       note: string;
       fileName: string | null;
@@ -2255,6 +2263,7 @@ function InviteLinkCard({ dealId, invite, onDone }: { dealId: number; invite: No
 
 export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: string) => void }) {
   const [templateMsg, setTemplateMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [templateFrom, setTemplateFrom] = useState<TemplatePayload | null>(null);
   const lang = useLang();
   const { me, refresh } = useAppData();
   const id = Number(dealId.replace(/\D/g, ""));
@@ -2297,24 +2306,17 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
             <Button
               variant="outline"
               disabled={!data}
-              onClick={async () => {
-                if (!data) return;
-                const name = window.prompt("Name this template (reuse this deal later with another person or other amounts):", data.title)?.trim();
-                if (!name) return;
-                try {
-                  await send("/api/templates", "POST", {
-                    name,
-                    side: data.role === "buyer" ? "BUY" : "SELL",
-                    kind: data.kind,
-                    title: data.title,
-                    summary: data.summary ?? "",
-                    milestones: data.milestones.map((m) => ({ name: m.name, amount: String(Number(m.amount)), delivery: m.delivers, acceptance: m.acceptance ?? "", dueDays: null })),
-                  });
-                  setTemplateMsg({ ok: true, text: `Saved template “${name}”. Use it from Deals → Templates.` });
-                } catch (e) {
-                  setTemplateMsg({ ok: false, text: (e as Error).message });
-                }
-              }}
+              onClick={() =>
+                data &&
+                setTemplateFrom({
+                  name: data.title,
+                  side: data.role === "buyer" ? "BUY" : "SELL",
+                  kind: data.kind,
+                  title: data.title,
+                  summary: data.summary ?? "",
+                  milestones: data.milestones.map((m) => ({ name: m.name, amount: String(Number(m.amount)), delivery: m.delivers, acceptance: m.acceptance ?? "", dueDays: null })),
+                })
+              }
             >
               ☆ Save as template
             </Button>
@@ -2324,6 +2326,7 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
           </div>
         </header>
         {templateMsg && <p className={templateMsg.ok ? "aw-live-ok" : "aw-bank-error"}>{templateMsg.text}</p>}
+        {templateFrom && <SaveTemplateDialog payload={templateFrom} currency={c} onClose={() => setTemplateFrom(null)} onSaved={(text) => setTemplateMsg({ ok: true, text })} />}
         {data?.invite && <InviteLinkCard dealId={id} invite={data.invite} onDone={reload} />}
         {error && <p className="aw-bank-error">{error}</p>}
         {!data && !error && <Loading block text="Reading the deal from the chain…" />}
@@ -2367,7 +2370,18 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
               </div>
             );
           })()}
+        {data?.replacedBy != null && (
+          <p className="aw-dd-note">
+            ✎ This offer was changed: it was withdrawn and replaced by <a href={`/deals/D-${data.replacedBy}`}>D-{data.replacedBy}</a> (same person, same link).
+          </p>
+        )}
         {data?.summary && <p>{data.summary}</p>}
+        {data && data.status !== "Cancelled" && (
+          <div className="aw-deal-paper">
+            <DealDocuments dealId={id} milestones={data.milestones} />
+            <WitnessPanel dealId={id} role={data.role} witnesses={data.witnesses ?? []} onDone={reload} />
+          </div>
+        )}
         {data?.notes
           ?.filter((n) => n.kind === "REVISION")
           .map((n, i) => (
@@ -2380,6 +2394,7 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
             <section className="aw-d012-card" key={m.index}>
               <h2>
                 {m.index + 1}. {m.name}
+                {m.deposit && <span className="aw-deposit-tag">💰 Deposit · paid on signing</span>}
               </h2>
               <div className="aw-d012-payout">
                 <span>
@@ -2409,6 +2424,7 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
                       <small>Watermarked, reduced preview. The original unlocks once you approve and the key is released.</small>
                     </div>
                   )}
+                  {m.canMockup && <SiteMockup src={`/api/deals/${id}/site/${m.index}`} name={m.delivery.fileName ?? "website"} />}
                   {m.canDownload ? (
                     <>
                       <br />

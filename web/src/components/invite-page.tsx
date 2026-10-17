@@ -143,6 +143,15 @@ export function InvitePage({ token }: { token: string }) {
     return () => clearInterval(t);
   }, [load]);
 
+  // Someone with an account (signed in here) goes straight into the app: the deal is linked to
+  // their account and listed on their Deals page. "?stay=1" (the link from that page) stays here.
+  const linkedToYou = Boolean(view?.linked?.toYou);
+  useEffect(() => {
+    if (!linkedToYou || new URLSearchParams(window.location.search).get("stay")) return;
+    const t = setTimeout(() => window.location.replace("/deals?from=link"), 1200);
+    return () => clearTimeout(t);
+  }, [linkedToYou]);
+
   const money = (amount: string | number, minor = false) => {
     const n = minor ? Number(amount) / 100 : Number(amount);
     return `${view ? SIGN[view.currency] : ""}${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -170,6 +179,7 @@ export function InvitePage({ token }: { token: string }) {
         {view?.linked?.toYou && (
           <section className="inv-card inv-linked">
             <b>✓ Linked to your Agentic Wallet account</b>
+            {typeof window !== "undefined" && !new URLSearchParams(window.location.search).get("stay") && <p className="inv-muted">Opening your account…</p>}
             <p>Earnings go straight into your wallet, {view.buyerName} is now in your contacts, and this deal is listed on your Deals page. Keep working here, or open the app.</p>
             <div className="inv-actions">
               <Link className="inv-linkbtn" href="/deals">

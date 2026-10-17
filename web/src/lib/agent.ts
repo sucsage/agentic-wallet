@@ -13,7 +13,7 @@ import {
 } from "./actions";
 import { addressGaps } from "./address";
 import { SocialError, createGroup, payoutRecipients, friendLabels, groupDetail, listFriends, listGroups, pendingVotes, proposeToGroup } from "./social";
-import { DraftError, type DraftView, createDraft, createSellDraft, discardDraft, draftView, listDrafts } from "./bank/drafts";
+import { DraftError, type DraftView, createAmendDraft, createDraft, createSellDraft, discardDraft, draftView, listDrafts } from "./bank/drafts";
 import { db } from "./db";
 import { LIMITS, kycOf } from "./kyc";
 import { type WalletState, readWallet, walletUnits } from "./state";
@@ -131,6 +131,9 @@ E-money wallet. Deals are paid from the user's THB / CNY wallet balance (topped 
 - Nicknames: get_wallet_status lists the nicknames the user gave each contact, and tools accept a nickname wherever they take a name. Whenever the user refers to someone by a description or nickname that is not a contact name (e.g. "พี่เอ", "my designer", "my potter friend") and you learn which contact they mean, call remember_nickname(nickname, contact) right away, before drafting, and tell the user you will remember it. Example: user "buy from my potter friend" → you ask who → "Seller One" → remember_nickname("potter friend", "Seller One"). forget_nickname removes one.
 - Drafts the user has not approved yet are listed by list_deals with a draft_ref (DR-…). discard_draft removes one when the user asks.
 - To SELL the user's own work, a file or an item to someone, call propose_bank_sale with the buyer's name (get_wallet_status → friends). It also only shows a preview; the user presses Confirm, which puts the offer on-chain and locks nothing. The buyer pays from their wallet balance when they accept it, and must have the user as a payee by then.
+- Changing a deal: if the user wants to change a deal that was already confirmed (in list_deals) and the other side has NOT accepted it yet (status Proposed, offered_by me), call amend_deal for THAT deal: never propose a new deal for it, which would make a second one. If it was already accepted, explain that its terms are fixed now. If the user is still looking at an unconfirmed preview (DR-…), just draft the preview again with the changes.
+- Websites and web pages: plan each design / build milestone with delivery "file" and say in its acceptance criteria that it is delivered as a single .html file (a mockup or the page itself, CSS inline). The buyer then tries it in a live browser / tablet / phone mockup on the deal page before approving. Mention this to the user.
+- Deposits (มัดจำ): when the user wants part paid up front on signing, make it the FIRST milestone with deposit true (delivery "note"): it is paid to the seller as soon as the other side accepts the offer, without a delivery. Say so in your reply.
 - Templates: when the user asks to reuse a deal ("use my template", "same as last time", "ใช้เทมเพลต", "แบบเดิม"), call deal_templates (with the name if they gave one), then draft a NEW preview from it with propose_bank_deal / propose_bank_sale, keeping its title, summary, kind and milestones and changing only what the user asked (usually the other party, sometimes amounts or dates). A template is never a deal and has no other party: ask who it is for if the user did not say. When the user asks to save a deal for later, call save_deal_template with that deal's details.
 - Paying people from a group's or company's shared account (salaries, staff pay, reimbursements, sharing earnings) is NOT a deal: call propose_group_payment (one call for everyone being paid). It needs no payee allowlist: the signers' vote decides. Never use propose_bank_deal for a salary.
 - If the other party (seller or buyer) has no account on the app, draft as usual with their name and new_person true. Use new_person true whenever the user says the person is outside the app, has no account, or should get a link (e.g. "คนนอก", "ไม่มีบัญชี", "ไม่ได้อยู่ในแอป", "ส่งลิงก์ให้", "outsider", "no account", "send them a link"), EVEN IF a contact has the same or a similar name: never send it to that contact instead. If a name matches a contact and the user did not say which, ask once: "<name> in your contacts, or someone outside the app (they get a link)?" Do not invent a link: their private link is made only when the user presses Confirm, and it then appears on the deal's page for the user to send them.
@@ -224,6 +227,10 @@ const BANK_MILESTONES = {
       },
       due_date: { type: "string", description: "YYYY-MM-DD, or empty if none" },
       acceptance: { type: "string", description: "What must be delivered for the buyer to approve" },
+      deposit: {
+        type: "boolean",
+        description: "true only for the FIRST milestone when it is a deposit (มัดจำ) paid to the seller as soon as the contract is signed (the offer accepted), with nothing to deliver",
+      },
     },
     required: ["name", "amount", "delivery", "due_date", "acceptance"],
     additionalProperties: false,
@@ -283,6 +290,33 @@ const BANK_TOOLS = [
       reason: { type: "string", description: "Short reason, e.g. October salaries" },
     },
     ["payments", "reason"],
+  ),
+  tool(
+    "amend_deal",
+    "Change a deal the user already confirmed while the other side has NOT accepted it yet (list_deals: status Proposed, offered_by me). Shows a preview of the changed deal with the same other party and private link; when the user confirms, the old offer is withdrawn and replaced. You do NOT need the old terms: everything you leave out stays as it was. For a new price or a renamed milestone use milestone_changes; give milestones only to replace the whole list.",
+    {
+      deal: { type: "string", description: "The deal number, e.g. D-12" },
+      milestone_changes: {
+        type: "array",
+        description: "Changes to existing milestones by number (1 = first); omitted fields stay",
+        items: {
+          type: "object",
+          properties: {
+            number: { type: "integer" },
+            amount: { type: "number" },
+            name: { type: "string" },
+            acceptance: { type: "string" },
+            due_date: { type: "string" },
+          },
+          required: ["number"],
+        },
+      },
+      title: { type: "string", description: "Only if the title changes" },
+      summary: { type: "string", description: "Only if the scope changes" },
+      ship_to: { type: "string", description: "Only if the delivery address changes" },
+      milestones: BANK_MILESTONES,
+    },
+    ["deal"],
   ),
   tool(
     "deal_templates",
@@ -397,7 +431,8 @@ const DEAL_FIELDS = {
         delivery: z.enum(["file", "parcel", "note"]).optional(),
         has_file: z.boolean().optional(),
         due_date: z.string().default(""),
-        acceptance: z.string().max(1000),
+        acceptance: z.string().max(1000).default(""),
+        deposit: z.boolean().optional(),
       }),
     )
     .min(1)
@@ -410,8 +445,10 @@ type DealInput = {
   title: string;
   summary: string;
   review_hours: number;
-  milestones: { name: string; amount: number; delivery?: "file" | "parcel" | "note"; has_file?: boolean; due_date: string; acceptance: string }[];
+  milestones: { name: string; amount: number; delivery?: "file" | "parcel" | "note"; has_file?: boolean; due_date: string; acceptance: string; deposit?: boolean }[];
 };
+
+const DEPOSIT_ACCEPTANCE = "Deposit: paid to the seller as soon as the contract is signed (the offer accepted)";
 
 /**
  * The minimum a deal needs before it is drafted. The model is told to ask for missing details; this
@@ -423,7 +460,9 @@ function missingInfo(i: DealInput): string[] {
   if (i.kind === "hire" && i.milestones.some((m) => delivery(m) === "parcel")) {
     missing.push("whether this is hiring someone or buying an item (a parcel was planned for a hire)");
   }
-  for (const m of i.milestones) {
+  if (i.milestones.some((m, n) => m.deposit && n > 0)) missing.push("which milestone is the deposit (only the first milestone can be a deposit paid on signing)");
+  for (const [n, m] of i.milestones.entries()) {
+    if (n === 0 && m.deposit) continue;
     if (m.acceptance.trim().length < 8) missing.push(`acceptance criteria for "${m.name}" (what must be delivered for it to be approved)`);
   }
   if (i.milestones.some((m) => delivery(m) === "parcel")) {
@@ -433,15 +472,18 @@ function missingInfo(i: DealInput): string[] {
 }
 
 function draftMilestones(i: DealInput, decimals: number) {
-  return i.milestones.map((m) => {
-    const delivery = m.delivery ?? (m.has_file ? "file" : "note");
+  return i.milestones.map((m, n) => {
+    // A deposit (first milestone only) is paid on signing: nothing is delivered for it.
+    const deposit = n === 0 && m.deposit === true;
+    const delivery = deposit ? "note" : (m.delivery ?? (m.has_file ? "file" : "note"));
     return {
       name: m.name,
       amount: m.amount.toFixed(decimals),
       hasFile: delivery === "file",
       delivery,
       due: m.due_date || null,
-      acceptance: m.acceptance,
+      acceptance: deposit ? m.acceptance.trim() || DEPOSIT_ACCEPTANCE : m.acceptance,
+      ...(deposit ? { deposit: true } : {}),
     };
   });
 }
@@ -477,6 +519,26 @@ const INPUTS: Record<string, z.ZodType> = {
   propose_bank_sale: z.object({ buyer: z.string().min(1).max(120), new_person: z.boolean().default(false), ...DEAL_FIELDS }),
   list_groups: z.object({}).passthrough(),
   open_deal: z.object({ deal: z.string().min(1).max(20) }),
+  // Some models fill every optional field with "" or []: those mean "unchanged".
+  amend_deal: z.preprocess((raw) => {
+    const drop = (o: Record<string, unknown>) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== "" && v !== null && !(Array.isArray(v) && v.length === 0)));
+    if (!raw || typeof raw !== "object") return raw;
+    const o = drop(raw as Record<string, unknown>);
+    if (Array.isArray(o.milestone_changes)) o.milestone_changes = o.milestone_changes.map((c) => (c && typeof c === "object" ? drop(c as Record<string, unknown>) : c));
+    return o;
+  }, z.object({
+    deal: z.string().min(1).max(20),
+    milestone_changes: z
+      .array(z.object({ number: z.number().int().min(1).max(10), amount: z.number().positive().optional(), name: z.string().min(1).max(120).optional(), acceptance: z.string().max(1000).optional(), due_date: z.string().max(20).optional() }))
+      .max(10)
+      .optional(),
+    title: DEAL_FIELDS.title.optional(),
+    summary: DEAL_FIELDS.summary.optional(),
+    kind: DEAL_FIELDS.kind.optional(),
+    ship_to: z.string().max(400).optional(),
+    review_hours: DEAL_FIELDS.review_hours.optional(),
+    milestones: DEAL_FIELDS.milestones.optional(),
+  })),
   deal_templates: z.object({ name: z.string().max(80).default("") }).passthrough(),
   save_deal_template: z.object({
     name: z.string().trim().min(1).max(80),
@@ -719,6 +781,56 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
         payout,
         summary: `PAYMENT PREVIEW SHOWN (nothing proposed or paid yet): ${recipients.map((r) => `${r.name} ${r.amount}`).join(", ")} = ${total} from ${shared.name}'s account. When the user presses Confirm it goes to the signers' vote (${shared.group.threshold} needed). Never say it was paid.`,
       };
+    }
+    case "amend_deal": {
+      if (!userId) throw new Error("Amending needs a signed-in user");
+      const i = input as Partial<DealInput> & { deal: string };
+      const dealId = Number(String(i.deal).replace(/[^0-9]/g, ""));
+      const units = await walletUnits(wallet);
+      if (i.milestones) {
+        const missing = missingInfo({ kind: i.kind ?? "hire", ship_to: i.ship_to ?? "", title: "", summary: "", review_hours: 72, milestones: i.milestones });
+        if (missing.length) return { tool: name, input, summary: `NEED_INFO (nothing was saved): ask the user for ${missing.join("; ")}.` };
+      }
+      // Changes to single milestones are merged into the deal's current terms.
+      let merged: ReturnType<typeof draftMilestones> | undefined;
+      const changes = (input as { milestone_changes?: { number: number; amount?: number; name?: string; acceptance?: string; due_date?: string }[] }).milestone_changes;
+      if (changes?.length && !i.milestones) {
+        const old = await db.dealDraft.findFirst({ where: { userId, walletAddress: wallet, dealId }, orderBy: { createdAt: "desc" } });
+        if (!old) return { tool: name, input, summary: `BLOCKED: D-${dealId} was not made from a draft in this wallet.` };
+        const list = (old.milestones as ReturnType<typeof draftMilestones>).map((m) => ({ ...m }));
+        for (const c of changes) {
+          const m = list[c.number - 1];
+          if (!m) return { tool: name, input, summary: `BLOCKED: D-${dealId} has no milestone ${c.number} (it has ${list.length}).` };
+          if (c.amount !== undefined) m.amount = c.amount.toFixed(units.decimals);
+          if (c.name) m.name = c.name;
+          if (c.acceptance) m.acceptance = c.acceptance;
+          if (c.due_date !== undefined) m.due = c.due_date || null;
+        }
+        merged = list;
+      }
+      try {
+        const d = await createAmendDraft(userId, wallet, dealId, {
+          // Hire / buy and the review window stay as they were (models tend to fill in defaults).
+          kind: undefined,
+          shipTo: i.ship_to === undefined ? undefined : i.ship_to.trim() || null,
+          title: i.title,
+          summary: i.summary,
+          reviewHours: undefined,
+          milestones: i.milestones ? draftMilestones(i as DealInput, units.decimals) : merged,
+        });
+        const labels = await friendLabels(userId);
+        const other = d.side === "SELL" ? d.buyer : d.seller;
+        const draft = await draftView(d, other ? (labels.get(other.toLowerCase()) ?? "") : "");
+        return {
+          tool: name,
+          input,
+          draft: cardDraft(draft),
+          summary: `AMENDMENT PREVIEW SHOWN for D-${dealId} (nothing changed yet): ${draftRef(d.id)}, new total ${draft.total} ${units.currency}. When the user presses Confirm, D-${dealId} is withdrawn${d.side === "BUY" ? " (its locked money comes back)" : ""} and this replaces it, with the same other party and the same private link. Never say it was changed before they confirm.`,
+        };
+      } catch (err) {
+        if (err instanceof DraftError) return { tool: name, input, summary: `BLOCKED: ${err.message}` };
+        throw err;
+      }
     }
     case "deal_templates": {
       if (!userId) throw new Error("Templates need a signed-in user");

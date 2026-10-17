@@ -10,6 +10,7 @@ import {
   startBuyerPayment,
 } from "@/lib/bank/buyer-invites";
 import { DealError } from "@/lib/bank/deals";
+import { db } from "@/lib/db";
 import { HttpError, errorResponse, rateLimit } from "@/lib/guard";
 
 export const maxDuration = 120;
@@ -36,6 +37,8 @@ const Body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("confirm"), dealId: z.number().int().min(0), sessionId: z.string().max(200) }),
   z.object({ action: z.literal("pay"), dealId: z.number().int().min(0) }),
   z.object({ action: z.literal("approve"), dealId: z.number().int().min(0), index: z.number().int().min(0).max(20) }),
+  // The buyer writes their own name (the seller only guessed it when inviting).
+  z.object({ action: z.literal("name"), name: z.string().trim().min(2).max(80) }),
 ]);
 
 /** Pay an offer by card (Checkout, then confirm), pay from the balance, or approve a delivery. */
@@ -47,6 +50,11 @@ export async function POST(req: Request, ctx: RouteContext<"/api/pay/[token]">) 
     const body = Body.safeParse(await req.json().catch(() => null));
     if (!body.success) throw new HttpError(400, "Invalid request");
     const b = body.data;
+    if (b.action === "name") {
+      const clean = b.name.replace(/\s+/g, " ").slice(0, 80);
+      await db.buyerInvite.update({ where: { id: invite.id }, data: { name: clean } });
+      return json({ name: clean });
+    }
     if (b.action === "checkout") return json(await startBuyerPayment(invite, token, b.dealId, new URL(req.url).origin).catch(asHttp(400)));
     if (b.action === "confirm") return json(await confirmBuyerPayment(invite, b.sessionId, b.dealId).catch(asHttp(400)));
     if (b.action === "pay") return json(await payOffer(invite, b.dealId).catch(asHttp(400)));

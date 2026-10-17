@@ -37,6 +37,8 @@ export type DraftMilestone = {
   delivery?: "file" | "parcel" | "note";
   due: string | null;
   acceptance: string;
+  /** A deposit: paid to the seller as soon as the contract is signed (the offer accepted), no delivery needed. First milestone only. */
+  deposit?: boolean;
 };
 
 export const deliveryOf = (m: Pick<DraftMilestone, "hasFile" | "delivery"> | undefined) => m?.delivery ?? (m?.hasFile ? "file" : "note");
@@ -60,6 +62,8 @@ export type DraftView = {
   reviewHours: number;
   status: DealDraft["status"];
   dealId: number | null;
+  /** An amendment of this deal (an offer not accepted yet): confirming replaces it. */
+  replacesDealId: number | null;
   result: unknown;
   createdAt: Date;
 };
@@ -94,6 +98,7 @@ export async function draftView(d: DealDraft, sellerLabel = ""): Promise<DraftVi
     reviewHours: d.reviewHours,
     status: d.status,
     dealId: d.dealId,
+    replacesDealId: d.replacesDealId,
     result: d.result,
     createdAt: d.createdAt,
   };
@@ -186,6 +191,75 @@ export async function createSellDraft(
   });
 }
 
+/**
+ * Changing a deal that was confirmed but not accepted yet: a new preview with the same other party
+ * (the same wallet, and the same private link for someone without an account). Confirming it
+ * withdraws the old offer first (approveDraft), so there is never a second deal.
+ */
+export async function createAmendDraft(
+  userId: string,
+  wallet: Address,
+  dealId: number,
+  changes: { kind?: "HIRE" | "GOODS"; shipTo?: string | null; title?: string; summary?: string; reviewHours?: number; milestones?: DraftMilestone[] },
+): Promise<DealDraft> {
+  const { dealForWallet } = await import("./deals");
+  const deal = await dealForWallet(wallet, dealId).catch(() => null);
+  if (!deal) throw new DraftError(`No deal D-${dealId} in this wallet`);
+  if (deal.status !== "Proposed") throw new DraftError(`D-${dealId} was already accepted (${deal.status}): its terms are fixed now. Changes need the other side to agree, e.g. cancel by agreement or a dispute.`);
+  if (deal.offeredBy !== "me") throw new DraftError(`D-${dealId} is the other side's offer: ask them to change it, or decline it`);
+  const old = await db.dealDraft.findFirst({ where: { userId, walletAddress: wallet, dealId }, orderBy: { createdAt: "desc" } });
+  if (!old) throw new DraftError(`D-${dealId} was not made from a draft here, so it cannot be amended`);
+  const units = await walletUnits(wallet);
+  const milestones = changes.milestones ?? (old.milestones as DraftMilestone[]);
+  for (const m of milestones) {
+    if (parseUnits(m.amount, units.decimals) <= 0n) throw new DraftError(`Milestone "${m.name}" needs a positive amount`);
+  }
+  const input = {
+    kind: changes.kind ?? old.kind,
+    shipTo: changes.shipTo === undefined ? old.shipTo : changes.shipTo,
+    title: changes.title ?? old.title,
+    summary: changes.summary ?? old.summary,
+    reviewHours: changes.reviewHours ?? old.reviewHours,
+    milestones,
+  };
+  const termsHash = createHash("sha256").update(JSON.stringify(termsOf(input))).digest("hex");
+  // Earlier amendment previews of the same deal are superseded.
+  await db.dealDraft.updateMany({ where: { userId, replacesDealId: dealId, status: "PREVIEW" }, data: { status: "CANCELLED" } });
+  return db.dealDraft.create({
+    data: {
+      userId,
+      status: "PREVIEW",
+      side: old.side,
+      walletAddress: wallet,
+      seller: old.seller,
+      buyer: old.buyer,
+      inviteName: old.inviteName,
+      inviteId: old.inviteId,
+      kind: input.kind,
+      shipTo: input.shipTo || null,
+      title: input.title,
+      summary: input.summary,
+      milestones: input.milestones as unknown as Prisma.InputJsonValue,
+      reviewHours: input.reviewHours,
+      termsHash,
+      replacesDealId: dealId,
+    },
+  });
+}
+
+/** Withdraws the offer an amendment replaces. Refuses if the other side accepted it meanwhile. */
+async function withdrawReplaced(wallet: Address, d: DealDraft) {
+  if (d.replacesDealId === null || d.status === "FUNDED") return;
+  const { buyerAction, dealForWallet, sellerAction, syncDeal } = await import("./deals");
+  const old = await dealForWallet(wallet, d.replacesDealId).catch(() => null);
+  if (!old || old.status === "Cancelled") return;
+  if (old.status !== "Proposed") throw new DraftError(`The other side already accepted D-${d.replacesDealId}, so it can no longer be changed. Nothing new was created.`);
+  const r = old.role === "buyer" ? await buyerAction(wallet, d.replacesDealId, "cancel") : await sellerAction(wallet, d.replacesDealId, "cancel");
+  if (r.outcome.status !== "success") throw new DraftError(`Could not withdraw D-${d.replacesDealId} first${"error" in r.outcome && r.outcome.error ? `: ${r.outcome.error}` : ""}`);
+  // A purchase's locked money goes back to the wallet before the new one is locked.
+  await syncDeal(wallet, d.replacesDealId).catch((e) => console.error("syncDeal", d.replacesDealId, e));
+}
+
 /** The user approves: sign, debit the bank just in time, lock in FileEscrow. Safe to call again. */
 export async function approveDraft(
   userId: string,
@@ -218,6 +292,7 @@ export async function approveDraft(
     const done = (fresh.result as { funding?: FundingResult } | null)?.funding;
     if (fresh.status === "FUNDED" && done) return { draft: fresh, funding: done };
     fresh = await ensureInvite(userId, wallet, fresh);
+    await withdrawReplaced(wallet, fresh);
     if (opts.viaGroup) await allowSellerAfterVote(wallet, fresh);
     return await approveClaimed(userId, wallet, fresh);
   } finally {

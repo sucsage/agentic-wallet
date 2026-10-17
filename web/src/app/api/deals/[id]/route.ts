@@ -1,7 +1,7 @@
 import { after } from "next/server";
 
 import { disputeOf, disputeView } from "@/lib/bank/arbiter";
-import { DealError, dealForWallet, dealTerms, deliveryInfo, demoDeliverable, syncDeal } from "@/lib/bank/deals";
+import { DealError, dealForWallet, dealTerms, deliveryInfo, demoDeliverable, isSiteDelivery, syncDeal } from "@/lib/bank/deals";
 import { deliveryOf, draftView } from "@/lib/bank/drafts";
 import { inviteLinkFor } from "@/lib/bank/invites";
 import { roleAddresses } from "@/lib/chain";
@@ -46,6 +46,7 @@ export async function GET(req: Request, ctx: RouteContext<"/api/deals/[id]">) {
     const demoSeller = deal.role === "buyer" && deal.counterparty === roleAddresses().contractor;
     const declines = deal.status === "Proposed" ? await db.declinedOffer.findMany({ where: { escrow: config.fileEscrowOf(id), dealId: id } }) : [];
     const notes = await db.dealNote.findMany({ where: { escrow: config.fileEscrowOf(id), dealId: id }, orderBy: { createdAt: "desc" }, take: 20 });
+    const witnesses = await db.dealWitness.findMany({ where: { escrow: config.fileEscrowOf(id), dealId: id } });
     const [deliveries, friends, disputes, invite] = await Promise.all([
       Promise.all(deal.milestones.map((m) => deliveryInfo(id, m.index))),
       friendLabels(user.id),
@@ -57,6 +58,8 @@ export async function GET(req: Request, ctx: RouteContext<"/api/deals/[id]">) {
       ...deal,
       counterpartyLabel: friends.get(deal.counterparty.toLowerCase()) ?? deal.counterpartyLabel,
       invite,
+      witnesses: witnesses.map((w) => ({ side: w.side, name: w.name, contact: w.contact, mine: w.side === deal.role })),
+      replacedBy: (await db.dealDraft.findFirst({ where: { replacesDealId: id, status: "FUNDED" }, select: { dealId: true } }))?.dealId ?? null,
       title: terms?.title ?? `File deal #${id}`,
       summary: terms?.summary ?? null,
       kind: terms?.kind ?? "HIRE",
@@ -77,6 +80,9 @@ export async function GET(req: Request, ctx: RouteContext<"/api/deals/[id]">) {
         delivers: m.hasFile ? "file" : deliveryOf(terms?.milestones[i]),
         // Images get a watermarked preview the buyer can see before approving.
         canPreview: Boolean(deliveries[i]?.mime?.startsWith("image/")),
+        // A web page (.html) is tried in a browser / phone mockup instead.
+        canMockup: isSiteDelivery(deliveries[i]),
+        deposit: terms?.milestones[i]?.deposit === true,
         moves: moves(deal.role, deal.status, m.status, m.deadline),
         delivery: deliveries[i],
         dispute: disputeView(disputes[i]),

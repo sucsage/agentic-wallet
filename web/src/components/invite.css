@@ -1,4 +1,4 @@
-.inv-page{min-height:100vh;background:#101010;color:#f5f6fa;font-family:Arial,"Noto Sans Thai",sans-serif;font-size:14px}
+.inv-page{min-height:calc(100vh / var(--aw-zoom,1));background:#101010;color:#f5f6fa;font-family:Arial,"Noto Sans Thai",sans-serif;font-size:14px}
 .inv-page *{box-sizing:border-box}
 .inv-banner{background:#2a2410;color:#f3ed21;font-size:11px;text-align:center;padding:7px 16px}
 .inv-main{max-width:640px;margin:0 auto;padding:24px 16px 48px;display:flex;flex-direction:column;gap:14px}

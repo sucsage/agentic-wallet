@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { useAppRouter } from "./navigation";
 
@@ -41,15 +42,96 @@ async function loadNotifications(): Promise<Item[]> {
   return items;
 }
 
+// ------------------------------------------------------------------------------------------
+// Toasts: pop-ups in the top-right corner. New notifications appear there by themselves, and
+// any screen can raise one with toast({ text, tone, href }).
+// ------------------------------------------------------------------------------------------
+
+export type Toast = { text: string; tone?: "warn" | "info" | "ok" | "error"; href?: string };
+const TOAST_EVENT = "aw:toast";
+
+export function toast(t: Toast) {
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent<Toast>(TOAST_EVENT, { detail: t }));
+}
+
+function Toaster() {
+  const router = useAppRouter();
+  const [list, setList] = useState<(Toast & { id: number })[]>([]);
+  // Portals render only in the browser: wait for mount so the server HTML matches.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true);
+    let n = 0;
+    const on = (e: Event) => {
+      const t = (e as CustomEvent<Toast>).detail;
+      const id = ++n;
+      setList((cur) => [...cur.slice(-3), { ...t, id }]);
+      setTimeout(() => setList((cur) => cur.filter((x) => x.id !== id)), t.tone === "error" ? 10_000 : 7_000);
+    };
+    window.addEventListener(TOAST_EVENT, on);
+    return () => window.removeEventListener(TOAST_EVENT, on);
+  }, []);
+  if (!mounted) return null;
+  return createPortal(
+    <div className="aw-toasts" role="region" aria-label="Notifications" aria-live="polite">
+      {list.map((t) => (
+        <div key={t.id} className={`aw-toast ${t.tone ?? "info"}`}>
+          <span className="aw-toast-icon" aria-hidden>
+            {t.tone === "warn" ? "!" : t.tone === "ok" ? "✓" : t.tone === "error" ? "×" : "🔔"}
+          </span>
+          {t.href ? (
+            <button type="button" onClick={() => (setList((cur) => cur.filter((x) => x.id !== t.id)), router.push(t.href!))}>
+              {t.text}
+              <small>Open →</small>
+            </button>
+          ) : (
+            <p>{t.text}</p>
+          )}
+          <button type="button" className="aw-toast-x" aria-label="Dismiss" onClick={() => setList((cur) => cur.filter((x) => x.id !== t.id))}>
+            ×
+          </button>
+        </div>
+      ))}
+    </div>,
+    document.body,
+  );
+}
+
+/** Notifications already shown as a toast in this browser tab (so a refresh does not repeat them). */
+function seenStore(): Set<string> {
+  try {
+    return new Set(JSON.parse(sessionStorage.getItem("aw:seen-notifications") ?? "[]") as string[]);
+  } catch {
+    return new Set();
+  }
+}
+
 export function NotificationsButton({ label }: { label: string }) {
   const router = useAppRouter();
   const [items, setItems] = useState<Item[] | null>(null);
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
-  const refresh = useCallback(() => void loadNotifications().then(setItems), []);
+  const refresh = useCallback(
+    () =>
+      void loadNotifications().then((next) => {
+        setItems(next);
+        // Anything new since the last look pops up top-right (at most three at once).
+        const seen = seenStore();
+        const fresh = next.filter((i) => !seen.has(i.text));
+        for (const i of fresh.slice(0, 3)) toast({ text: i.text, tone: i.tone ?? "info", href: i.href });
+        if (fresh.length > 3) toast({ text: `${fresh.length - 3} more waiting for you`, tone: "info" });
+        try {
+          sessionStorage.setItem("aw:seen-notifications", JSON.stringify([...new Set([...seen, ...next.map((i) => i.text)])].slice(-200)));
+        } catch {
+          /* private mode: toasts may repeat */
+        }
+      }),
+    [],
+  );
   useEffect(() => {
     refresh();
-    const t = setInterval(refresh, 60_000);
+    const t = setInterval(refresh, 30_000);
     const close = (e: MouseEvent) => {
       if (box.current && !box.current.contains(e.target as Node)) setOpen(false);
     };
@@ -61,6 +143,7 @@ export function NotificationsButton({ label }: { label: string }) {
   }, [refresh]);
   return (
     <div className="aw-hdr-pop" ref={box}>
+      <Toaster />
       <button
         className="aw-notification-button"
         type="button"

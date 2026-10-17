@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { toast } from "./header-tools";
 import { api } from "./app-data";
 import { Button } from "./mockup-ui";
 import "./company.css";
@@ -17,16 +18,63 @@ const REASONS = [
   ["OTHER", "Something else"],
 ] as const;
 
-/** Blocks someone after asking. Resolves to a message for the page. */
-export async function blockPerson(person: { userId: string; name: string }): Promise<string | null> {
-  if (
-    !window.confirm(
-      `Block ${person.name}?\n\n• They are removed from your contacts and can't add you, find you in search, send you money or invite you to a group.\n• They are taken off your allow transfer list.\n• Deals already running are not changed.\n\nYou can unblock later.`,
-    )
-  )
-    return null;
-  const r = await api<{ removedFromList: boolean }>("/api/blocks", json("POST", { userId: person.userId }));
-  return `Blocked ${person.name}.${r.removedFromList ? " Also removed from your allow transfer list (on-chain)." : ""}`;
+/** The Block confirmation, with progress while it runs (it may update the allow transfer list on-chain). */
+export function BlockDialog({ person, onClose, onDone }: { person: { userId: string; name: string }; onClose: () => void; onDone: (msg: string) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function block() {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await api<{ removedFromList: boolean }>("/api/blocks", json("POST", { userId: person.userId }));
+      toast({ text: `Blocked ${person.name}`, tone: "ok" });
+      onDone(`Blocked ${person.name}.${r.removedFromList ? " Also removed from your allow transfer list (on-chain)." : ""}`);
+      onClose();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="aw-co-backdrop" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
+      <div className="aw-co-dialog aw-report-dialog" role="dialog" aria-modal="true" aria-label={`Block ${person.name}`}>
+        <header>
+          <h2>⦸ Block {person.name}?</h2>
+          <button type="button" aria-label="Close" onClick={onClose} disabled={busy}>
+            ×
+          </button>
+        </header>
+        <ul className="aw-block-effects">
+          <li>Removed from your contacts; they can&apos;t add you or find you in search</li>
+          <li>Neither of you can send the other money or group invites</li>
+          <li>Taken off your allow transfer list (an on-chain update, a few seconds)</li>
+          <li>Deals already running are not changed. You can unblock later.</li>
+        </ul>
+        {busy && (
+          <div className="aw-draft-busy" role="status" aria-live="polite">
+            <i className="aw-spinner" aria-hidden />
+            <span>Blocking and updating your allow transfer list…</span>
+          </div>
+        )}
+        {error && <p className="aw-bank-error">{error}</p>}
+        <footer className="aw-dialog-actions">
+          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button type="button" className="aw-danger" onClick={() => void block()} disabled={busy} aria-busy={busy}>
+            {busy ? (
+              <>
+                <i className="aw-spinner" aria-hidden /> Blocking…
+              </>
+            ) : (
+              `Block ${person.name}`
+            )}
+          </Button>
+        </footer>
+      </div>
+    </div>
+  );
 }
 
 /** The Report form, for one contact. */
@@ -43,6 +91,7 @@ export function ReportDialog({ person, onClose, onDone }: { person: { userId: st
     setError(null);
     try {
       const r = await api<{ blocked: boolean }>("/api/reports", json("POST", { userId: person.userId, reason, details, block }));
+      toast({ text: `Report about ${person.name} sent`, tone: "ok" });
       onDone(`Reported ${person.name}. The app's reviewers will look at it; they won't tell them who reported.${r.blocked ? ` ${person.name} is also blocked.` : ""}`);
       onClose();
     } catch (err) {

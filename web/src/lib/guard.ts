@@ -44,7 +44,12 @@ export async function requireUser() {
 
 /** The signed-in user and the Mock Bank customer they signed in as. */
 export async function requireCustomer() {
-  const user = await requireUser();
+  const session = await getSession();
+  if (!session) throw new HttpError(401, "Sign in first");
+  const user = session.user;
+  // 2FA turned on: nothing about money or contacts works until this session passed it.
+  const { twoFactorPassed } = await import("./two-factor");
+  if (!(await twoFactorPassed(user.id, session.session.id))) throw new HttpError(428, "Verify it's you with your second factor first");
   const customer = await customerOfUser(user.id);
   if (!customer) throw new HttpError(403, "Sign in through the Mock Bank first");
   return { user, customer };
@@ -88,7 +93,7 @@ export async function requireBankWallet() {
 
 /** A sandbox wallet that belongs to the signed-in user (UserWallet row) and to this demo on-chain. */
 export async function userWallet(raw: string): Promise<Address> {
-  const user = await requireUser();
+  const { user } = await requireCustomer();
   let wallet: Address;
   try {
     wallet = getAddress(raw);

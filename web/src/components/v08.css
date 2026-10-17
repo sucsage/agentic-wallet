@@ -1,5 +1,5 @@
 /* Agentic Wallet — v0.8, page 122:8. Desktop reference: 1440px. */
-.aw-app.aw-v08{--v08-header:80px;--v08-sidebar:248px;--v08-gutter:40px;background:#000;color:#eee;font-family:var(--font-thai),var(--font-geist-sans),Arial,sans-serif;font-size:14px;line-height:1.5;min-height:100dvh}
+.aw-app.aw-v08{--v08-header:80px;--v08-sidebar:248px;--v08-gutter:40px;background:#000;color:#eee;font-family:var(--font-thai),var(--font-geist-sans),Arial,sans-serif;font-size:14px;line-height:1.5;min-height:calc(100dvh / var(--aw-zoom,1))}
 .aw-v08 :is(button,input,textarea,select){font:inherit}
 .aw-v08 button{cursor:pointer}
 .aw-v08 button:disabled{cursor:not-allowed;opacity:.5}
@@ -17,9 +17,9 @@
 .aw-v08 .aw-landing-nav-links{position:static;transform:none;display:flex;gap:36px;align-items:center}
 .aw-v08 .aw-landing-nav-links a{font-size:14px;color:#aaa;text-decoration:none}
 .aw-v08 .aw-topbar-public .aw-button{height:39px;min-height:39px;padding:9px 20px;border-radius:5px;font-size:14px}
-.aw-v08 .aw-workspace{display:grid!important;position:relative;grid-template-columns:var(--v08-sidebar) minmax(0,1fr)!important;min-height:calc(100dvh - var(--v08-header));overflow:visible;transition:grid-template-columns .2s ease;background:#000}
+.aw-v08 .aw-workspace{display:grid!important;position:relative;grid-template-columns:var(--v08-sidebar) minmax(0,1fr)!important;min-height:calc(100dvh / var(--aw-zoom,1) - var(--v08-header));overflow:visible;transition:grid-template-columns .2s ease;background:#000}
 .aw-v08 .aw-workspace.aw-sidebar-collapsed{--v08-sidebar:76px;grid-template-columns:76px minmax(0,1fr)!important}
-.aw-v08 .aw-workspace>.aw-sidebar{position:relative;inset:auto;width:auto;height:auto;min-height:calc(100dvh - var(--v08-header));transform:none;visibility:visible;pointer-events:auto;padding:16px 12px;gap:18px;background:#000;border-right:1px solid #333;display:flex;flex-direction:column;z-index:1;overflow:hidden}
+.aw-v08 .aw-workspace>.aw-sidebar{position:relative;inset:auto;width:auto;height:auto;min-height:calc(100dvh / var(--aw-zoom,1) - var(--v08-header));transform:none;visibility:visible;pointer-events:auto;padding:16px 12px;gap:18px;background:#000;border-right:1px solid #333;display:flex;flex-direction:column;z-index:1;overflow:hidden}
 .aw-v08 .aw-sidebar-menu-head{height:52px;margin:0;display:flex;justify-content:space-between;align-items:center;padding:0 12px}
 .aw-v08 .aw-sidebar-menu-head>small,.aw-v08 .aw-nav-title{font-size:14px;font-weight:700;line-height:1.5;letter-spacing:.12em;color:#c4b5fd}
 .aw-v08 .aw-sidebar-menu-head>small{font-size:11px;font-weight:500;letter-spacing:.16em;color:#777}
@@ -45,7 +45,7 @@
 .aw-v08 .aw-sidebar-collapsed .aw-sidebar-profile{width:44px;height:44px;min-height:44px;border:0;padding:6px;align-self:center}
 .aw-v08 .aw-main{min-width:0;margin:0;padding:0!important;background:#000}
 .aw-v08 .aw-main>.aw-screen{width:100%;max-width:none;margin:0}
-.aw-v08 :is(.aw-ai-chat-page,.aw-deals-page,.aw-summary-page,.aw-friends-page,.aw-groups-page,.aw-policy-page,.aw-profile-page,.aw-approvals-page){min-height:calc(100dvh - var(--v08-header));background:#000}
+.aw-v08 :is(.aw-ai-chat-page,.aw-deals-page,.aw-summary-page,.aw-friends-page,.aw-groups-page,.aw-policy-page,.aw-profile-page,.aw-approvals-page){min-height:calc(100dvh / var(--aw-zoom,1) - var(--v08-header));background:#000}
 .aw-app.aw-v08 .aw-approvals-page{width:100%;margin:0}
 .aw-app.aw-v08 .aw-ai-balancebar{font-family:var(--font-thai),var(--font-geist-sans),Arial,sans-serif;font-size:14px;line-height:1.5;min-height:74px;padding:14px var(--v08-gutter);gap:28px;display:flex;align-items:center;flex-wrap:nowrap;background:#0d0d0d;border-bottom:1px solid #333}
 .aw-app.aw-v08 .aw-ai-bank{gap:12px;padding-right:28px}
@@ -63,7 +63,7 @@
 .aw-v08 .aw-button{font-size:14px;min-height:40px;border-radius:8px;line-height:1.4}
 
 /* Public Home: 1248px content, 60px hero title, 16px card gaps. */
-.aw-v08 .aw-landing-milestone{padding:0 0 48px;min-height:calc(100dvh - 80px);background:#000}
+.aw-v08 .aw-landing-milestone{padding:0 0 48px;min-height:calc(100dvh / var(--aw-zoom,1) - 80px);background:#000}
 .aw-v08 .aw-milestone-wrap{max-width:1440px;width:100%;padding:0 96px;margin:0 auto}
 .aw-v08 .aw-milestone-hero{padding:88px 0 56px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:24px}
 .aw-v08 .aw-demo-pill{font-size:12px;line-height:18px;padding:3px 10px;margin:0}
@@ -93,7 +93,7 @@
 .aw-v08 .aw-milestone-footer{font-size:13px;margin-top:24px;padding-top:24px}
 
 /* Log in and bank consent. */
-.aw-v08 .aw-bank-login-wrap{min-height:calc(100dvh - 80px);padding:96px 24px 160px;align-items:flex-start;background:#000}
+.aw-v08 .aw-bank-login-wrap{min-height:calc(100dvh / var(--aw-zoom,1) - 80px);padding:96px 24px 160px;align-items:flex-start;background:#000}
 .aw-v08 .aw-bank-login{width:min(100%,480px);padding:36px;border-radius:20px;display:flex;flex-direction:column;gap:14px;background:#111}
 .aw-v08 .aw-bank-login h2{font-size:28px;line-height:1.5;margin:0}
 .aw-v08 .aw-login-warning{font-size:13px;padding:12px;min-height:47px}
@@ -130,7 +130,7 @@
 .aw-v08-chat-list button:last-child{flex:none;width:24px;height:32px;display:grid;place-items:center}
 .aw-v08-chat-list svg{width:18px;height:18px;stroke:currentColor;stroke-width:1.6}
 .aw-v08-chats>p{font-size:12px;line-height:1.5;color:#777;margin:14px 0 0}
-.aw-v08 .aw-ai-conversation{height:clamp(420px,calc(100dvh - var(--v08-header) - 130px),840px);min-height:0;max-height:none;display:flex;flex-direction:column;gap:14px;overflow:hidden;padding:24px;border:1px solid #333;border-radius:16px;background:#111}
+.aw-v08 .aw-ai-conversation{height:clamp(420px,calc(100dvh / var(--aw-zoom,1) - var(--v08-header) - 130px),840px);min-height:0;max-height:none;display:flex;flex-direction:column;gap:14px;overflow:hidden;padding:24px;border:1px solid #333;border-radius:16px;background:#111}
 .aw-v08 .aw-ai-conversation>:is(.aw-ai-chat-heading,.aw-acting-row,.aw-ai-composer){flex-shrink:0}
 .aw-v08 .aw-ai-chat-heading{height:auto;min-height:40px;align-items:flex-start;padding-bottom:14px;flex-wrap:wrap;gap:8px}
 .aw-v08 .aw-ai-chat-heading h1{font-size:16px;line-height:1.5}
@@ -192,7 +192,7 @@
 .aw-v08-agent-symbol svg{width:24px;height:24px;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .aw-v08-tier{width:28px;height:28px;font-size:12px;border-radius:50%;font-weight:700}
 .aw-v08-agent-rail .tier0{background:#0b3020;color:#00d574}.aw-v08-agent-rail .tier1{background:#36290b;color:#ffad00}.aw-v08-agent-rail .tier2{background:#102747;color:#3b82f6}.aw-v08-agent-rail .tier3{background:#351619;color:#f44}
-.aw-v08-agent-details{position:absolute;right:76px;top:0;z-index:5;width:300px;max-width:calc(100vw - 120px);padding:24px;border:1px solid #333;border-radius:16px;background:#111;box-shadow:0 12px 40px #0009;opacity:0;transform:translateX(24px);visibility:hidden;pointer-events:none;transition:transform .3s cubic-bezier(.22,1,.36,1),opacity .22s ease,visibility 0s linear .3s}
+.aw-v08-agent-details{position:absolute;right:76px;top:0;z-index:5;width:300px;max-width:calc(100vw / var(--aw-zoom,1) - 120px);padding:24px;border:1px solid #333;border-radius:16px;background:#111;box-shadow:0 12px 40px #0009;opacity:0;transform:translateX(24px);visibility:hidden;pointer-events:none;transition:transform .3s cubic-bezier(.22,1,.36,1),opacity .22s ease,visibility 0s linear .3s}
 .aw-v08-agent-rail.expanded .aw-v08-agent-details{opacity:1;transform:translateX(0);visibility:visible;pointer-events:auto;transition:transform .3s cubic-bezier(.22,1,.36,1),opacity .22s ease,visibility 0s}
 .aw-v08-agent-details h2{font-size:18px;margin:0 0 16px}
 .aw-v08-agent-details p{display:flex;align-items:center;gap:10px;color:#999;font-size:13px;margin:12px 0}
@@ -336,7 +336,7 @@
  .aw-v08 .aw-ai-chat-layout,.aw-v08 .aw-ai-chat-layout.agent-panel-collapsed{grid-template-columns:minmax(0,1fr);padding-top:18px;gap:14px}
  .aw-v08-chats{grid-column:auto}
  .aw-v08-agent-rail{width:100%;flex-direction:row;justify-content:flex-start;padding:10px;gap:14px;grid-row:2}
- .aw-v08-agent-details{right:0;top:64px;width:280px;max-width:calc(100vw - 120px)}
+ .aw-v08-agent-details{right:0;top:64px;width:280px;max-width:calc(100vw / var(--aw-zoom,1) - 120px)}
  .aw-v08 .aw-ai-conversation{padding:16px}
  .aw-v08 .aw-ai-draft-wrap{padding:12px}
  .aw-v08 .aw-deal-draft{padding:12px}
@@ -392,7 +392,7 @@
 
 .aw-v08-org-link{display:flex;flex-direction:column;gap:5px;padding:16px;border:1px solid #333;border-radius:10px;color:#eee;text-decoration:none;background:#191919}
 .aw-v08-org-link>b{font-size:14px}.aw-v08-org-link>small{font-size:12px;color:#999}
-.aw-v08-org-wrap{padding:72px 24px 120px;background:#000;min-height:calc(100dvh - 80px)}
+.aw-v08-org-wrap{padding:72px 24px 120px;background:#000;min-height:calc(100dvh / var(--aw-zoom,1) - 80px)}
 .aw-v08-org-card{width:min(100%,520px);margin:0 auto;padding:36px;background:#111;border:1px solid #333;border-radius:18px;display:flex;flex-direction:column;gap:16px}
 .aw-v08-org-card h1{font-size:26px;line-height:1.25;font-weight:700;margin:0}
 .aw-v08-org-card h2{font-size:16px;margin:8px 0 0}
@@ -556,7 +556,7 @@
 
 /* Keep desktop chat within the viewport; messages own the scrolling area. */
 @media(min-width:1051px){
- .aw-v08 .aw-ai-chat-workspace{height:calc(100dvh - var(--v08-header));min-height:0;overflow:hidden}
+ .aw-v08 .aw-ai-chat-workspace{height:calc(100dvh / var(--aw-zoom,1) - var(--v08-header));min-height:0;overflow:hidden}
  .aw-v08 .aw-ai-chat-workspace>.aw-sidebar{min-height:0;height:100%;overflow-y:auto}
  .aw-v08 .aw-main-chat,.aw-v08 .aw-main-chat>.aw-screen{height:100%;min-height:0}
  .aw-v08 .aw-ai-chat-page{height:100%;min-height:0!important;display:flex;flex-direction:column}
@@ -574,7 +574,7 @@
 }
 
 /* Reserve the profile footer while long page content and navigation scroll independently. */
-.aw-app.aw-v08 .aw-workspace>.aw-sidebar{position:sticky;top:0;align-self:start;height:calc(100dvh - var(--v08-header));min-height:0;overflow:hidden}
+.aw-app.aw-v08 .aw-workspace>.aw-sidebar{position:sticky;top:0;align-self:start;height:calc(100dvh / var(--aw-zoom,1) - var(--v08-header));min-height:0;overflow:hidden}
 .aw-v08 .aw-sidebar-navigation{flex:1;min-height:0;min-width:0;display:flex;flex-direction:column;gap:18px;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:#454545 transparent}
 .aw-app.aw-v08 .aw-sidebar-profile{flex-shrink:0;margin-top:0}
 
@@ -644,7 +644,7 @@
  .aw-app.aw-v08 :is(.aw-summary-metrics,.aw-profile-data,.aw-policy-tiers,.aw-d021-metrics){grid-template-columns:repeat(2,minmax(0,1fr))}
  .aw-app.aw-v08 :is(.aw-profile-top,.aw-profile-bottom,.aw-policy-grid,.aw-d021-columns,.aw-d012-columns,.aw-d015-columns,.aw-create-group-layout,.aw-group-wallet-top,.aw-group-wallet-bottom){grid-template-columns:minmax(0,1fr)}
  .aw-app.aw-v08 .aw-deals-content{overflow:hidden}
- .aw-app.aw-v08 .aw-ai-chat-workspace{height:auto;min-height:calc(100dvh - var(--v08-header));overflow:visible}
+ .aw-app.aw-v08 .aw-ai-chat-workspace{height:auto;min-height:calc(100dvh / var(--aw-zoom,1) - var(--v08-header));overflow:visible}
  .aw-app.aw-v08 :is(.aw-main-chat,.aw-main-chat>.aw-screen,.aw-ai-chat-page){height:auto}
  .aw-app.aw-v08 .aw-ai-chat-layout,.aw-app.aw-v08 .aw-ai-chat-layout.agent-panel-collapsed{display:grid;height:auto;grid-template-columns:minmax(0,1fr);grid-template-rows:auto;gap:16px;padding:20px var(--v08-gutter)}
  .aw-app.aw-v08 .aw-v08-chats{grid-column:1;grid-row:1;max-height:220px}
@@ -660,7 +660,7 @@
 
 /* One viewport-sized app shell; long data pages scroll inside main. */
 @media(min-width:761px){
- .aw-app.aw-v08 .aw-workspace{height:calc(100dvh - var(--v08-header));min-height:0!important;overflow:hidden}
+ .aw-app.aw-v08 .aw-workspace{height:calc(100dvh / var(--aw-zoom,1) - var(--v08-header));min-height:0!important;overflow:hidden}
  .aw-app.aw-v08 .aw-workspace>.aw-main{height:100%;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior-y:contain;scrollbar-width:thin;scrollbar-color:#454545 transparent}
  .aw-app.aw-v08 :is(.aw-deals-page,.aw-summary-page,.aw-friends-page,.aw-groups-page,.aw-policy-page,.aw-profile-page,.aw-approvals-page,.aw-deal-detail-page,.aw-d012-verdict-page,.aw-group-invite-page,.aw-group-wallet-page,.aw-create-group-content){min-height:0}
  .aw-app.aw-v08 :is(.aw-deals-content,.aw-summary-content,.aw-friends-content,.aw-groups-content,.aw-policy-content,.aw-profile-content,.aw-approvals-content,.aw-d021-content,.aw-d012-content,.aw-d015-content,.aw-d012-verdict-content,.aw-group-invite-content,.aw-group-wallet-page,.aw-create-group-content,.aw-v08-flow-content){padding-bottom:24px}

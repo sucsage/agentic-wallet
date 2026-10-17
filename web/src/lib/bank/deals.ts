@@ -444,6 +444,38 @@ export async function deliveryPreview(wallet: Address, dealId: number, index: nu
     .toBuffer();
 }
 
+/** A delivered web page (an .html file): previewed inside a device mockup before approval. */
+export const isSiteDelivery = (d: { mime: string | null; fileName: string | null } | null | undefined) =>
+  Boolean(d && (d.mime === "text/html" || /\.html?$/i.test(d.fileName ?? "")));
+
+/**
+ * A delivered website for the buyer to try before approving, shown in a browser / phone mockup.
+ * It is served sandboxed (no cookies, no same-origin access, no network except images, styles and
+ * fonts) with a PREVIEW ribbon on top. Like an image preview, it is meant to judge the work, not to
+ * replace the file the key unlocks.
+ */
+export async function deliverySite(wallet: Address | null, dealId: number, index: number): Promise<string> {
+  if (wallet) await dealForWallet(wallet, dealId);
+  const d = await db.dealDelivery.findUnique({ where: { escrow_dealId_index: { escrow: escrow(dealId), dealId, index } } });
+  if (!d?.ciphertext || !d.fileKey || !d.iv || !d.tag) throw new DealError("No file for this milestone");
+  if (!isSiteDelivery(d)) throw new DealError("Mockup previews are made for web pages (.html) only");
+  const dec = createDecipheriv("aes-256-gcm", Buffer.from(d.fileKey, "hex"), Buffer.from(d.iv, "hex"));
+  dec.setAuthTag(Buffer.from(d.tag, "hex"));
+  const html = Buffer.concat([dec.update(Buffer.from(d.ciphertext)), dec.final()]).toString("utf8");
+  const ribbon =
+    '<div style="position:fixed;z-index:2147483647;top:10px;right:-38px;transform:rotate(35deg);background:#e11d48;color:#fff;font:700 12px/1 system-ui,sans-serif;padding:6px 44px;letter-spacing:.12em;pointer-events:none;box-shadow:0 2px 8px #0005">PREVIEW</div>';
+  return /<\/body>/i.test(html) ? html.replace(/<\/body>/i, `${ribbon}</body>`) : `${html}${ribbon}`;
+}
+
+/** Headers for a sandboxed site preview. Framing is limited to this app by X-Frame-Options (proxy.ts): CSP frame-ancestors cannot say so here, since the sandbox gives the page no origin. */
+export const SITE_PREVIEW_HEADERS = {
+  "content-type": "text/html; charset=utf-8",
+  "cache-control": "private, no-store",
+  "content-security-policy":
+    "sandbox allow-scripts allow-forms; default-src 'none'; img-src data: blob: https:; style-src 'unsafe-inline' https:; font-src data: https:; script-src 'unsafe-inline'",
+  "x-content-type-options": "nosniff",
+};
+
 // ------------------------------------------------------------------------------------------
 // Settlement and the automatic steps (demo contractor, key release, claim)
 // ------------------------------------------------------------------------------------------
@@ -553,9 +585,13 @@ async function doSync(dealId: number): Promise<void> {
             functionName: "deliver",
             args: [BigInt(dealId), BigInt(i), workHash, `demo-delivery:${dealId}:${i}`],
           });
+        } else if (i === 0 && sellerIsUser && buyerIsUser && (await payDepositOnSigning(dealId, buyer, seller))) {
+          return doSync(dealId); // the deposit is approved now: release and settle it in this run
         }
         return;
       case 1: // Delivered: the buyer reviews; after a silent window the seller moves on
+        // A deposit whose approval did not go through on signing: approve it now.
+        if (i === 0 && open && sellerIsUser && buyerIsUser && (await payDepositOnSigning(dealId, buyer, seller, true))) return doSync(dealId);
         if (!open) {
           if (demoSeller) {
             await (m.hasFile
@@ -625,6 +661,43 @@ async function doSync(dealId: number): Promise<void> {
       }
     }
   }
+}
+
+/**
+ * A deposit (มัดจำ): the first milestone, marked deposit in the terms both sides saw, is paid as
+ * soon as the offer is accepted, i.e. the contract is signed. The server (which holds both
+ * wallets' keys in the demo) records a "paid on signing" delivery for the seller and approves it
+ * for the buyer, as the accepted terms say. True when it was approved.
+ */
+async function payDepositOnSigning(dealId: number, buyer: Address, seller: Address, alreadyDelivered = false): Promise<boolean> {
+  const terms = await dealTerms(dealId, buyer, seller);
+  const first = (terms?.milestones as DraftMilestone[] | undefined)?.[0];
+  if (!terms || !first?.deposit || first.hasFile) return false;
+  const note = `Deposit paid on signing: "${first.name}", agreed in the terms (sha256:${terms.termsHash.slice(0, 12)}…).`;
+  const sha256 = createHash("sha256").update(note).digest("hex");
+  const sellerUser = (await db.userWallet.findFirst({ where: { walletAddress: seller } }))?.userId ?? terms.userId;
+  const row = await db.dealDelivery.upsert({
+    where: { escrow_dealId_index: { escrow: escrow(dealId), dealId, index: 0 } },
+    update: {},
+    create: { escrow: escrow(dealId), dealId, index: 0, sellerUserId: sellerUser, note, sha256 },
+  });
+  const delivered = alreadyDelivered
+    ? ({ status: "success" } as const)
+    : await viaMandate(
+    seller,
+    encodeFunctionData({ abi: fileEscrowAbi, functionName: "deliver", args: [BigInt(dealId), 0n, `0x${row.sha256}`, `app-delivery:${row.id}`] }),
+    `deposit on signing, deal ${dealId}`,
+    escrow(dealId),
+  );
+  if (delivered.status !== "success") {
+    console.error("deposit deliver", dealId, delivered);
+    return false;
+  }
+  const approved = await buyerAction(buyer, dealId, "approve", 0).catch((e) => {
+    console.error("deposit approve", dealId, e);
+    return null;
+  });
+  return approved?.outcome.status === "success";
 }
 
 /**
