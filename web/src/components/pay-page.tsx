@@ -4,7 +4,12 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { DealFileLinks } from "./deal-file-links";
+import { CaptureGuard } from "./capture-guard";
+import { GuarantorForm } from "./guarantor-form";
+import { LinkGate } from "./link-gate";
 import "./invite.css";
+
+const KIND = "pay" as const;
 
 /**
  * The page an invited buyer opens (no account): the seller's offer, paying it by card (Stripe test
@@ -30,6 +35,9 @@ type Deal = {
   summary: string | null;
   shipTo: string | null;
   canPay: boolean;
+  offerExpiresAt?: string | null;
+  guarantorRequired?: boolean;
+  guarantor?: { name: string; contact: string; relation: string; amount: number | null } | null;
   files?: { id: string; name: string; mime: string; size: number }[];
   milestones: Milestone[];
 };
@@ -49,8 +57,8 @@ const STEP: Record<string, string> = {
 
 async function call<T>(url: string, init?: RequestInit): Promise<T> {
   const r = await fetch(url, { cache: "no-store", ...init });
-  const body = (await r.json().catch(() => ({}))) as T & { error?: string };
-  if (!r.ok) throw new Error(body.error ?? `Request failed (${r.status})`);
+  const body = (await r.json().catch(() => ({}))) as T & { error?: string; linkAccess?: string };
+  if (!r.ok) throw Object.assign(new Error(body.error ?? `Request failed (${r.status})`), { linkAccess: body.linkAccess });
   return body;
 }
 
@@ -103,6 +111,7 @@ function BuyerNameEditor({ token, name, onDone }: { token: string; name: string;
 
 export function PayPage({ token }: { token: string }) {
   const base = `/api/pay/${token}`;
+  const [gate, setGate] = useState<{ state: "otp" | "password"; inviter: string } | null>(null);
   const [view, setView] = useState<View | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -113,10 +122,17 @@ export function PayPage({ token }: { token: string }) {
     try {
       setView(await call<View>(base));
       setError(null);
+      setGate(null);
     } catch (e) {
-      setError((e as Error).message);
+      const state = (e as Error & { linkAccess?: string }).linkAccess;
+      if (state === "otp" || state === "password") {
+        // The link needs its one-time code or password: ask for it, then load again.
+        const info = await call<{ inviter: string }>(`/api/link-access/${KIND}/${token}`).catch(() => ({ inviter: "the person who sent the link" }));
+        setGate({ state, inviter: info.inviter });
+        setError(null);
+      } else setError((e as Error).message);
     }
-  }, [base]);
+  }, [base, token]);
 
   useEffect(() => {
     // Fetching on mount and polling is the point: the deal moves on its own (delivery, key release).
@@ -188,13 +204,14 @@ export function PayPage({ token }: { token: string }) {
 
   return (
     <div className="inv-page">
+      <CaptureGuard />
       <div className="inv-banner">DEMO · test payments only (Stripe test mode) · use test card 4242 4242 4242 4242</div>
       <main className="inv-main">
         <header className="inv-head">
           <span className="inv-mark" aria-hidden />
           <div>
             <small>Agentic Wallet · buyer link</small>
-            <h1>{view ? `Hi ${view.name}` : error ? "Link unavailable" : "Loading…"}</h1>
+            <h1>{view ? `Hi ${view.name}` : gate ? "Protected link" : error ? "Link unavailable" : "Loading…"}</h1>
             {view && <BuyerNameEditor token={token} name={view.name} onDone={load} />}
             {view && (
               <p>
@@ -204,6 +221,7 @@ export function PayPage({ token }: { token: string }) {
           </div>
         </header>
         {error && <p className="inv-error">{error}</p>}
+        {gate && <LinkGate key={gate.state} kind={KIND} token={token} state={gate.state} inviter={gate.inviter} onOpen={() => void load()} />}
         {msg && <p className={msg.ok ? "inv-ok" : "inv-error"}>{msg.text}</p>}
         {view && view.deals.length === 0 && <p className="inv-muted">No offer yet. The seller&apos;s offer appears here as soon as they send it.</p>}
         {view?.deals.map((d) => (
@@ -232,7 +250,7 @@ export function PayPage({ token }: { token: string }) {
                   </small>
                 )}
                 {m.delivery?.mime?.startsWith("image/") && !["KeyReleased", "Released"].includes(m.status) && (
-                  <div className="inv-preview">
+                  <div className="inv-preview aw-protect">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={`${base}/preview/${d.id}/${m.index}`} alt={`Watermarked preview of ${m.delivery.fileName ?? "the delivery"}`} loading="lazy" />
                     <small>Watermarked, reduced preview. The original file unlocks once you approve.</small>
@@ -253,6 +271,18 @@ export function PayPage({ token }: { token: string }) {
                 )}
               </div>
             ))}
+            {(d.canPay || d.guarantor) && view && (
+              <GuarantorForm
+                current={d.guarantor ?? null}
+                required={Boolean(d.guarantorRequired)}
+                currency={view.currency}
+                save={async (g) => {
+                  await call(`${base}/guarantor`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...g, dealId: d.id }) });
+                  await load();
+                }}
+              />
+            )}
+            {d.canPay && d.offerExpiresAt && <p className="inv-muted">⏳ Pay by {new Date(d.offerExpiresAt).toLocaleDateString()}: an offer not signed within 14 days is withdrawn.</p>}
             {d.canPay && (
               <button type="button" className="inv-primary" disabled={!!busy} onClick={() => void pay(d)}>
                 {busy === `pay${d.id}` ? "Opening the payment…" : `Pay ${money(d.total)} by card`}

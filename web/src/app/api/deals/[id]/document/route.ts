@@ -4,6 +4,7 @@ import { DealError, dealForWallet, dealTerms, deliveryInfo } from "@/lib/bank/de
 import { draftView } from "@/lib/bank/drafts";
 import { companyOfWallet } from "@/lib/company";
 import { config } from "@/lib/config";
+import { revisionsAllowed } from "@/lib/file-types";
 import { DOC_TYPES, type DocType, renderDealDocument } from "@/lib/deal-documents";
 import { db } from "@/lib/db";
 import { HttpError, errorResponse, rateLimit, requireBankWallet } from "@/lib/guard";
@@ -29,7 +30,7 @@ export async function GET(req: Request, ctx: RouteContext<"/api/deals/[id]/docum
     const sellerAddr = deal.role === "seller" ? wallet : deal.counterparty;
     const draft = await dealTerms(id, buyerAddr, sellerAddr);
     const terms = draft ? await draftView(draft) : null;
-    const [labels, company, other, units, witnesses, deliveries, disputes] = await Promise.all([
+    const [labels, company, other, units, witnesses, deliveries, disputes, guarantors] = await Promise.all([
       friendLabels(user.id),
       companyOfWallet(wallet),
       companyOfWallet(getAddress(deal.counterparty)),
@@ -37,6 +38,7 @@ export async function GET(req: Request, ctx: RouteContext<"/api/deals/[id]/docum
       db.dealWitness.findMany({ where: { escrow: config.fileEscrowOf(id), dealId: id } }),
       Promise.all(deal.milestones.map((m) => deliveryInfo(id, m.index))),
       db.dealDispute.findMany({ where: { escrow: config.fileEscrowOf(id), dealId: id }, orderBy: { createdAt: "asc" } }),
+      db.dealGuarantor.findMany({ where: { escrow: config.fileEscrowOf(id), dealId: id } }),
     ]);
     const me = { name: company?.name ?? user.name, taxId: company?.maskedTaxId ?? null };
     const them = { name: other?.name ?? labels.get(deal.counterparty.toLowerCase()) ?? deal.counterpartyLabel ?? "Other party", taxId: other?.maskedTaxId ?? null };
@@ -56,6 +58,8 @@ export async function GET(req: Request, ctx: RouteContext<"/api/deals/[id]/docum
       seller: deal.role === "seller" ? me : them,
       witnesses: witnesses.map((w) => ({ side: w.side, name: w.name, contact: w.contact })),
       viewer: deal.role,
+      rules: draft?.rules ?? null,
+      guarantors: guarantors.map((g) => ({ side: g.side, name: g.name, contact: g.contact, relation: g.relation, amount: g.amount === null ? null : Number(g.amount) })),
       disputes: disputes.map((x) => ({
         index: x.index,
         phase: x.phase,
@@ -76,6 +80,7 @@ export async function GET(req: Request, ctx: RouteContext<"/api/deals/[id]/docum
         status: m.status,
         deadline: m.deadline,
         deposit: terms?.milestones[i]?.deposit === true,
+        revisions: revisionsAllowed(terms?.milestones[i]?.revisions),
         paidToSeller: m.status === "Released" ? Number(m.amount) : m.status === "Split" ? Number(m.split?.toSeller ?? 0) : 0,
         deliveredAt: deliveries[i]?.deliveredAt ? new Date(deliveries[i]!.deliveredAt).toISOString() : null,
         delivery: deliveries[i] ? { note: deliveries[i]!.note, fileName: deliveries[i]!.fileName, sha256: deliveries[i]!.sha256 } : null,

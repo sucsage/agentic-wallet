@@ -38,11 +38,16 @@ export type DocInput = {
     status: string;
     deadline: number;
     deposit: boolean;
+    /** Rounds of changes agreed (0-10). */
+    revisions?: number;
     paidToSeller: number;
     deliveredAt: string | null;
     /** What was delivered (the evidence), for the complaint. */
     delivery?: { note: string; fileName: string | null; sha256: string } | null;
   }[];
+  /** The written rules and conditions, and the guarantors named by each side. */
+  rules?: string | null;
+  guarantors?: { side: string; name: string; contact: string; relation: string; amount: number | null }[];
   /** Who prints the document: the complaint is written from their side. */
   viewer?: "buyer" | "seller";
   disputes?: { index: number; phase: string; reason: string; status: string; stage: string; decision: string | null; rationale: string | null; sellerStatement: string | null; at: string; txHash: string | null }[];
@@ -125,6 +130,8 @@ function claimBody(d: DocInput, parties: string): string {
     ${d.summary ? `<p>${esc(d.summary)}</p>` : ""}
     <table><thead><tr><th>#</th><th>Milestone and acceptance</th><th>Due</th><th>Status now</th><th class="r">Amount</th></tr></thead><tbody>${ms}</tbody>
     <tfoot><tr><td colspan="4">Paid to the ${hire ? "contractor" : "seller"} · refunded to the buyer</td><td class="r">${money(paid, c)} · ${money(refunded, c)}</td></tr></tfoot></table>
+    ${(d.guarantors ?? []).filter((g) => g.side !== me).map((g) => `<p><b>Guarantor of the respondent:</b> ${esc(g.name)} (${esc(g.relation)}, ${esc(g.contact)}), guaranteed ${g.amount ? `up to ${money(g.amount, c)}` : "their whole obligation"} in the contract: may be named as a co-respondent.</p>`).join("")}
+    ${d.rules ? `<p><b>Rules and conditions</b> agreed in the contract apply (see CT-${String(d.dealId).padStart(5, "0")}).</p>` : ""}
     <h2>2. เหตุแห่งการร้อง · What went wrong</h2>
     ${grounds.length ? `<ul>${grounds.map((g) => `<li>${esc(g)}</li>`).join("")}</ul>` : "<p>No dispute, refund or missed deadline is recorded for this deal.</p>"}
     <p>In my own words: ${line}${line}${line}</p>
@@ -158,7 +165,7 @@ export function renderDealDocument(type: DocType, d: DocInput): string {
   } else if (type === "contract") {
     const rows = d.milestones
       .map(
-        (m) => `<tr><td>${m.index + 1}</td><td><b>${esc(m.name)}</b>${m.deposit ? " <em>(มัดจำ · deposit, paid on signing)</em>" : ""}<br><small>${esc(m.acceptance ?? "")}</small></td><td>${m.deadline ? date(new Date(m.deadline * 1000)) : "—"}</td><td class="r">${money(m.amount, c)}</td></tr>`,
+        (m) => `<tr><td>${m.index + 1}</td><td><b>${esc(m.name)}</b>${m.deposit ? " <em>(มัดจำ · deposit, paid on signing)</em>" : ""}<br><small>${esc(m.acceptance ?? "")}${!m.deposit && typeof m.revisions === "number" ? ` · แก้งานได้ ${m.revisions} รอบ · ${m.revisions} rounds of changes` : ""}</small></td><td>${m.deadline ? date(new Date(m.deadline * 1000)) : "—"}</td><td class="r">${money(m.amount, c)}</td></tr>`,
       )
       .join("");
     const total = d.milestones.reduce((t, m) => t + m.amount, 0);
@@ -179,8 +186,11 @@ export function renderDealDocument(type: DocType, d: DocInput): string {
       ${d.milestones[0]?.deposit ? `<li>Milestone 1 is a deposit, paid as soon as this contract is signed (the offer accepted on-chain).</li>` : ""}
       <li>Signing: acceptance of the offer on-chain is the signature of both parties. Terms fingerprint: sha256 <code>${esc(d.termsHash ?? "—")}</code>.</li>
     </ol>
+    ${d.rules ? `<h2>กฎระเบียบและข้อตกลง · Rules and conditions</h2><div class="rules">${esc(d.rules).replace(/\n/g, "<br>")}</div>` : ""}
+    ${(d.guarantors ?? []).length ? `<h2>ผู้ค้ำประกัน · Guarantors</h2><ol class="terms">${(d.guarantors ?? []).map((g) => `<li><b>${esc(g.name)}</b> (${esc(g.relation)}, ${esc(g.contact)}) guarantees the obligations of the ${g.side === "buyer" ? buyerRole : sellerRole} under this contract${g.amount ? `, up to ${money(g.amount, c)}` : ", in full"}: if that party does not perform and does not make it good, the guarantor answers for it to the other party.</li>`).join("")}</ol>` : ""}
     <p class="status">Status on-chain: <b>${esc(d.status)}</b>${d.status === "Proposed" ? " (not signed yet: waiting for the other side to accept)" : ""}</p>
-    <section class="signs">${sign(buyerRole, d.buyer.name, witness("buyer"))}${sign(sellerRole, d.seller.name, witness("seller"))}</section>`;
+    <section class="signs">${sign(buyerRole, d.buyer.name, witness("buyer"))}${sign(sellerRole, d.seller.name, witness("seller"))}</section>
+    ${(d.guarantors ?? []).length ? `<section class="signs">${(d.guarantors ?? []).map((g) => `<div class="sign"><div class="line"></div><b>${esc(g.name)}</b><small>ผู้ค้ำประกัน · Guarantor of the ${g.side}</small></div>`).join("")}</section>` : ""}`;
   } else {
     // A payment request lists what was delivered and waits for approval; before any delivery, the
     // next milestone owed (requested on delivery).
@@ -237,6 +247,7 @@ td small{color:#666}.r{text-align:right;white-space:nowrap}tfoot td{font-weight:
 .status{font-size:12.5px}
 .signs{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:36px}.sign .line{border-bottom:1px solid #111;height:42px;margin-top:18px}
 .note{font-size:12px;color:#444;background:#fff8e6;border:1px solid #f0d58c;border-radius:8px;padding:8px 10px}
+.rules{font-size:12.5px;color:#222;border:1px solid #ddd;border-radius:8px;padding:10px 12px;background:#fafafa}
 .blank{display:inline-block;min-width:180px;border-bottom:1px dotted #555;margin:0 4px;height:1.2em}
 footer{margin-top:28px;font-size:10.5px;color:#777;border-top:1px solid #ddd;padding-top:6px}
 @media print{body{background:#fff}.bar{display:none}.page{margin:0;box-shadow:none;width:auto;min-height:0}}

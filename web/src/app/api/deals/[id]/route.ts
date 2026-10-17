@@ -1,7 +1,8 @@
 import { after } from "next/server";
 
 import { disputeOf, disputeView } from "@/lib/bank/arbiter";
-import { DealError, dealForWallet, dealTerms, deliveryInfo, demoDeliverable, isSiteDelivery, syncDeal } from "@/lib/bank/deals";
+import { revisionsAllowed } from "@/lib/file-types";
+import { DealError, OFFER_DAYS, dealForWallet, dealTerms, deliveryInfo, demoDeliverable, isSiteDelivery, syncDeal } from "@/lib/bank/deals";
 import { deliveryOf, draftView } from "@/lib/bank/drafts";
 import { inviteLinkFor } from "@/lib/bank/invites";
 import { roleAddresses } from "@/lib/chain";
@@ -47,6 +48,8 @@ export async function GET(req: Request, ctx: RouteContext<"/api/deals/[id]">) {
     const declines = deal.status === "Proposed" ? await db.declinedOffer.findMany({ where: { escrow: config.fileEscrowOf(id), dealId: id } }) : [];
     const notes = await db.dealNote.findMany({ where: { escrow: config.fileEscrowOf(id), dealId: id }, orderBy: { createdAt: "desc" }, take: 20 });
     const witnesses = await db.dealWitness.findMany({ where: { escrow: config.fileEscrowOf(id), dealId: id } });
+    const guarantors = await db.dealGuarantor.findMany({ where: { escrow: config.fileEscrowOf(id), dealId: id } });
+    const changeCounts = await db.dealNote.groupBy({ by: ["index"], where: { escrow: config.fileEscrowOf(id), dealId: id, kind: "CHANGES" }, _count: { _all: true } });
     const [deliveries, friends, disputes, invite] = await Promise.all([
       Promise.all(deal.milestones.map((m) => deliveryInfo(id, m.index))),
       friendLabels(user.id),
@@ -59,6 +62,11 @@ export async function GET(req: Request, ctx: RouteContext<"/api/deals/[id]">) {
       counterpartyLabel: friends.get(deal.counterparty.toLowerCase()) ?? deal.counterpartyLabel,
       invite,
       witnesses: witnesses.map((w) => ({ side: w.side, name: w.name, contact: w.contact, mine: w.side === deal.role })),
+      guarantors: guarantors.map((g) => ({ side: g.side, name: g.name, contact: g.contact, relation: g.relation, amount: g.amount === null ? null : Number(g.amount), mine: g.side === deal.role })),
+      // An offer must be signed (accepted) within 14 days, or it is withdrawn.
+      offerExpiresAt: deal.status === "Proposed" && draft ? new Date(+(draft.offeredAt ?? draft.updatedAt) + OFFER_DAYS * 86_400_000) : null,
+      rules: draft?.rules ?? null,
+      guarantorsRequired: draft?.guarantorsRequired ?? null,
       replacedBy: (await db.dealDraft.findFirst({ where: { replacesDealId: id, status: "FUNDED" }, select: { dealId: true } }))?.dealId ?? null,
       title: terms?.title ?? `File deal #${id}`,
       summary: terms?.summary ?? null,
@@ -84,6 +92,9 @@ export async function GET(req: Request, ctx: RouteContext<"/api/deals/[id]">) {
         canMockup: isSiteDelivery(deliveries[i]),
         deposit: terms?.milestones[i]?.deposit === true,
         fileTypes: terms?.milestones[i]?.fileTypes ?? [],
+        // Rounds of changes agreed for this milestone, and how many the buyer asked for so far.
+        revisions: revisionsAllowed(terms?.milestones[i]?.revisions),
+        revisionsUsed: changeCounts.find((c) => c.index === m.index)?._count._all ?? 0,
         moves: moves(deal.role, deal.status, m.status, m.deadline),
         delivery: deliveries[i],
         dispute: disputeView(disputes[i]),

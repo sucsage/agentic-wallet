@@ -162,6 +162,16 @@ key (`ArbiterNotNeutral`), so the buyer's side can never judge its own dispute.
   hashed terms, and a delivery in any other format is refused before it is encrypted or anchored.
 - **Addresses are checked** against the official Thai province / district / sub-district list
   before they are saved; the AI can change the saved address only through the same check.
+- **Private links are not bearer secrets any more.** Holding a link opens nothing: the person needs
+  the one-time code the inviter sends separately, then their own password (scrypt). Access cookies
+  are HMACs tied to an access version that a reset bumps; 5 wrong tries lock the link for 15 minutes.
+  A reset needs a code only the person sees, so the inviter (who also holds the link) cannot take
+  over the page once a password is set.
+- **Unfair or nonsensical terms cannot be confirmed.** The terms review blocks them before a preview
+  exists, and `approveDraft` re-checks the stored review.
+- **Screenshots and inspection.** Previews are heavily watermarked with the deal number and grain;
+  the browser guard only deters (blur on focus loss, blocked shortcuts). The original file stays
+  encrypted until approval, which is the protection that does not depend on the browser.
 - **Chain access.** Besu runs **account permissioning**, so only the app's own keys can send
   transactions. Its RPC needs a signed JWT (RS256) that only the server holds. The public `/api/rpc`
   passes **read-only methods** only (no `eth_sendRawTransaction`), with bounded `eth_getLogs` ranges.

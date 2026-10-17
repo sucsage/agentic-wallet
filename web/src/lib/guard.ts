@@ -122,6 +122,8 @@ export function rateLimit(req: Request, bucket: string, max: number, windowMs: n
 
 export function errorResponse(err: unknown) {
   if (err instanceof HttpError) return Response.json({ error: err.message }, { status: err.status });
+  // A private link that needs its one-time code or password (lib/link-access): the page asks for it.
+  if (err instanceof Error && err.name === "LinkAccessError") return Response.json({ error: err.message, linkAccess: (err as Error & { state: string }).state }, { status: 401 });
   console.error(err);
   return Response.json({ error: err instanceof Error ? err.message : "Internal error" }, { status: 500 });
 }

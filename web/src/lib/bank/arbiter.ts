@@ -160,7 +160,46 @@ function textOf(bytes: Buffer, mime: string | null, name: string | null): string
   return s.length > MAX_FILE_TEXT ? `${s.slice(0, MAX_FILE_TEXT)}\n…(truncated)` : s;
 }
 
-/** Everything a judge sees: the agreed terms, both sides, the delivery. Party text is fenced as data. */
+/** What a judge is shown about one disputed milestone (also built directly by the dispute test cases). */
+export type CaseFields = {
+  title: string | null;
+  scope: string | null;
+  index: number;
+  milestone: string | null;
+  due: string | null;
+  acceptance: string | null;
+  evidence: string | null;
+  parcel: string | null;
+  file: { name: string; mime: string | null; size: number } | null;
+  fileText: string | null;
+  reason: string;
+  sellerStatement: string | null;
+};
+
+/** The case file as text. Party text is fenced as data. */
+export function caseText(c: CaseFields): string {
+  return [
+    `DEAL TERMS (agreed by both parties):`,
+    `Title: ${c.title ?? "(not recorded)"}`,
+    `Scope: ${c.scope ?? "(not recorded)"}`,
+    `Disputed milestone ${c.index + 1}: ${c.milestone ?? "(not recorded)"}${c.due ? ` · due ${c.due}` : ""}`,
+    `Acceptance criteria: ${c.acceptance || "(none written)"}`,
+    ``,
+    `<seller_evidence>`,
+    c.evidence ?? "(the seller wrote no evidence)",
+    `</seller_evidence>`,
+    c.parcel ?? ``,
+    c.file ? `Delivered file: ${c.file.name} (${c.file.mime ?? "unknown type"}, ${c.file.size} bytes), sha256 matches the hash anchored on-chain at delivery.` : `No file was delivered for this milestone.`,
+    c.fileText ? `<delivered_file_content>\n${c.fileText}\n</delivered_file_content>` : c.file ? `(The file is binary; its content is not shown.)` : ``,
+    ``,
+    `<buyer_reason_for_dispute>`,
+    c.reason,
+    `</buyer_reason_for_dispute>`,
+    c.sellerStatement ? `\n<seller_reply_to_dispute>\n${c.sellerStatement}\n</seller_reply_to_dispute>` : ``,
+  ].join("\n");
+}
+
+/** Everything a judge sees: the agreed terms, both sides, the delivery. */
 async function caseFile(dealId: number, index: number, buyer: Address, seller: Address, reason: string, sellerStatement: string | null): Promise<string> {
   const [terms, file] = await Promise.all([
     db.dealDraft.findFirst({ where: { dealId, walletAddress: { in: [buyer, seller] } } }),
@@ -169,31 +208,24 @@ async function caseFile(dealId: number, index: number, buyer: Address, seller: A
   const ms = (terms?.milestones ?? []) as { name: string; amount: string; acceptance: string; due: string | null }[];
   const m = ms[index];
   const fileText = file.bytes && file.row ? textOf(file.bytes, file.row.mime, file.row.fileName) : null;
-  return [
-    `DEAL TERMS (agreed by both parties):`,
-    `Title: ${terms?.title ?? "(not recorded)"}`,
-    `Scope: ${terms?.summary ?? "(not recorded)"}`,
-    `Disputed milestone ${index + 1}: ${m?.name ?? "(not recorded)"}${m?.due ? ` · due ${m.due}` : ""}`,
-    `Acceptance criteria: ${m?.acceptance || "(none written)"}`,
-    ``,
-    `<seller_evidence>`,
-    file.row?.note ?? "(the seller wrote no evidence)",
-    `</seller_evidence>`,
-    file.row?.tracking
+  return caseText({
+    title: terms?.title ?? null,
+    scope: terms?.summary ?? null,
+    index,
+    milestone: m?.name ?? null,
+    due: m?.due ?? null,
+    acceptance: m?.acceptance ?? null,
+    evidence: file.row?.note ?? null,
+    parcel: file.row?.tracking
       ? `Parcel shipped with ${CARRIER_LABEL[file.row.carrier as Carrier] ?? file.row.carrier}, tracking ${file.row.tracking}. Carrier tracking: ${
           file.row.shippedAt ? trackParcel(file.row.carrier as Carrier, file.row.shippedAt).status : "unknown"
         }.`
-      : ``,
-    file.row?.fileName
-      ? `Delivered file: ${file.row.fileName} (${file.row.mime ?? "unknown type"}, ${file.row.size ?? 0} bytes), sha256 matches the hash anchored on-chain at delivery.`
-      : `No file was delivered for this milestone.`,
-    fileText ? `<delivered_file_content>\n${fileText}\n</delivered_file_content>` : file.row?.fileName ? `(The file is binary; its content is not shown.)` : ``,
-    ``,
-    `<buyer_reason_for_dispute>`,
+      : null,
+    file: file.row?.fileName ? { name: file.row.fileName, mime: file.row.mime, size: file.row.size ?? 0 } : null,
+    fileText,
     reason,
-    `</buyer_reason_for_dispute>`,
-    sellerStatement ? `\n<seller_reply_to_dispute>\n${sellerStatement}\n</seller_reply_to_dispute>` : ``,
-  ].join("\n");
+    sellerStatement,
+  });
 }
 
 const JUDGE_RULES = `Rules:
@@ -225,8 +257,8 @@ function modelSigner(model: string) {
   return privateKeyToAccount(keccak256(concat([config.arbiterKey, toHex(`arbiter-model:${model}`)])));
 }
 
-/** Asks one model for a split and signs its answer. */
-async function rule(model: string, role: "mediator" | "judge", file: string, ctx: { dealId: number; index: number; stage: string }): Promise<Vote> {
+/** Asks one model for a split and signs its answer (exported for the dispute test cases). */
+export async function rule(model: string, role: "mediator" | "judge", file: string, ctx: { dealId: number; index: number; stage: string }): Promise<Vote> {
   const { client } = llm();
   for (let attempt = 0; attempt < 2; attempt++) {
     const res = await client.beta.messages.stream({ model, max_tokens: 4000, system: SPLIT_SYSTEM(role), messages: [{ role: "user", content: file }] }).finalMessage();

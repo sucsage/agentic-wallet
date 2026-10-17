@@ -26,7 +26,7 @@ export function SiteMockup({ src, name }: { src: string; name: string }) {
   const box = device === "desktop" ? 560 : device === "tablet" ? 300 : 220;
   const scale = box / d.w;
   return (
-    <div className="aw-site-mockup">
+    <div className="aw-site-mockup aw-protect">
       <div className="aw-site-tools">
         <b>🖥 Live mockup preview</b>
         <span>

@@ -1921,3 +1921,30 @@
 .aw-address-form input,.aw-address-form select{height:38px;padding:0 10px;border:1px solid #333;border-radius:10px;background:#0c0c0c;color:#fff;font-size:14px}
 .aw-address-actions{display:flex;gap:8px}
 @media(max-width:640px){.aw-address-form{grid-template-columns:1fr}}
+.aw-link-access{display:grid;gap:6px;margin-top:12px;padding-top:12px;border-top:1px solid #2a2a2a}
+.aw-link-access small{color:#999;font-size:12px;line-height:1.5}
+.aw-link-otp{display:flex;align-items:center;gap:10px}
+.aw-link-otp code{font-size:24px;letter-spacing:6px;font-weight:700;color:#fff;background:#151515;border:1px dashed #555;border-radius:10px;padding:6px 14px}
+.aw-link-reset{display:flex;gap:8px;flex-wrap:wrap}
+.aw-link-reset input{height:36px;width:180px;padding:0 10px;border:1px solid #333;border-radius:10px;background:#0c0c0c;color:#fff;letter-spacing:3px}
+.aw-guarantor{display:grid;gap:8px;margin-top:12px;padding:12px 14px;border:1px solid #2c2c2c;border-radius:12px;background:#121212;font-size:13px;color:#ccc}
+.aw-guarantor-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.aw-guarantor-req{padding:2px 8px;border-radius:999px;background:#3a2600;color:#ffb000;font-size:11px;font-weight:600}
+.aw-guarantor-value{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.aw-guarantor-value small{color:#888}
+.aw-guarantor button{padding:4px 10px;border:1px solid #444;border-radius:8px;background:none;color:#ddd;font-size:12px;cursor:pointer}
+.aw-guarantor-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.aw-guarantor-form input{height:34px;padding:0 10px;border:1px solid #333;border-radius:8px;background:#0b0b0b;color:#fff}
+.aw-guarantor-form>div,.aw-guarantor-form small{grid-column:1/-1;display:flex;gap:8px}
+.aw-guarantor-form small{color:#888}
+.aw-guarantor-err{color:#ff6b6b;margin:0}
+@media(max-width:640px){.aw-guarantor-form{grid-template-columns:1fr}}
+.aw-draft-rules{display:grid;gap:6px;margin:10px 0;font-size:13px;color:#ccc}
+.aw-draft-rules p{margin:0}
+.aw-draft-rules details{border:1px solid #2c2c2c;border-radius:10px;padding:8px 10px;background:#111}
+.aw-draft-rules summary{cursor:pointer}
+.aw-draft-rules pre{white-space:pre-wrap;font:inherit;font-size:12px;color:#bbb;max-height:260px;overflow:auto;margin:8px 0 0}
+.aw-draft-review{margin:10px 0;padding:10px 12px;border-radius:10px;font-size:13px;border:1px solid #2c4a33;background:#0c1810;color:#bfe8c8}
+.aw-draft-review.warn{border-color:#6b5320;background:#1a1407;color:#ffd98a}
+.aw-draft-review.block{border-color:#6b2a2a;background:#1d0d0d;color:#ffb3b3}
+.aw-draft-review p{margin:0}.aw-draft-review ul{margin:6px 0 0;padding-left:4px;list-style:none;display:grid;gap:4px}

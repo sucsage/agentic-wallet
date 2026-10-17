@@ -8,7 +8,12 @@ import { acceptAttr, fileTypeOk, fileTypesLabel } from "@/lib/file-types";
 
 import { DisputeFlow, type DisputeFlowData, isStagedDispute } from "./dispute-flow";
 import { DealFileLinks } from "./deal-file-links";
+import { CaptureGuard } from "./capture-guard";
+import { GuarantorForm } from "./guarantor-form";
+import { LinkGate } from "./link-gate";
 import "./invite.css";
+
+const KIND = "invite" as const;
 
 /**
  * The page an invited seller opens from the buyer's link: no account, no sign-in. They accept the
@@ -38,6 +43,9 @@ type Deal = {
   title: string;
   summary: string | null;
   canAccept: boolean;
+  offerExpiresAt?: string | null;
+  guarantorRequired?: boolean;
+  guarantor?: { name: string; contact: string; relation: string; amount: number | null } | null;
   files?: { id: string; name: string; mime: string; size: number }[];
   milestones: Milestone[];
   notes?: { kind: string; index: number | null; text: string; at: string }[];
@@ -122,12 +130,13 @@ function NameEditor({ base, name, onDone }: { base: string; name: string; onDone
 async function call<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { cache: "no-store", ...init });
   const body = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(body?.error ?? `Request failed (${res.status})`);
+  if (!res.ok) throw Object.assign(new Error(body?.error ?? `Request failed (${res.status})`), { linkAccess: body?.linkAccess as string | undefined });
   return body as T;
 }
 
 export function InvitePage({ token }: { token: string }) {
   const base = `/api/invite/${token}`;
+  const [gate, setGate] = useState<{ state: "otp" | "password"; inviter: string } | null>(null);
   const [view, setView] = useState<View | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -135,10 +144,17 @@ export function InvitePage({ token }: { token: string }) {
     try {
       setView(await call<View>(base));
       setError(null);
+      setGate(null);
     } catch (e) {
-      setError((e as Error).message);
+      const state = (e as Error & { linkAccess?: string }).linkAccess;
+      if (state === "otp" || state === "password") {
+        // The link needs its one-time code or password: ask for it, then load again.
+        const info = await call<{ inviter: string }>(`/api/link-access/${KIND}/${token}`).catch(() => ({ inviter: "the person who sent the link" }));
+        setGate({ state, inviter: info.inviter });
+        setError(null);
+      } else setError((e as Error).message);
     }
-  }, [base]);
+  }, [base, token]);
 
   useEffect(() => {
     // Fetching on mount and polling is the point: the deal moves on its own (key release, payout).
@@ -171,13 +187,14 @@ export function InvitePage({ token }: { token: string }) {
 
   return (
     <div className="inv-page">
+      <CaptureGuard />
       <div className="inv-banner">DEMO · simulated money · do not enter real bank details you care about</div>
       <main className="inv-main">
         <header className="inv-head">
           <span className="inv-mark" aria-hidden />
           <div>
             <small>Agentic Wallet · seller link</small>
-            <h1>{view ? `Hi ${view.name}` : error ? "Link unavailable" : "Loading…"}</h1>
+            <h1>{view ? `Hi ${view.name}` : gate ? "Protected link" : error ? "Link unavailable" : "Loading…"}</h1>
             {view && <NameEditor base={base} name={view.name} onDone={load} />}
             {view && (
               <p>
@@ -188,6 +205,7 @@ export function InvitePage({ token }: { token: string }) {
           </div>
         </header>
         {error && <p className="inv-error">{error}</p>}
+        {gate && <LinkGate key={gate.state} kind={KIND} token={token} state={gate.state} inviter={gate.inviter} onOpen={() => void load()} />}
         {view?.linked?.toYou && (
           <section className="inv-card inv-linked">
             <b>✓ Linked to your Agentic Wallet account</b>
@@ -238,7 +256,7 @@ export function InvitePage({ token }: { token: string }) {
 
             {view.deals.length === 0 && <p className="inv-muted">No offer yet. The buyer&apos;s offer appears here as soon as they lock the money.</p>}
             {view.deals.map((d) => (
-              <DealCard key={d.id} base={base} deal={d} buyerName={view.buyerName} money={money} onDone={load} onAccepted={accepted} />
+              <DealCard key={d.id} base={base} deal={d} buyerName={view.buyerName} currency={view.currency} money={money} onDone={load} onAccepted={accepted} />
             ))}
             <p className="inv-foot">
               This link is your key to these deals; keep it private. It expires on {new Date(view.expiresAt).toLocaleDateString()}. Your
@@ -255,6 +273,7 @@ function DealCard({
   base,
   deal,
   buyerName,
+  currency,
   money,
   onDone,
   onAccepted,
@@ -262,6 +281,7 @@ function DealCard({
   base: string;
   deal: Deal;
   buyerName: string;
+  currency: "THB" | "CNY";
   money: (a: string) => string;
   onDone: () => Promise<void>;
   onAccepted?: () => void;
@@ -313,6 +333,16 @@ function DealCard({
             The buyer already locked <b>{money(deal.total)}</b> in escrow. Accepting agrees to the terms below; the buyer has {deal.reviewHours} h
             to review each delivery.
           </p>
+          <GuarantorForm
+            current={deal.guarantor ?? null}
+            required={Boolean(deal.guarantorRequired)}
+            currency={currency}
+            save={async (g) => {
+              await call(`${base}/guarantor`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...g, dealId: deal.id }) });
+              await onDone();
+            }}
+          />
+          {deal.offerExpiresAt && <p className="inv-muted">⏳ Accept by {new Date(deal.offerExpiresAt).toLocaleDateString()}: an offer not signed within 14 days is withdrawn.</p>}
           <button className="inv-btn" disabled={busy} onClick={accept}>
             {busy ? "Accepting…" : "Accept the offer"}
           </button>

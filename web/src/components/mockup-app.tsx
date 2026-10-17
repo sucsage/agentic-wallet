@@ -2,6 +2,7 @@
 
 import { TwoFactorGate } from "./two-factor";
 import { UiScale } from "./ui-scale";
+import { CaptureGuard } from "./capture-guard";
 import { type ReactNode, useEffect, useState, useSyncExternalStore } from "react";
 
 const HOVER_MENU_QUERY = "(hover: hover) and (min-width: 1051px)";
@@ -107,6 +108,7 @@ export function MockupApp({ initialRoute = "landing", initialBank = "thai", init
 
   return <div className={`aw-app aw-v08${route === "landing" ? " aw-app-landing" : ""}`}>
     <UiScale />
+    <CaptureGuard />
     {route !== "bank-authorize" && <Header onLogin={openLogin} onSignup={openLogin} authenticated={isApp} landing={route === "landing"} authPage={route === "login" || route === "reset-password"} />}
     {route === "landing" && <LandingScreen onStart={openLogin} />}
     {route === "login" && <AuthScreen onSignedIn={() => router.replace("/chat")} />}

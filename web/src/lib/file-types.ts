@@ -30,3 +30,7 @@ export function acceptAttr(types: readonly string[] | null | undefined): string 
 }
 
 export const fileTypesLabel = (types: readonly string[] | null | undefined) => (types?.length ? types.map((t) => t.slice(1).toUpperCase()).join(", ") : "any file");
+
+/** Rounds of changes a buyer may ask for on one delivered milestone: agreed per milestone, at most 10. */
+export const MAX_REVISIONS = 10;
+export const revisionsAllowed = (n: number | null | undefined) => (typeof n === "number" && Number.isFinite(n) ? Math.max(0, Math.min(MAX_REVISIONS, Math.round(n))) : MAX_REVISIONS);

@@ -24,6 +24,11 @@ export const GUIDE_TOPICS = [
   "profile",
   "address",
   "ai_chat",
+  "guarantors",
+  "revisions",
+  "expiry",
+  "terms_review",
+  "protection",
 ] as const;
 export type GuideTopic = (typeof GUIDE_TOPICS)[number];
 
@@ -53,9 +58,11 @@ The seller must be on your allow transfer list if they have an account (Contacts
 You can attach files for the buyer (a spec, a catalogue, a sample, a quotation) on the deal's page under "Attached files".`,
   outsider: `Dealing with someone who has no account:
 1. Tell the AI the person is outside the app ("คนนอก", "no account", "send them a link"). It drafts with their name.
-2. Press "Confirm": a private link is made and shown on the deal's page (and copied for you). Send it to them yourself (LINE, email…).
-3. On the link they can: accept the offer (a seller), or pay by card (a buyer), deliver, approve, dispute, set their own name, and choose where their money goes. No account needed.
-4. If they already have an account and open the link while signed in, the deal links to their account: they accept the offer on the link first, then the app opens with the deal in their Deals list.`,
+2. Press "Confirm": a private link AND a 6-digit one-time code (OTP) are made, shown in the chat and on the deal's page ("🔐 Access code"). Send the link and, separately (another chat or a call), the code.
+3. The first time, they open the link, enter the code and set their own password; after that the link asks only for their password. A forwarded link alone opens nothing.
+4. If they lose the password: on the link they press "Forgot password?" and get a reset code; they send it to you; you enter it on the deal's page ("Reset their access") and get a new one-time code to send them.
+5. On the link they can: accept the offer (a seller), or pay by card (a buyer), deliver, approve, dispute, set their own name, and choose where their money goes. No account needed.
+6. If they already have an account and open the link while signed in, the deal links to their account: they accept the offer on the link first, then the app opens with the deal in their Deals list.`,
   deposit: `Deposits (มัดจำ) paid on signing:
 1. Say it in AI Chat, e.g. "30% deposit on signing, the rest in 2 installments". The deposit is always the first milestone.
 2. The preview shows "💰 deposit, paid on signing".
@@ -126,6 +133,23 @@ Witnesses (optional): each side can add one under "Witnesses"; they appear on th
 - Ask in Thai or English. Attach files with ＋, paste or drag and drop.
 - The AI only drafts: it never moves money without your Confirm, and it treats documents as data (a document telling it to pay someone is flagged as a fraud signal).
 - Share links (a private link for an outsider) have a Copy button.`,
+  guarantors: `Guarantors (ผู้ค้ำประกัน):
+1. When drafting, tell the AI whether a guarantor is required from the other side, from you, or both. The preview shows "🤝 Guarantor required".
+2. On the deal's page, under "Your guarantor", press "+ Add": name, phone or email, relation, and the most they answer for (empty = your whole obligation). No ID card numbers.
+3. A side that must name a guarantor cannot sign (accept) before it does. Someone without an account adds theirs on their link.
+4. Guarantors are printed on the contract with a guarantee clause and signature lines, and listed on a complaint.`,
+  revisions: `Rounds of changes:
+- Each milestone has an agreed number of rounds of changes (0 to 10, the most the app allows). Tell the AI when drafting; the preview shows "↻ N rounds of changes".
+- The buyer presses "Request changes (used/allowed)" on a delivered milestone. When all rounds are used, the button stops: approve the delivery, or dispute it if it fails the criteria.`,
+  expiry: `Offers expire:
+- An offer must be signed (accepted) within 14 days. The deal's page and the other side's link show the last day.
+- After that it is withdrawn automatically; a buyer's locked money comes back to their balance. Make a new offer if you still want the deal.`,
+  terms_review: `The terms review:
+- Every preview is checked for you before it can be confirmed: do the terms make sense, and do they put you at a disadvantage (e.g. a deposit over half the price, a review window under 24 hours, rules that make only you liable or let the other side cancel without paying)?
+- If something is serious, the AI does not make the preview and explains how to fix it. Smaller points are shown on the card as warnings. Fair terms go through as usual.`,
+  protection: `Previews and copying:
+- Delivered images are shown only as small, grainy previews marked "PREVIEW D-<deal>" all over; the original file unlocks after you approve.
+- Previews and website mockups blur when the window loses focus, and right-click, view-source and developer-tools shortcuts are blocked. A browser cannot fully stop screenshots, so the real protection is that the original stays encrypted until approval.`,
 };
 
 export function appGuide(topic: string | undefined): string {

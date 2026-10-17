@@ -14,7 +14,7 @@ import "./pre-draft-deal.css";
 export type DealFormData = {
   side: "buy" | "sell";
   known: { counterparty?: string; kind?: string; work?: string; price?: string; milestones?: string; acceptance?: string; ship_to?: string; file_types?: string; deposit?: string };
-  missing: ("counterparty" | "kind" | "work" | "price" | "milestones" | "deadline" | "acceptance" | "ship_to" | "file_types" | "deposit")[];
+  missing: ("counterparty" | "kind" | "work" | "price" | "milestones" | "deadline" | "acceptance" | "ship_to" | "file_types" | "deposit" | "rules" | "revisions" | "guarantors")[];
   contacts: string[];
 };
 
@@ -29,6 +29,9 @@ const LABEL: Record<string, string> = {
   ship_to: "Delivery address",
   file_types: "Which file formats do you accept?",
   deposit: "A deposit on signing?",
+  rules: "Rules of the work",
+  revisions: "How many rounds of changes?",
+  guarantors: "A guarantor (ผู้ค้ำประกัน)?",
 };
 const KNOWN: Record<string, string> = {
   counterparty: "With",
@@ -168,6 +171,41 @@ export function DealFormCard({ form, currency, disabled, onSubmit }: { form: Dea
               <input id={`df-${k}`} maxLength={120} placeholder="Or type them, e.g. PDF, DWG" value={v[k] ?? ""} onChange={(e) => set(k, e.target.value)} />
             </>
           )}
+          {k === "rules" && (
+            <>
+              <div className="aw-predraft-options">
+                <button type="button" aria-pressed={v[k] === "draft balanced rules for me from the work described"} onClick={() => set(k, "draft balanced rules for me from the work described")}>
+                  Draft them for me
+                </button>
+                <button type="button" aria-pressed={v[k] === "no special rules"} onClick={() => set(k, "no special rules")}>
+                  No special rules
+                </button>
+              </div>
+              <textarea
+                id={`df-${k}`}
+                rows={5}
+                maxLength={8000}
+                placeholder="Or paste them: duties, what is not allowed, fraud, confidentiality, termination, liability…"
+                value={v[k]?.startsWith("draft balanced") || v[k] === "no special rules" ? "" : (v[k] ?? "")}
+                onChange={(e) => set(k, e.target.value)}
+              />
+            </>
+          )}
+          {k === "revisions" &&
+            choice(k, [
+              ["1 round of changes per milestone", "1"],
+              ["2 rounds of changes per milestone", "2"],
+              ["3 rounds of changes per milestone", "3"],
+              ["5 rounds of changes per milestone", "5"],
+              ["10 rounds of changes per milestone (the most)", "10"],
+            ])}
+          {k === "guarantors" &&
+            choice(k, [
+              ["no guarantor", "None"],
+              ["a guarantor from the other side", "From them"],
+              ["a guarantor from me", "From me"],
+              ["a guarantor from both sides", "Both"],
+            ])}
           {k === "deposit" &&
             choice(k, [
               ["no deposit", "No deposit"],

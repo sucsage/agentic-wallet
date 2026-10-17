@@ -145,6 +145,10 @@ export type SellerAction = "accept" | "claim" | "refund" | "cancel";
 export async function sellerAction(wallet: Address, dealId: number, action: SellerAction, index = 0): Promise<{ tier: 1; outcome: TxOutcome }> {
   const deal = await dealForWallet(wallet, dealId);
   if (deal.role !== "seller") throw new DealError("Only the seller can do this");
+  if (action === "accept") {
+    await refuseIfExpired(dealId, getAddress(deal.counterparty), wallet);
+    await (await import("../guarantors")).requireGuarantorBeforeSigning(dealId, "seller", getAddress(deal.counterparty), wallet);
+  }
   const data = action === "accept" || action === "cancel" ? dealCall(action, dealId) : milestoneCall(action, dealId, index);
   return { tier: 1, outcome: await viaMandate(wallet, data, `${action} deal ${dealId} milestone ${index}`, escrow(dealId)) };
 }
@@ -201,6 +205,8 @@ export async function acceptAndPay(wallet: Address, dealId: number): Promise<Acc
   if (d.status !== 0) throw new DealError("This offer is no longer open");
   if (getAddress(d.creator) === wallet) throw new DealError("You made this offer; the seller accepts it");
   const seller = getAddress(d.seller);
+  await refuseIfExpired(dealId, wallet, seller);
+  await (await import("../guarantors")).requireGuarantorBeforeSigning(dealId, "buyer", wallet, seller);
   const allowed = await publicClient().readContract({ address: wallet, abi: agentWalletAbi, functionName: "allowedRecipient", args: [seller] });
   if (!allowed) throw new DealError("Add the seller as a payee first (Friends → Make payee)");
   const units = await walletUnits(wallet);
@@ -401,7 +407,7 @@ export async function deliveryFile(wallet: Address, dealId: number, index: numbe
   return { bytes, name: d.fileName ?? "delivery", mime: d.mime ?? "application/octet-stream", sha256: d.sha256 };
 }
 
-/** Stroke glyphs for the watermark: drawn as paths, so it needs no fonts on the server. */
+/** Stroke glyphs for the watermark: drawn as paths, so it needs no fonts on the server. 10 x 14 cells. */
 const GLYPH: Record<string, string> = {
   P: "M0 14V0H7L10 3V5L7 8H0",
   R: "M0 14V0H7L10 3V5L7 8H0M5 8L10 14",
@@ -409,27 +415,76 @@ const GLYPH: Record<string, string> = {
   V: "M0 0L5 14L10 0",
   I: "M5 0V14M2 0H8M2 14H8",
   W: "M0 0L2.5 14L5 5L7.5 14L10 0",
+  D: "M0 0V14H6L10 10V4L6 0Z",
+  M: "M0 14V0L5 8L10 0V14",
+  O: "M3 0H7L10 3V11L7 14H3L0 11V3Z",
+  N: "M0 14V0L10 14V0",
+  T: "M0 0H10M5 0V14",
+  "-": "M2 7H8",
+  "0": "M3 0H7L10 3V11L7 14H3L0 11V3ZM0 12L10 2",
+  "1": "M3 3L6 0V14M3 14H9",
+  "2": "M0 3L3 0H7L10 3V5L0 14H10",
+  "3": "M0 1L2 0H8L10 2V5L7 7L10 9V12L8 14H2L0 13M4 7H7",
+  "4": "M8 14V0L0 10H10",
+  "5": "M10 0H1L0 6H7L10 8V12L8 14H0",
+  "6": "M9 0H4L0 5V12L2 14H8L10 12V8L8 6H0",
+  "7": "M0 0H10L4 14",
+  "8": "M2 0H8L10 2V5L8 7H2L0 9V12L2 14H8L10 12V9L8 7H2L0 5V2Z",
+  "9": "M10 8H2L0 6V2L2 0H8L10 2V9L6 14H1",
 };
 
-function watermarkSvg(width: number, height: number): string {
-  const word = "PREVIEW";
-  const path = [...word].map((ch, i) => `<path transform="translate(${i * 14} 0)" d="${GLYPH[ch]}"/>`).join("");
-  const scale = Math.max(1.2, Math.min(width, height) / 160);
-  const tileW = 130 * scale;
-  const tileH = 60 * scale;
+/** A small deterministic PRNG, so a preview's marks are the same every time it is served. */
+function prng(seed: number) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const wordPath = (word: string) =>
+  [...word].map((ch, i) => (GLYPH[ch] ? `<path transform="translate(${i * 14} 0)" d="${GLYPH[ch]}"/>` : "")).join("");
+
+/**
+ * The marks over a preview: good enough to judge the work, useless as the work. Two layers of
+ * "PREVIEW D-<deal>" text at crossing angles, a mesh of scribbled lines and coloured blotches, all
+ * seeded by the deal, so a screenshot of the preview carries them and names the deal it leaked from.
+ */
+function watermarkSvg(width: number, height: number, label: string, seed: number): string {
+  const rnd = prng(seed);
+  const scale = Math.max(1.1, Math.min(width, height) / 190);
+  const word = wordPath(`PREVIEW ${label}`.replace(/ /g, "  "));
+  const wordW = (`PREVIEW ${label}`.length + 1) * 14;
+  const tile = (id: string, angle: number, k: number, dark: number, light: number) => `
+<pattern id="${id}" width="${(wordW + 30) * scale * k}" height="${46 * scale * k}" patternUnits="userSpaceOnUse" patternTransform="rotate(${angle})">
+<g transform="translate(${6 * scale} ${16 * scale * k}) scale(${scale * k})" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<g stroke="#000" stroke-opacity="${dark}" stroke-width="3.6">${word}</g>
+<g stroke="#fff" stroke-opacity="${light}" stroke-width="1.8">${word}</g>
+</g></pattern>`;
+  const scribbles = Array.from({ length: 14 }, (_, i) => {
+    const y0 = rnd() * height;
+    const pts = Array.from({ length: 6 }, (_, j) => `${((j + 1) / 6) * width + (rnd() - 0.5) * 40},${y0 + (rnd() - 0.5) * height * 0.6}`);
+    return `<path d="M0,${y0} C${pts.slice(0, 3).join(" ")} S${pts.slice(3, 5).join(" ")} ${width},${rnd() * height}" stroke="${i % 2 ? "#fff" : "#000"}" stroke-opacity="${0.28 + rnd() * 0.2}" stroke-width="${(1.5 + rnd() * 2.5) * scale}" fill="none"/>`;
+  }).join("");
+  const blotches = Array.from({ length: 36 }, () => {
+    const w = (0.08 + rnd() * 0.22) * width;
+    const h = (0.06 + rnd() * 0.18) * height;
+    return `<rect x="${rnd() * width - w / 2}" y="${rnd() * height - h / 2}" width="${w}" height="${h}" rx="${rnd() * 20}" fill="hsl(${Math.floor(rnd() * 360)} 70% ${35 + rnd() * 30}%)" fill-opacity="${0.1 + rnd() * 0.14}" transform="rotate(${(rnd() - 0.5) * 50} ${rnd() * width} ${rnd() * height})"/>`;
+  }).join("");
+  const grid = Array.from({ length: Math.ceil(width / (36 * scale)) }, (_, i) => `<line x1="${i * 36 * scale}" y1="0" x2="${i * 36 * scale + height * 0.4}" y2="${height}" stroke="#fff" stroke-opacity="0.12" stroke-width="${scale}"/>`).join("");
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
-<defs><pattern id="w" width="${tileW}" height="${tileH}" patternUnits="userSpaceOnUse" patternTransform="rotate(-28)">
-<g transform="translate(${8 * scale} ${20 * scale}) scale(${scale})" fill="none" stroke-linecap="round" stroke-linejoin="round">
-<g stroke="#000" stroke-opacity="0.35" stroke-width="3.2">${path}</g>
-<g stroke="#fff" stroke-opacity="0.7" stroke-width="1.6">${path}</g>
-</g></pattern></defs>
-<rect width="100%" height="100%" fill="url(#w)"/></svg>`;
+<defs>${tile("a", -28, 1, 0.45, 0.8)}${tile("b", 33, 0.7, 0.3, 0.55)}</defs>
+${blotches}${grid}${scribbles}
+<rect width="100%" height="100%" fill="url(#b)"/><rect width="100%" height="100%" fill="url(#a)"/></svg>`;
 }
 
 /**
  * A watermarked, downscaled copy of a delivered image, for the buyer to check before approving.
- * The original stays encrypted until the key is released; the preview is too small and too
- * marked to stand in for it.
+ * The original stays encrypted until the key is released; the preview is small, grainy and marked
+ * all over (watermarkSvg), so a screenshot of it cannot stand in for the work.
  */
 export async function deliveryPreview(wallet: Address, dealId: number, index: number): Promise<Buffer> {
   await dealForWallet(wallet, dealId);
@@ -439,14 +494,27 @@ export async function deliveryPreview(wallet: Address, dealId: number, index: nu
   const dec = createDecipheriv("aes-256-gcm", Buffer.from(d.fileKey, "hex"), Buffer.from(d.iv, "hex"));
   dec.setAuthTag(Buffer.from(d.tag, "hex"));
   const bytes = Buffer.concat([dec.update(Buffer.from(d.ciphertext)), dec.final()]);
+  const seed = (dealId * 7919 + index * 104729 + parseInt(d.sha256.slice(0, 8), 16)) >>> 0;
+  return watermarkPreview(bytes, `D-${dealId}`, seed);
+}
+
+/** The preview itself: downscaled, grained and marked (exported for tests). */
+export async function watermarkPreview(bytes: Buffer, label: string, seed: number): Promise<Buffer> {
   const sharp = (await import("sharp")).default;
   const { data, info } = await sharp(bytes)
     .rotate()
-    .resize({ width: 720, height: 720, fit: "inside", withoutEnlargement: true })
+    .resize({ width: 640, height: 640, fit: "inside", withoutEnlargement: true })
     .toBuffer({ resolveWithObject: true });
+  // Film grain over everything: clean pixels cannot be recovered by cropping the marks away.
+  const grain = await sharp({ create: { width: info.width, height: info.height, channels: 3, background: "#808080", noise: { type: "gaussian", mean: 128, sigma: 46 } } })
+    .png()
+    .toBuffer();
   return sharp(data)
-    .composite([{ input: Buffer.from(watermarkSvg(info.width, info.height)) }])
-    .jpeg({ quality: 55 })
+    .composite([
+      { input: grain, blend: "soft-light" },
+      { input: Buffer.from(watermarkSvg(info.width, info.height, label, seed)) },
+    ])
+    .jpeg({ quality: 50 })
     .toBuffer();
 }
 
@@ -547,6 +615,21 @@ const syncing = new Map<number, Promise<void>>();
  * key release and claim, and bank settlement on both sides. Safe from any request: concurrent calls
  * for the same deal share one run, and every step re-reads the chain first.
  */
+/** An offer nobody accepted within this many days is withdrawn (a buyer's locked money goes back). */
+export const OFFER_DAYS = 14;
+
+/** When an offer stops being open: 14 days after it went on-chain (null when the terms are unknown). */
+export async function offerExpiresAt(dealId: number, buyer: Address, seller: Address): Promise<Date | null> {
+  const terms = await dealTerms(dealId, buyer, seller);
+  if (!terms) return null;
+  return new Date(+(terms.offeredAt ?? terms.updatedAt) + OFFER_DAYS * 86_400_000);
+}
+
+async function refuseIfExpired(dealId: number, buyer: Address, seller: Address) {
+  const until = await offerExpiresAt(dealId, buyer, seller);
+  if (until && until < new Date()) throw new DealError(`This offer expired on ${until.toLocaleDateString("en-GB")}: it was not signed within ${OFFER_DAYS} days. Ask for a new one.`);
+}
+
 /**
  * syncDeal after the response, kept alive until it finishes (on Vercel a bare promise is cut off when
  * the response is sent, so a deposit due on signing would wait for the next visit). Outside a request
@@ -589,6 +672,17 @@ async function doSync(dealId: number): Promise<void> {
   }
   if (d.status === 0) {
     if (demoSeller) await send("contractor", { address: escrow(dealId), abi: fileEscrowAbi, functionName: "accept", args: [BigInt(dealId)] });
+    // Not signed within 14 days: the offer is withdrawn by whoever made it (its money comes back
+    // through the "withdrawn" branch above on the next sync).
+    else {
+      const until = await offerExpiresAt(dealId, buyer, seller);
+      const creator = getAddress(d.creator);
+      if (until && until < new Date() && (await accountOf(creator))) {
+        const out = creator === buyer ? await buyerAction(buyer, dealId, "cancel") : await sellerAction(seller, dealId, "cancel");
+        if (out.outcome.status === "success") return doSync(dealId);
+        console.error("expire offer", dealId, out.outcome);
+      }
+    }
     return;
   }
 

@@ -4,6 +4,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { type Address, getAddress, isAddress } from "viem";
 import { z } from "zod";
 
+import type { Prisma } from "@/generated/prisma/client";
+
 import {
   type ActionResult,
   pause,
@@ -13,6 +15,7 @@ import {
 } from "./actions";
 import { addressGaps } from "./address";
 import { GUIDE_TOPICS, appGuide } from "./app-guide";
+import { type TermsReview, reviewTerms } from "./terms-review";
 import { normalizeFileTypes } from "./file-types";
 import { AddressError, type SavedAddress, formatAddress, saveAddress, savedAddress } from "./thai-address";
 import { SocialError, createGroup, payoutRecipients, friendLabels, groupDetail, listFriends, listGroups, pendingVotes, proposeToGroup } from "./social";
@@ -97,7 +100,7 @@ export type PayoutPreview = {
 export type DealForm = {
   side: "buy" | "sell";
   known: { counterparty?: string; kind?: string; work?: string; price?: string; milestones?: string; acceptance?: string; ship_to?: string; file_types?: string; deposit?: string };
-  missing: ("counterparty" | "kind" | "work" | "price" | "milestones" | "deadline" | "acceptance" | "ship_to" | "file_types" | "deposit")[];
+  missing: ("counterparty" | "kind" | "work" | "price" | "milestones" | "deadline" | "acceptance" | "ship_to" | "file_types" | "deposit" | "rules" | "revisions" | "guarantors")[];
   /** Contact names the user can pick for the other party. */
   contacts: string[];
 };
@@ -146,6 +149,10 @@ E-money wallet. Deals are paid from the user's THB / CNY wallet balance (topped 
 - If the other party (seller or buyer) has no account on the app, draft as usual with their name and new_person true. Use new_person true whenever the user says the person is outside the app, has no account, or should get a link (e.g. "คนนอก", "ไม่มีบัญชี", "ไม่ได้อยู่ในแอป", "ส่งลิงก์ให้", "outsider", "no account", "send them a link"), EVEN IF a contact has the same or a similar name: never send it to that contact instead. If a name matches a contact and the user did not say which, ask once: "<name> in your contacts, or someone outside the app (they get a link)?" Do not invent a link: their private link is made only when the user presses Confirm, and it then appears on the deal's page for the user to send them.
 - Never say money moved, was paid or was locked because of a draft.
 - Groups: friends can form a group that decides purchases together. A member puts one of their purchase drafts to the group's vote; it is locked from the proposer's wallet only when enough members vote yes (the group's votes needed, at least 2), and nobody can approve it alone. Use list_groups to answer questions about groups (never guess), create_group when the user asks to form one (members must be accepted friends; ask how many yes votes are needed if they did not say), and propose_to_group to put a draft (DR-…) to a vote. You cannot vote for anyone: members vote in the app (on the group's page under Groups).
+- Rules of the work (for every HIRE deal, and goods with conditions): before drafting, ask about the rules in detail, in ONE numbered list (or the form): (1) duties and what exactly is delivered, (2) how the work is done (hours, response times, tools, who approves), (3) what is NOT allowed (e.g. false information, unapproved discounts, deleting records, sharing accounts or customer data, personal use), (4) fraud and serious misconduct (taking money into a personal account, changing payment details, forging evidence, poaching customers) and what happens then, (5) confidentiality and data, (6) termination: when either side may end it and what happens to unpaid milestones, (7) liability and damages (based on evidence and actual loss), (8) how many rounds of changes per milestone (revisions, at most 10), (9) whether a guarantor (ผู้ค้ำประกัน) is required from either side, (10) the review window. If the user pastes rules (e.g. an agreement for a Facebook page admin with sections on duties, operating rules, fraud, termination, security and acknowledgement), keep them as written in "rules" and fill the gaps they leave. If the user says "draft them for me", write balanced rules in that structure from what you know and show them for approval. Never ask for or put national ID numbers in rules or forms.
+- Fairness check: every preview goes through a terms review for the user (does it make sense, is the user disadvantaged). If a tool answers NOT DRAFTED, do not try to slip the same terms through: explain each point simply and propose a fair fix (e.g. a smaller deposit, a longer review window, mutual termination terms, criteria for the other side too). Draft again only after the user agrees. Terms that make sense and are fair go through as usual.
+- Offers expire: an offer not signed (accepted) within 14 days is withdrawn automatically (a buyer's locked money comes back). Say so when you show a preview.
+- Private links are protected: when someone without an account gets a link, the app also makes a 6-digit one-time code (OTP). The user must send the code separately from the link; the person enters it once and sets their own password. If they lose it, their link gives them a reset code to send back, which the user enters on the deal's page (Access code → Reset their access) to get a new OTP.
 - How-to questions ("how do I…", "where is…", "ทำยังไง", "อยู่ตรงไหน", "ใช้ยังไง", "what does … do"): call app_guide with the closest topic (more than one if needed) and answer from it as numbered steps with the exact page and button names in quotes; finish with the next thing they can do. Never invent a button, page or feature; if the guide does not cover it, say so.
 - Address: get_my_address reads the user's saved delivery address; offer it for a parcel the user buys ("ship to your saved address: …?"). set_my_address saves or changes it, only when the user asks; if it answers NOT SAVED, ask the user to correct that part.
 - Files on a deal: the creator of a deal can attach files for the other side (a spec, a catalogue, a sample, a quotation) on the deal's page under "Attached files" after confirming; say so when the user wants to send something with an offer.
@@ -241,6 +248,10 @@ const BANK_MILESTONES = {
         type: "boolean",
         description: "true only for the FIRST milestone when it is a deposit (มัดจำ) paid to the seller as soon as the contract is signed (the offer accepted), with nothing to deliver",
       },
+      revisions: {
+        type: "integer",
+        description: "Rounds of changes the buyer may ask for on this milestone after a delivery, 0 to 10 (the app's maximum). Ask the user; usually 2-3 for design work.",
+      },
       file_types: {
         type: "array",
         items: { type: "string" },
@@ -269,6 +280,11 @@ const BANK_TOOLS = [
       summary: { type: "string", description: "One-paragraph summary of the scope" },
       review_hours: { type: "integer", description: "Hours the buyer has to review each delivery (1-720, usually 72)" },
       milestones: BANK_MILESTONES,
+      rules: {
+        type: "string",
+        description: "The contract's rules and conditions in full (duties, what is not allowed, confidentiality, fraud, termination, liability), as the user gave them or as you drafted them with the user; empty when the user wants none",
+      },
+      guarantors_required: { type: "string", enum: ["none", "buyer", "seller", "both"], description: "Whose guarantor (ผู้ค้ำประกัน) must be named before the deal can be signed. Ask the user; none if they do not want one" },
     },
     ["seller", "kind", "ship_to", "title", "summary", "review_hours", "milestones"],
   ),
@@ -284,6 +300,11 @@ const BANK_TOOLS = [
       summary: { type: "string", description: "One-paragraph summary of the scope" },
       review_hours: { type: "integer", description: "Hours the buyer has to review each delivery (1-720, usually 72)" },
       milestones: BANK_MILESTONES,
+      rules: {
+        type: "string",
+        description: "The contract's rules and conditions in full (duties, what is not allowed, confidentiality, fraud, termination, liability), as the user gave them or as you drafted them with the user; empty when the user wants none",
+      },
+      guarantors_required: { type: "string", enum: ["none", "buyer", "seller", "both"], description: "Whose guarantor (ผู้ค้ำประกัน) must be named before the deal can be signed. Ask the user; none if they do not want one" },
     },
     ["buyer", "kind", "ship_to", "title", "summary", "review_hours", "milestones"],
   ),
@@ -423,7 +444,7 @@ const BANK_TOOLS = [
         type: "string",
         enum: [...GUIDE_TOPICS],
         description:
-          "start (first steps, menu), money (top up, send, withdraw), buy, sell, outsider (private links), deposit, deliver, review (approve / request changes), dispute, documents (contract, payment request, receipt, tax invoice, complaint), files, templates, deals_page (filters), contacts, groups, limits, summary, profile, address, ai_chat",
+          "start (first steps, menu), money (top up, send, withdraw), buy, sell, outsider (private links, OTP and passwords), deposit, deliver, review (approve / request changes), dispute, documents (contract, payment request, receipt, tax invoice, complaint), files, templates, deals_page (filters), contacts, groups, limits, summary, profile, address, ai_chat, guarantors, revisions (rounds of changes), expiry (14-day offers), terms_review, protection (watermarks, screenshots)",
       },
     },
     ["topic"],
@@ -444,7 +465,7 @@ const BANK_TOOLS = [
       deposit: { type: "string", description: "The deposit on signing if known (e.g. 30%), else empty" },
       missing: {
         type: "array",
-        items: { type: "string", enum: ["counterparty", "kind", "work", "price", "milestones", "deadline", "acceptance", "ship_to", "file_types", "deposit"] },
+        items: { type: "string", enum: ["counterparty", "kind", "work", "price", "milestones", "deadline", "acceptance", "ship_to", "file_types", "deposit", "rules", "revisions", "guarantors"] },
         description: "Which details the user must still give. Include file_types whenever something is delivered as a file and the formats are not known yet; deposit only when the user mentioned one without its amount",
       },
     },
@@ -467,6 +488,8 @@ const DEAL_FIELDS = {
   title: z.string().min(1).max(120),
   summary: z.string().max(2000),
   review_hours: z.number().int().min(1).max(720),
+  rules: z.string().max(12_000).default(""),
+  guarantors_required: z.enum(["none", "buyer", "seller", "both"]).default("none"),
   milestones: z
     .array(
       z.object({
@@ -479,6 +502,7 @@ const DEAL_FIELDS = {
         acceptance: z.string().max(1000).default(""),
         deposit: z.boolean().optional(),
         file_types: z.array(z.string().max(20)).max(12).optional(),
+        revisions: z.number().int().min(0).max(10).optional(),
       }),
     )
     .min(1)
@@ -486,12 +510,14 @@ const DEAL_FIELDS = {
 };
 
 type DealInput = {
+  rules: string;
+  guarantors_required: "none" | "buyer" | "seller" | "both";
   kind: "hire" | "buy";
   ship_to: string;
   title: string;
   summary: string;
   review_hours: number;
-  milestones: { name: string; amount: number; delivery?: "file" | "parcel" | "note"; has_file?: boolean; due_date: string; acceptance: string; deposit?: boolean; file_types?: string[] }[];
+  milestones: { name: string; amount: number; delivery?: "file" | "parcel" | "note"; has_file?: boolean; due_date: string; acceptance: string; deposit?: boolean; file_types?: string[]; revisions?: number }[];
 };
 
 const DEPOSIT_ACCEPTANCE = "Deposit: paid to the seller as soon as the contract is signed (the offer accepted)";
@@ -534,9 +560,34 @@ function draftMilestones(i: DealInput, decimals: number) {
       acceptance: deposit ? m.acceptance.trim() || DEPOSIT_ACCEPTANCE : m.acceptance,
       ...(deposit ? { deposit: true } : {}),
       ...(delivery === "file" && normalizeFileTypes(m.file_types).length ? { fileTypes: normalizeFileTypes(m.file_types) } : {}),
+      ...(!deposit && typeof m.revisions === "number" ? { revisions: Math.max(0, Math.min(10, Math.round(m.revisions))) } : {}),
     };
   });
 }
+/** The review every new preview gets for its owner (lib/terms-review). */
+async function reviewFor(i: DealInput, side: "BUY" | "SELL", currency: string) {
+  return reviewTerms({
+    side,
+    kind: i.kind === "buy" ? "GOODS" : "HIRE",
+    currency,
+    title: i.title,
+    summary: i.summary,
+    rules: i.rules.trim() || null,
+    reviewHours: i.review_hours,
+    guarantorsRequired: i.guarantors_required === "none" ? null : i.guarantors_required,
+    milestones: i.milestones.map((m, n) => ({ name: m.name, amount: m.amount, delivery: m.delivery ?? "note", acceptance: m.acceptance, deposit: n === 0 && m.deposit === true, revisions: m.revisions, due: m.due_date || null })),
+  });
+}
+
+const notDrafted = (r: TermsReview) =>
+  `NOT DRAFTED: the terms review stopped it. ${r.issues.map((x) => `[${x.level}] ${x.text}`).join(" ")} Explain these to the user plainly, suggest how to fix each blocking point, and draft again once they agree. Nothing was saved.`;
+
+const extraOf = (i: DealInput, review: TermsReview) => ({
+  rules: i.rules.trim() || null,
+  guarantorsRequired: i.guarantors_required === "none" ? null : i.guarantors_required,
+  review,
+});
+
 const INPUTS: Record<string, z.ZodType> = {
   get_wallet_status: z.object({}).passthrough(),
   list_deals: z.object({}).passthrough(),
@@ -623,15 +674,15 @@ const INPUTS: Record<string, z.ZodType> = {
     .object({
       side: z.enum(["buy", "sell"]).default("buy"),
       counterparty: z.string().max(120).optional(),
-      kind: z.string().max(20).optional(),
-      work: z.string().max(300).optional(),
-      price: z.string().max(60).optional(),
-      milestones: z.string().max(120).optional(),
-      acceptance: z.string().max(600).optional(),
-      ship_to: z.string().max(300).optional(),
-      file_types: z.string().max(120).optional(),
-      deposit: z.string().max(60).optional(),
-      missing: z.array(z.enum(["counterparty", "kind", "work", "price", "milestones", "deadline", "acceptance", "ship_to", "file_types", "deposit"])).min(1).max(10),
+      kind: z.string().max(80).optional(),
+      work: z.string().max(600).optional(),
+      price: z.string().max(200).optional(),
+      milestones: z.string().max(400).optional(),
+      acceptance: z.string().max(1200).optional(),
+      ship_to: z.string().max(400).optional(),
+      file_types: z.string().max(200).optional(),
+      deposit: z.string().max(200).optional(),
+      missing: z.array(z.enum(["counterparty", "kind", "work", "price", "milestones", "deadline", "acceptance", "ship_to", "file_types", "deposit", "rules", "revisions", "guarantors"])).min(1).max(13),
     })
     .passthrough(),
   forget_nickname: z.object({ nickname: z.string().trim().min(1).max(40) }),
@@ -851,7 +902,7 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
       const dealId = Number(String(i.deal).replace(/[^0-9]/g, ""));
       const units = await walletUnits(wallet);
       if (i.milestones) {
-        const missing = missingInfo({ kind: i.kind ?? "hire", ship_to: i.ship_to ?? "", title: "", summary: "", review_hours: 72, milestones: i.milestones });
+        const missing = missingInfo({ kind: i.kind ?? "hire", ship_to: i.ship_to ?? "", title: "", summary: "", review_hours: 72, milestones: i.milestones, rules: "", guarantors_required: "none" });
         if (missing.length) return { tool: name, input, summary: `NEED_INFO (nothing was saved): ask the user for ${missing.join("; ")}.` };
       }
       // Changes to single milestones are merged into the deal's current terms.
@@ -880,7 +931,27 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
           summary: i.summary,
           reviewHours: undefined,
           milestones: i.milestones ? draftMilestones(i as DealInput, units.decimals) : merged,
+          ...(typeof i.rules === "string" && i.rules.trim() ? { rules: i.rules } : {}),
+          ...(i.guarantors_required ? { guarantorsRequired: i.guarantors_required === "none" ? null : i.guarantors_required } : {}),
         });
+        // The changed terms get the same review as a new deal.
+        const ms = d.milestones as ReturnType<typeof draftMilestones>;
+        const review = await reviewTerms({
+          side: d.side,
+          kind: d.kind,
+          currency: units.currency ?? "THB",
+          title: d.title,
+          summary: d.summary,
+          rules: d.rules,
+          reviewHours: d.reviewHours,
+          guarantorsRequired: d.guarantorsRequired,
+          milestones: ms.map((m) => ({ name: m.name, amount: Number(m.amount), delivery: m.delivery ?? "note", acceptance: m.acceptance, deposit: "deposit" in m && m.deposit === true, revisions: "revisions" in m ? (m.revisions as number | undefined) : undefined, due: m.due })),
+        });
+        if (review.blocking) {
+          await db.dealDraft.update({ where: { id: d.id }, data: { status: "CANCELLED" } });
+          return { tool: name, input, summary: notDrafted(review) };
+        }
+        await db.dealDraft.update({ where: { id: d.id }, data: { review: review as unknown as Prisma.InputJsonValue } });
         const labels = await friendLabels(userId);
         const other = d.side === "SELL" ? d.buyer : d.seller;
         const draft = await draftView(d, other ? (labels.get(other.toLowerCase()) ?? "") : "");
@@ -1165,8 +1236,11 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
       if (!who.payee && !sharedWallet) return { tool: name, input, summary: `BLOCKED: ${who.name} is not a payee yet. The user must add them to the allow transfer list on the Contacts page first.` };
       const missing = missingInfo(i);
       if (missing.length) return { tool: name, input, summary: `NEED_INFO (nothing was saved): ask the user for ${missing.join("; ")}.` };
+      const review = await reviewFor(i, "BUY", units.currency ?? "THB");
+      if (review.blocking) return { tool: name, input, summary: notDrafted(review) };
       try {
         const d = await createDraft(userId, wallet, {
+          ...extraOf(i, review),
           seller: who.address,
           inviteName: i.new_person ? who.name : null,
           kind: i.kind === "buy" ? "GOODS" : "HIRE",
@@ -1181,7 +1255,7 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
           tool: name,
           input,
           draft: cardDraft(draft),
-          summary: `${i.new_person ? "(No account yet: their private link is made when the user confirms, and shown on the deal's page.) " : ""}PREVIEW SHOWN (no deal exists yet, nothing debited): ${i.kind === "buy" ? "BUY (goods)" : "HIRE (service)"} ${draftRef(d.id)} to ${who.name}, total ${draft.total} ${units.currency}. Nothing is created until the user presses Confirm on the card. Ask them to check it and confirm; never say the deal was made.`,
+          summary: `${i.new_person ? "(No account yet: their private link is made when the user confirms, and shown on the deal's page.) " : ""}PREVIEW SHOWN (no deal exists yet, nothing debited): ${i.kind === "buy" ? "BUY (goods)" : "HIRE (service)"} ${draftRef(d.id)} to ${who.name}, total ${draft.total} ${units.currency}. Nothing is created until the user presses Confirm on the card. Ask them to check it and confirm; never say the deal was made.${review.issues.length ? ` The terms review noted (shown on the card): ${review.issues.map((x) => x.text).join(" ")}` : " The terms review found nothing to fix."}`,
         };
       } catch (err) {
         if (err instanceof DraftError) return { tool: name, input, summary: `BLOCKED: ${err.message}` };
@@ -1196,8 +1270,11 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
       if (typeof who === "string") return { tool: name, input, summary: `BLOCKED: ${who}. If they have no account on the app, draft again with new_person true.` };
       const missing = missingInfo(i);
       if (missing.length) return { tool: name, input, summary: `NEED_INFO (nothing was saved): ask the user for ${missing.join("; ")}.` };
+      const review = await reviewFor(i, "SELL", units.currency ?? "THB");
+      if (review.blocking) return { tool: name, input, summary: notDrafted(review) };
       try {
         const d = await createSellDraft(userId, wallet, {
+          ...extraOf(i, review),
           buyer: who.address,
           inviteName: i.new_person ? who.name : null,
           kind: i.kind === "buy" ? "GOODS" : "HIRE",
@@ -1212,7 +1289,7 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
           tool: name,
           input,
           draft: cardDraft(draft),
-          summary: `SALE PREVIEW SHOWN (no offer exists yet): ${draftRef(d.id)} to ${who.name}, total ${draft.total} ${units.currency}. Nothing is created until the user presses Confirm on the card, which sends the offer; the buyer then accepts and pays.`,
+          summary: `SALE PREVIEW SHOWN (no offer exists yet): ${draftRef(d.id)} to ${who.name}, total ${draft.total} ${units.currency}. Nothing is created until the user presses Confirm on the card, which sends the offer; the buyer then accepts and pays.${review.issues.length ? ` The terms review noted (shown on the card): ${review.issues.map((x) => x.text).join(" ")}` : " The terms review found nothing to fix."}`,
         };
       } catch (err) {
         if (err instanceof DraftError) return { tool: name, input, summary: `BLOCKED: ${err.message}` };

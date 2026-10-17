@@ -402,6 +402,14 @@ model DealDraft {
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
+  /// When the offer went on-chain: an offer nobody accepted within 14 days is withdrawn.
+  offeredAt      DateTime?
+  /// The contract's rules and conditions (duties, prohibitions, termination...), part of the hashed terms.
+  rules          String?
+  /// Whose guarantor the deal requires before it can be signed: "buyer", "seller", "both" or null.
+  guarantorsRequired String?
+  /// The AI's review of the terms for the user: { ok, blocking, issues: [{ level, text }] }.
+  review         Json?
   files          DealFile[]
 
   @@index([userId, walletAddress])
@@ -482,6 +490,27 @@ model DealFile {
   createdAt DateTime  @default(now())
 
   @@index([draftId])
+}
+
+/// A guarantor (ผู้ค้ำประกัน) named by one side of a deal: the person who answers for that side if it
+/// does not perform, up to an amount. One per side; printed on the contract with a guarantee clause and
+/// listed on a complaint. Demo: no identity check and no money is held from them.
+model DealGuarantor {
+  id        String   @id @default(cuid())
+  escrow    String
+  dealId    Int
+  /// "buyer" or "seller": whose obligations they guarantee.
+  side      String
+  name      String
+  contact   String
+  relation  String
+  /// The most they answer for, in the deal's currency (major units); null: the side's whole obligation.
+  amount    Decimal? @db.Decimal(18, 2)
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([escrow, dealId, side])
 }
 
 model DealWitness {
@@ -798,6 +827,20 @@ model SellerInvite {
   /// (earnings to their own wallet account, the deals listed in their app).
   claimedByUserId String?
   claimedAt       DateTime?
+  /// Link access for someone without an account: a one-time code (sealed so the inviter can see and
+  /// send it) to set a password, then the password; a reset code the outsider sends to the inviter
+  /// when they lose it. Links made before this have accessRequired false and stay open.
+  accessRequired   Boolean   @default(false)
+  accessOtpEnc     String?
+  accessOtpHash    String?
+  accessOtpExpires DateTime?
+  accessPassword   String?
+  /// Bumped on every reset: access cookies of the old password stop working.
+  accessVersion    Int       @default(0)
+  accessTries      Int       @default(0)
+  accessLockedTill DateTime?
+  accessResetHash  String?
+  accessResetUntil DateTime?
   expiresAt       DateTime
   createdAt       DateTime      @default(now())
 
@@ -1078,6 +1121,20 @@ model BuyerInvite {
   buyerWallet  String   @unique
   name         String
   currency     Currency
+  /// Link access for someone without an account: a one-time code (sealed so the inviter can see and
+  /// send it) to set a password, then the password; a reset code the outsider sends to the inviter
+  /// when they lose it. Links made before this have accessRequired false and stay open.
+  accessRequired   Boolean   @default(false)
+  accessOtpEnc     String?
+  accessOtpHash    String?
+  accessOtpExpires DateTime?
+  accessPassword   String?
+  /// Bumped on every reset: access cookies of the old password stop working.
+  accessVersion    Int       @default(0)
+  accessTries      Int       @default(0)
+  accessLockedTill DateTime?
+  accessResetHash  String?
+  accessResetUntil DateTime?
   expiresAt    DateTime
   createdAt    DateTime @default(now())
 

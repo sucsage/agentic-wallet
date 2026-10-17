@@ -18,3 +18,4 @@
 .aw-predraft input+.aw-predraft-options{margin-top:8px}
 .aw-predraft-hint{display:block;margin-top:6px;color:#bbb!important}
 .aw-predraft #df-ship_to{width:100%}
+.aw-predraft textarea{width:100%;margin-top:8px;background:#1a1a1a;color:#eee;border:1px solid #333;border-radius:8px;padding:9px 12px;font:inherit;font-size:12px;resize:vertical}

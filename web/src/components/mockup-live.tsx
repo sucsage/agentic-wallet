@@ -619,6 +619,7 @@ export function DraftCard({
                   : m.hasFile
                     ? ` · 📎 ${m.fileTypes?.length ? `${fileTypesLabel(m.fileTypes)} only` : "file"}`
                     : ""}
+              {!m.deposit && typeof m.revisions === "number" ? ` · ↻ ${m.revisions} rounds of changes` : ""}
             </b>
             <small>{m.due ? `Due ${m.due}` : m.acceptance}</small>
           </span>
@@ -658,6 +659,40 @@ export function DraftCard({
           </p>
         </div>
       )}
+      {(draft.rules || draft.guarantorsRequired) && (
+        <div className="aw-draft-rules">
+          {draft.guarantorsRequired && (
+            <p>
+              🤝 Guarantor required from{" "}
+              {draft.guarantorsRequired === "both" ? "both sides" : draft.guarantorsRequired === (sell ? "seller" : "buyer") ? "you" : "the other side"} before signing
+            </p>
+          )}
+          {draft.rules && (
+            <details>
+              <summary>📜 Rules and conditions ({draft.rules.split(/\n+/).filter(Boolean).length} lines) · part of the signed terms</summary>
+              <pre>{draft.rules}</pre>
+            </details>
+          )}
+        </div>
+      )}
+      {draft.review && !funded && (
+        <div className={`aw-draft-review${draft.review.blocking ? " block" : draft.review.issues.length ? " warn" : " ok"}`}>
+          {draft.review.issues.length === 0 ? (
+            <p>✓ Terms review: makes sense and is fair to you</p>
+          ) : (
+            <>
+              <b>{draft.review.blocking ? "Terms review: cannot be confirmed" : "Terms review: check before you confirm"}</b>
+              <ul>
+                {draft.review.issues.map((x, k) => (
+                  <li key={k} className={x.level}>
+                    {x.level === "block" ? "✕" : "!"} {x.text}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
       <div className="aw-draft-notice">
         ⓘ &nbsp;
         {preview && "The AI only proposed this: no deal exists until you confirm. "}
@@ -688,7 +723,7 @@ export function DraftCard({
           <Button variant="outline" disabled={busy} onClick={() => onDiscard(draft)}>
             Discard
           </Button>
-          <Button disabled={busy} aria-busy={busy} onClick={() => onApprove(draft)}>
+          <Button disabled={busy || Boolean(draft.review?.blocking)} aria-busy={busy} onClick={() => onApprove(draft)}>
             {busy ? (
               <>
                 <i className="aw-spinner" aria-hidden /> Working…
@@ -952,7 +987,7 @@ export function LiveChat() {
         draft: DraftView;
         funding?: FundingResult;
         companyVote?: { status: string; yes: number; threshold: number; company: string };
-        invite?: { kind: "seller" | "buyer"; name: string; link: string | null } | null;
+        invite?: { kind: "seller" | "buyer"; name: string; link: string | null; access?: { required: boolean; otp?: string | null } } | null;
       }>(`/api/workspace/${address}/drafts/${d.id}/approve`, { method: "POST" });
       if (res.invite?.link) {
         const inv = res.invite;
@@ -967,7 +1002,11 @@ export function LiveChat() {
             kind: "agent",
             at: now(),
             steps: [],
-            text: `${copied ? "✓ **Copied to your clipboard.** " : ""}Private ${inv.kind} link for **${inv.name}** (send it to them; it is also on the deal's page${dealNo !== null ? `, D-${dealNo}` : ""}):\n\n${inv.link}`,
+            text:
+              `${copied ? "✓ **Copied to your clipboard.** " : ""}Private ${inv.kind} link for **${inv.name}** (send it to them; it is also on the deal's page${dealNo !== null ? `, D-${dealNo}` : ""}):\n\n${inv.link}` +
+              (inv.access?.otp
+                ? `\n\n🔐 **One-time code: \`${inv.access.otp}\`**. The link opens only with this code: send it to ${inv.name} **separately** (another chat or a call). They enter it once and set their own password.`
+                : ""),
           },
         ]);
       }
@@ -1492,13 +1531,16 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
         const r = await api<{
           funding?: FundingResult;
           companyVote?: { status: string; yes: number; threshold: number; company: string };
-          invite?: { kind: "seller" | "buyer"; name: string; link: string | null } | null;
+          invite?: { kind: "seller" | "buyer"; name: string; link: string | null; access?: { required: boolean; otp?: string | null } } | null;
         }>(`/api/workspace/${address}/drafts/${d.id}/approve`, { method: "POST" });
         const v = r.companyVote;
         const link = r.invite?.link ?? null;
         copy?.resolve(link);
         const copied = link ? (copy ? await copy.done : await copyText(link)) : false;
-        const linkNote = link ? ` ${copied ? "The private link was copied to your clipboard" : "The private link is on the deal's page"} for ${r.invite!.name}.` : "";
+        const otp = r.invite?.access?.otp;
+        const linkNote = link
+          ? ` ${copied ? "The private link was copied to your clipboard" : "The private link is on the deal's page"} for ${r.invite!.name}.${otp ? ` Its one-time code is ${otp}: send it to them separately (it is on the deal's page too).` : ""}`
+          : "";
         setDraftMsg(
           v
             ? { ok: true, text: v.status === "EXECUTED" ? `${v.company}'s signers approved it.` : `Submitted to ${v.company}'s signers: ${v.yes} of ${v.threshold} so far (they vote on the group's page).` }

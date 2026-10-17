@@ -3,7 +3,7 @@ import { after } from "next/server";
 import { getAddress } from "viem";
 
 import { disputeOf, disputeView } from "@/lib/bank/arbiter";
-import { dealTerms, deliveryInfo, syncDeal } from "@/lib/bank/deals";
+import { OFFER_DAYS, dealTerms, deliveryInfo, syncDeal } from "@/lib/bank/deals";
 import { InviteError, claimInvite, inviteForRequest, inviteView, sweepInvite } from "@/lib/bank/invites";
 import { config } from "@/lib/config";
 import { db } from "@/lib/db";
@@ -52,6 +52,11 @@ export async function GET(req: Request, ctx: RouteContext<"/api/invite/[token]">
           title: terms?.title ?? `Deal #${d.id}`,
           summary: terms?.summary ?? null,
           canAccept: d.status === "Proposed" && d.offeredBy === "them",
+          guarantorRequired: terms?.guarantorsRequired === "both" || terms?.guarantorsRequired === "seller",
+          guarantor: await db.dealGuarantor
+            .findUnique({ where: { escrow_dealId_side: { escrow: config.fileEscrowOf(d.id), dealId: d.id, side: "seller" } }, select: { name: true, contact: true, relation: true, amount: true } })
+            .then((g) => (g ? { ...g, amount: g.amount === null ? null : Number(g.amount) } : null)),
+          offerExpiresAt: d.status === "Proposed" && terms ? new Date(+(terms.offeredAt ?? terms.updatedAt) + OFFER_DAYS * 86_400_000) : null,
           // What the buyer attached for the seller (a brief, references, a spec).
           files: terms ? await db.dealFile.findMany({ where: { draftId: terms.id }, orderBy: { createdAt: "asc" }, select: { id: true, name: true, mime: true, size: true } }) : [],
           notes: (await db.dealNote.findMany({ where: { escrow: config.fileEscrowOf(d.id), dealId: d.id }, orderBy: { createdAt: "desc" }, take: 20 })).map((n) => ({ kind: n.kind, index: n.index, text: n.text, at: n.createdAt })),

@@ -15,6 +15,7 @@ import { GroupChat } from "./group-chat";
 import { SendMoneyDialog } from "./send-money";
 import { BlockDialog, BlockedPanel, ReportDialog } from "./contact-safety";
 import { DealDocuments, DealFiles, SiteMockup, WitnessPanel } from "./deal-extras";
+import { GuarantorForm } from "./guarantor-form";
 import { SaveTemplateDialog, type TemplatePayload } from "./deal-templates";
 import { SEND_LIMITS } from "@/lib/send-limits";
 import { acceptAttr, fileTypeOk, fileTypesLabel } from "@/lib/file-types";
@@ -1814,7 +1815,14 @@ type DealDetail = {
   /** Who made the offer: while it is Proposed, only the other side can accept it. */
   offeredBy: "me" | "them";
   /** The other side has no account and this user invited them: their private link. */
-  invite: { kind: "seller" | "buyer"; name: string; link: string | null; expiresAt: string; linked: boolean } | null;
+  invite: {
+    kind: "seller" | "buyer";
+    name: string;
+    link: string | null;
+    expiresAt: string;
+    linked: boolean;
+    access: { required: false } | { required: true; passwordSet: boolean; otp: string | null; otpExpiresAt: string | null };
+  } | null;
   witnesses?: { side: string; name: string; contact: string; mine: boolean }[];
   /** This offer was withdrawn and replaced by an amended one. */
   replacedBy?: number | null;
@@ -1830,6 +1838,10 @@ type DealDetail = {
   reviewHours: number;
   demoSeller: boolean;
   canCancel: boolean;
+  offerExpiresAt?: string | null;
+  rules?: string | null;
+  guarantorsRequired?: string | null;
+  guarantors?: { side: string; name: string; contact: string; relation: string; amount: number | null; mine: boolean }[];
   canAccept: boolean;
   declined: "me" | "them" | null;
   escrow: string | null;
@@ -1849,6 +1861,8 @@ type DealDetail = {
     deposit?: boolean;
     /** The formats agreed for a file milestone ([] = any). */
     fileTypes?: string[];
+    revisions?: number;
+    revisionsUsed?: number;
     delivery: {
       note: string;
       fileName: string | null;
@@ -2305,7 +2319,78 @@ function InviteLinkCard({ dealId, invite, onDone }: { dealId: number; invite: No
         {busy ? "…" : shown ? "Make a new link (the old one stops working)" : "Make a new link"}
       </button>
       {err && <p className="aw-bank-error">{err}</p>}
+      <LinkAccessPanel dealId={dealId} invite={invite} onDone={onDone} />
     </section>
+  );
+}
+
+/**
+ * The person's access to the link: the one-time code to send them (until they set a password), a new
+ * code, and the reset code they send back when they lose their password.
+ */
+function LinkAccessPanel({ dealId, invite, onDone }: { dealId: number; invite: NonNullable<DealDetail["invite"]>; onDone: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [fresh, setFresh] = useState<{ otp: string; expiresAt: string } | null>(null);
+  const [code, setCode] = useState("");
+  const a = invite.access;
+  if (!a.required || invite.linked) return null;
+  const otp = fresh?.otp ?? (a.passwordSet ? null : a.otp);
+  async function call(body: object) {
+    setBusy(true);
+    setErr(null);
+    try {
+      setFresh(await send<{ otp: string; expiresAt: string }>(`/api/deals/${dealId}/invite-access`, "POST", body));
+      setCode("");
+      await onDone();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="aw-link-access">
+      <b>🔐 Access code</b>
+      {otp ? (
+        <>
+          <small>
+            The link opens only with this one-time code. Send it to {invite.name} <b>separately</b> from the link (e.g. by phone or another chat). They enter it once and set their own password.
+          </small>
+          <div className="aw-link-otp">
+            <code>{otp}</code>
+            <Button variant="outline" onClick={() => void navigator.clipboard.writeText(otp)}>
+              Copy code
+            </Button>
+          </div>
+          {(fresh?.expiresAt ?? (a.required ? a.otpExpiresAt : null)) && <small>Valid until {new Date(fresh?.expiresAt ?? (a.required ? a.otpExpiresAt! : "")).toLocaleDateString()}.</small>}
+        </>
+      ) : a.passwordSet ? (
+        <small>{invite.name} set a password: the link is protected. If they lose it, they press “Forgot password” on their link and send you the reset code; enter it below.</small>
+      ) : (
+        <small>The code expired before {invite.name} used it.</small>
+      )}
+      {!a.passwordSet && !fresh && (
+        <button type="button" className="aw-invite-link-new" disabled={busy} onClick={() => void call({ action: "otp" })}>
+          {busy ? "…" : "Make a new code"}
+        </button>
+      )}
+      {a.passwordSet && !fresh && (
+        <form
+          className="aw-link-reset"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void call({ action: "reset", code });
+          }}
+        >
+          <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" placeholder="Reset code from them" aria-label="Reset code" />
+          <Button type="submit" variant="outline" disabled={busy || code.length !== 6}>
+            {busy ? "Resetting…" : "Reset their access"}
+          </Button>
+        </form>
+      )}
+      {err && <p className="aw-bank-error">{err}</p>}
+    </div>
   );
 }
 
@@ -2418,6 +2503,12 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
               </div>
             );
           })()}
+        {data?.offerExpiresAt && (
+          <p className="aw-dd-note">
+            ⏳ This offer must be signed (accepted) by <b>{new Date(data.offerExpiresAt).toLocaleDateString()}</b>. If it is not signed within 14 days it is withdrawn
+            {data.role === "buyer" && data.canCancel ? " and your locked money comes back" : ""}.
+          </p>
+        )}
         {data?.replacedBy != null && (
           <p className="aw-dd-note">
             ✎ This offer was changed: it was withdrawn and replaced by <a href={`/deals/D-${data.replacedBy}`}>D-{data.replacedBy}</a> (same person, same link).
@@ -2429,6 +2520,37 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
             <DealDocuments dealId={id} status={data.status} milestones={data.milestones} />
             <DealFiles dealId={id} />
             <WitnessPanel dealId={id} role={data.role} witnesses={data.witnesses ?? []} onDone={reload} />
+            <GuarantorForm
+              key={`g-${(data.guarantors ?? []).find((g) => g.mine)?.name ?? ""}`}
+              current={(data.guarantors ?? []).find((g) => g.mine) ?? null}
+              required={data.guarantorsRequired === "both" || data.guarantorsRequired === data.role}
+              currency={me?.bank.currency === "CNY" ? "CNY" : "THB"}
+              save={async (g) => {
+                await api(`/api/deals/${id}/guarantor`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(g) });
+                await reload();
+              }}
+              remove={async () => {
+                await api(`/api/deals/${id}/guarantor`, { method: "DELETE" });
+                await reload();
+              }}
+            />
+            {(() => {
+              const theirs = (data.guarantors ?? []).find((g) => !g.mine);
+              const need = data.guarantorsRequired === "both" || (data.guarantorsRequired && data.guarantorsRequired !== data.role);
+              return theirs || need ? (
+                <p className="aw-dd-note">
+                  Their guarantor:{" "}
+                  {theirs ? (
+                    <b>
+                      {theirs.name} · {theirs.relation} · {theirs.contact}
+                      {theirs.amount ? ` · up to ${tokenMoney(theirs.amount, me?.bank.currency ?? "THB")}` : " · their whole obligation"}
+                    </b>
+                  ) : (
+                    "required, not named yet (they cannot sign before they name one)"
+                  )}
+                </p>
+              ) : null;
+            })()}
           </div>
         )}
         {data?.notes
@@ -2468,7 +2590,7 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
                     </>
                   )}
                   {m.canPreview && !m.canDownload && (
-                    <div className="aw-preview">
+                    <div className="aw-preview aw-protect">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={`/api/deals/${id}/preview/${m.index}`} alt={`Watermarked preview of ${m.delivery.fileName ?? "the delivery"}`} loading="lazy" />
                       <small>Watermarked, reduced preview. The original unlocks once you approve and the key is released.</small>
@@ -2581,8 +2703,13 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
                     </Button>
                   )}
                   {data.role === "buyer" && m.status === "Delivered" && m.delivers !== "parcel" && asking !== m.index && (
-                    <Button variant="outline" disabled={!!busy} onClick={() => setAsking(m.index)}>
-                      Request changes
+                    <Button
+                      variant="outline"
+                      disabled={!!busy || (m.revisionsUsed ?? 0) >= (m.revisions ?? 10)}
+                      title={(m.revisionsUsed ?? 0) >= (m.revisions ?? 10) ? "All agreed rounds of changes are used: approve or dispute" : undefined}
+                      onClick={() => setAsking(m.index)}
+                    >
+                      Request changes ({m.revisionsUsed ?? 0}/{m.revisions ?? 10})
                     </Button>
                   )}
                   {m.moves.includes("dispute") && disputing !== m.index && (
