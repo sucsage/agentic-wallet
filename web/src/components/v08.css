@@ -720,3 +720,10 @@
  .aw-hover-panels .aw-v08-agent-rail.expanded .aw-v08-agent-details{transform:none;transition:opacity .18s ease,transform .22s ease,visibility 0s}
 }
 @media (min-width:1051px) and (hover:hover) and (prefers-reduced-motion:reduce){.aw-hover-panels :is(.aw-chats-panel,.aw-v08-agent-details){transition:none!important;transform:none!important}}
+
+/* AI chat: the main menu opens over the page while hovered (the grid column stays narrow). */
+@media (min-width:1051px) and (hover:hover){
+ .aw-app.aw-v08 .aw-workspace.aw-sidebar-peek{--v08-sidebar:76px;grid-template-columns:76px minmax(0,1fr)!important}
+ .aw-app.aw-v08 .aw-workspace.aw-sidebar-peek>.aw-sidebar{width:248px;min-width:248px;z-index:60;background:#000;border-right:1px solid #2a2a2a;box-shadow:16px 0 40px #000b}
+}
+.aw-sidebar-toggle.is-pinned{outline:1px solid #8b7cf6;outline-offset:1px}
