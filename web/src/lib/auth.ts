@@ -81,8 +81,15 @@ export const auth = betterAuth({
     // Same verified email on Google, Apple and a password sign-up = one user, several sign-in methods.
     accountLinking: { enabled: true, trustedProviders: ["google", "apple"] },
   },
-  // Apple returns to the callback with a cross-site form POST.
-  trustedOrigins: ["https://appleid.apple.com"],
+  // Apple returns to the callback with a cross-site form POST. Besides BETTER_AUTH_URL, this app's
+  // other Vercel addresses (each deployment's own URL, branch URLs) may sign in, and in development
+  // any localhost port.
+  trustedOrigins: [
+    "https://appleid.apple.com",
+    ...[process.env.VERCEL_URL, process.env.VERCEL_BRANCH_URL, process.env.VERCEL_PROJECT_PRODUCTION_URL].filter(Boolean).map((h) => `https://${h}`),
+    "https://agentic-wallet-*-sucsages-projects.vercel.app",
+    ...(process.env.NODE_ENV === "production" ? [] : ["http://localhost:*", "http://127.0.0.1:*"]),
+  ],
   databaseHooks: {
     user: {
       create: {
