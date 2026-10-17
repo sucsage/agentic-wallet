@@ -1013,16 +1013,6 @@ export function LiveChat() {
       <BalanceBar />
       <div className={`aw-ai-chat-layout aw-hover-panels${agentShown ? "" : " agent-panel-collapsed"}`}>
         <aside className="aw-v08-chats" aria-label="Saved chats">
-          <div className="aw-chats-strip" aria-hidden="true">
-            <span className="aw-chats-strip-icon">
-              <svg viewBox="0 0 24 24" fill="none">
-                <path d="M4 5h16v11H8l-4 4V5Z" />
-                <path d="M8 9h8M8 12h5" />
-              </svg>
-            </span>
-            {chats && <small>{chats.length}</small>}
-            <span className="aw-chats-strip-new">＋</span>
-          </div>
           <div className="aw-chats-panel">
           <header>
             <b>Chats</b>
