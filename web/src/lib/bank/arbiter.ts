@@ -161,7 +161,7 @@ function textOf(bytes: Buffer, mime: string | null, name: string | null): string
 }
 
 /** Everything a judge sees: the agreed terms, both sides, the delivery. Party text is fenced as data. */
-async function caseFile(dealId: number, index: number, buyer: Address, seller: Address, reason: string, sellerStatement: string | null): Promise<string> {
+export async function caseFile(dealId: number, index: number, buyer: Address, seller: Address, reason: string, sellerStatement: string | null): Promise<string> {
   const [terms, file] = await Promise.all([
     db.dealDraft.findFirst({ where: { dealId, walletAddress: { in: [buyer, seller] } } }),
     deliveredFile(dealId, index),

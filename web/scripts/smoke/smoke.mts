@@ -166,12 +166,10 @@ try {
   refundReverted = true;
 }
 check("the seller's refund of a settled milestone reverts on chain", refundReverted, "WrongStatus");
-// The app still opens a vote on a settled milestone (no state check when proposing; noted as a low finding),
-// so the invariant that matters is that nothing moves even when the whole threshold votes for it.
+// AW-L-02: the app no longer opens a vote on a settled milestone; nothing moves either way.
 const again = await act(sig, "approve");
-const again2 = await act(adm, "approve");
-const gained = (await tokenBalance(seller.account.address)) - sellerBefore;
-check("a repeated approve of a settled milestone moves no money, even with both signers voting", (await tokenBalance(escrow)) === 0n && balance() === START - AMOUNT, { first: again.status, second: again2.status, gained: String(gained), company: String(balance()) });
+check("the app refuses a repeated approve of a settled milestone (400)", again.status === 400, { status: again.status, body: again.json });
+check("...and the escrow stays empty and the company is debited once", (await tokenBalance(escrow)) === 0n && balance() === START - AMOUNT, { company: String(balance()) });
 check("the company ends with exactly the deal amount spent", balance() === START - AMOUNT, { balance: String(balance()) });
 
 // ---- summary ---------------------------------------------------------------------------------

@@ -2,7 +2,7 @@ import { after } from "next/server";
 import { z } from "zod";
 
 import { openDispute } from "@/lib/bank/arbiter";
-import { DealError, acceptAndPay, buyerAction, dealForWallet, sellerAction, syncDeal } from "@/lib/bank/deals";
+import { DealError, acceptAndPay, buyerAction, dealForWallet, refuseSettled, sellerAction, syncDeal } from "@/lib/bank/deals";
 import { companyOfWallet } from "@/lib/company";
 import { HttpError, assertCompanySigner, errorResponse, rateLimit, requireBankWallet } from "@/lib/guard";
 import { SocialError, proposeDealAction } from "@/lib/social";
@@ -48,6 +48,12 @@ export async function POST(req: Request, ctx: RouteContext<"/api/deals/[id]/acti
     if (deal.role === "buyer" && (action === "approve" || action === "accept")) {
       const shared = await companyOfWallet(wallet);
       if (shared) {
+        // A vote on a milestone that is already settled would only fail when it passes (AW-L-02).
+        try {
+          refuseSettled(deal, action, index);
+        } catch (e) {
+          throw e instanceof DealError ? new HttpError(400, e.message) : e;
+        }
         const vote = await proposeDealAction(user.id, shared.groupId, { dealId: id, index, action }).catch((e) => {
           throw e instanceof SocialError ? new HttpError(400, e.message) : e;
         });
