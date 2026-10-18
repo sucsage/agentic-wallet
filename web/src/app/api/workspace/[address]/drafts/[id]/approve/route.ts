@@ -1,4 +1,5 @@
 import { DraftError, approveDraft, draftView } from "@/lib/bank/drafts";
+import { inviteLinkFor } from "@/lib/bank/invites";
 import { companyOfWallet } from "@/lib/company";
 import { db } from "@/lib/db";
 import { SocialError, proposeToGroup } from "@/lib/social";
@@ -16,9 +17,10 @@ export async function POST(req: Request, ctx: RouteContext<"/api/workspace/[addr
     const { address, id } = await ctx.params;
     const wallet = await userWallet(address);
     const user = await requireUser();
-    // As a company: the click submits the draft to the company's signers (the user's yes counts).
+    // As a company or group: the click submits the draft (a purchase or an offer to sell in its
+    // name) to its signers (the user's yes counts).
     const company = await companyOfWallet(wallet);
-    const pending = await db.dealDraft.findFirst({ where: { id, walletAddress: wallet, side: "BUY" } });
+    const pending = await db.dealDraft.findFirst({ where: { id, walletAddress: wallet, status: { in: ["PREVIEW", "DRAFT", "FAILED"] } } });
     if (company && pending) {
       const open = await db.groupProposal.findFirst({ where: { draftId: id, status: "OPEN" } });
       const vote = open
@@ -33,7 +35,10 @@ export async function POST(req: Request, ctx: RouteContext<"/api/workspace/[addr
     const { draft, funding } = await approveDraft(user.id, wallet, id).catch((e) => {
       throw e instanceof DraftError ? new HttpError(400, e.message) : e;
     });
-    const body = { draft: await draftView(draft), funding };
+    // Confirming a deal with someone who has no account made their private link: show it now too.
+    const other = draft.side === "SELL" ? draft.buyer : draft.seller;
+    const invite = draft.inviteId && other ? await inviteLinkFor(user.id, other, new URL(req.url).origin) : null;
+    const body = { draft: await draftView(draft), funding, invite };
     return new Response(JSON.stringify(body, (_k, v) => (typeof v === "bigint" ? v.toString() : v)), {
       headers: { "content-type": "application/json" },
     });

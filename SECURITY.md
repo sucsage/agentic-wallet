@@ -135,6 +135,24 @@ key (`ArbiterNotNeutral`), so the buyer's side can never judge its own dispute.
   stores the card's brand, last four digits and expiry, never the number.
 - **Previews before payment cannot replace the work.** A delivered image is shown to the buyer only as
   a 720 px JPEG with a tiled watermark; the original stays encrypted until the key is released.
+- **Two-step sign-in (2FA, demo).** Optional PIN (scrypt), email code, simulated SMS, or a WebAuthn
+  credential on the device (face / fingerprint / passkey). While it is on, all customer routes return
+  428 until this session passed; the pass is an httpOnly cookie holding an HMAC of the session id, so
+  it cannot be copied to another session. Setup changes need a passed session (a stolen session
+  cannot switch 2FA off); five wrong codes lock code checks for 10 minutes. Demo limits: SMS is
+  simulated, emailed codes are shown on screen when no mailer is configured, and WebAuthn signatures
+  are not verified server-side.
+- **Blocking and reports.** A block works both ways (search, contact requests, transfers, group
+  invites) and removes the blocked person from the blocker's allow transfer list on-chain. A blocked
+  person gets the same answer as for an unknown username. Reports reach admins only, without telling
+  the reported person who sent them; one report per pair per day.
+- **Delivered websites are sandboxed.** An `.html` delivery is previewed with a CSP `sandbox` (opaque
+  origin: no cookies, no access to the app) and `default-src 'none'`, framed only by this app
+  (`X-Frame-Options: SAMEORIGIN`), with a PREVIEW ribbon. The file itself stays encrypted until the
+  key is released.
+- **Amendments cannot double-charge.** Confirming an amendment withdraws the old offer first and
+  refuses if the other side accepted it in the meantime; the deposit flag is part of the hashed terms
+  both sides saw.
 - **Chain access.** Besu runs **account permissioning**, so only the app's own keys can send
   transactions. Its RPC needs a signed JWT (RS256) that only the server holds. The public `/api/rpc`
   passes **read-only methods** only (no `eth_sendRawTransaction`), with bounded `eth_getLogs` ranges.

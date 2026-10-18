@@ -1,10 +1,11 @@
+import { getSession } from "@/lib/auth";
 import { after } from "next/server";
 import { getAddress } from "viem";
 import { z } from "zod";
 
 import { ArbiterError, replyToDispute } from "@/lib/bank/arbiter";
 import { DealError, dealForWallet, syncDeal } from "@/lib/bank/deals";
-import { InviteError, inviteByToken } from "@/lib/bank/invites";
+import { InviteError, inviteForRequest } from "@/lib/bank/invites";
 import { HttpError, errorResponse, rateLimit } from "@/lib/guard";
 
 export const maxDuration = 300;
@@ -13,7 +14,7 @@ export const maxDuration = 300;
 export async function POST(req: Request, ctx: RouteContext<"/api/invite/[token]/dispute">) {
   try {
     rateLimit(req, "invite-dispute", 30, 60 * 60 * 1000);
-    const invite = await inviteByToken((await ctx.params).token).catch((e) => {
+    const invite = await inviteForRequest((await ctx.params).token, (await getSession())?.user.id ?? null).catch((e) => {
       throw e instanceof InviteError ? new HttpError(404, e.message) : e;
     });
     const body = z

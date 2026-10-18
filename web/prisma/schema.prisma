@@ -36,6 +36,12 @@ model User {
   stripeLink      StripeLink?
   preference      UserPreference?
   groupInvites    GroupInvite[]
+  dealTemplates   DealTemplate[]
+  blocksMade      UserBlock[]      @relation("blocker")
+  blockedBy       UserBlock[]      @relation("blocked")
+  reportsMade     UserReport[]     @relation("reporter")
+  reportsAbout    UserReport[]     @relation("reported")
+  security        UserSecurity?
 }
 
 model Session {
@@ -336,6 +342,8 @@ model BankTransfer {
 // ---------------------------------------------------------------------------------------------
 
 enum DealDraftStatus {
+  /// What the AI proposed: shown only in its chat card, listed nowhere, until the user confirms it.
+  PREVIEW
   DRAFT
   FUNDED
   FAILED
@@ -380,7 +388,14 @@ model DealDraft {
   fundingId      String?
   /// Set while one request approves the draft: a second click waits instead of funding it twice (DB-01).
   approvingUntil DateTime?
+  /// The other side has no account yet: their name. Their link (and wallet) is made on Confirm.
+  inviteName     String?
+  /// The SellerInvite (a purchase) or BuyerInvite (a sale) made for them on Confirm.
+  inviteId       String?
   dealId         Int?
+  /// An amendment: confirming this draft first withdraws that deal (still an unaccepted offer),
+  /// then makes this one with the same other party (and the same private link).
+  replacesDealId Int?
   /// Last funding result (steps, tx hashes, error), for the UI.
   result         Json?
   createdAt      DateTime        @default(now())
@@ -414,6 +429,97 @@ model Friendship {
   @@index([addresseeId])
 }
 
+/// A deal saved for reuse: everything but the other party. Using one asks the AI to draft a new
+/// preview from it (another person, maybe other amounts), so it still goes through Confirm.
+model DealTemplate {
+  id         String       @id @default(cuid())
+  userId     String
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  side       DraftSide    @default(BUY)
+  kind       DealKind     @default(HIRE)
+  title      String
+  summary    String       @default("")
+  /// [{ name, amount, delivery, acceptance, dueDays }]
+  milestones Json
+  uses       Int          @default(0)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  @@index([userId])
+}
+
+/// One user blocking another: no contact requests, transfers, deals or group invites between them
+/// (both ways), and an existing contact is removed.
+model UserBlock {
+  id        String   @id @default(cuid())
+  blockerId String
+  blockedId String
+  blocker   User     @relation("blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked   User     @relation("blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([blockerId, blockedId])
+  @@index([blockedId])
+}
+
+/// Optional witnesses named on a deal's contract, one per side (buyer / seller).
+model DealWitness {
+  id        String   @id @default(cuid())
+  escrow    String
+  dealId    Int
+  side      String
+  name      String
+  contact   String   @default("")
+  addedById String?
+  createdAt DateTime @default(now())
+
+  @@unique([escrow, dealId, side])
+}
+
+/// Second factors (demo). PIN: scrypt hash. Face / fingerprint / passkey: a WebAuthn credential id
+/// on this device (the signature is not verified server-side in the demo). SMS: simulated. Email
+/// OTP: a 6-digit code mailed (shown on screen when no mailer is configured).
+model UserSecurity {
+  userId        String    @id
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  enabled       Boolean   @default(false)
+  /// Methods turned on: "pin" | "face" | "fingerprint" | "passkey" | "sms" | "email"
+  methods       String[]  @default([])
+  pinHash       String?
+  credentialIds String[]  @default([])
+  phone         String?
+  otpHash       String?
+  otpExpires    DateTime?
+  otpTries      Int       @default(0)
+  updatedAt     DateTime  @updatedAt
+}
+
+enum ReportReason {
+  SCAM
+  SPAM
+  HARASSMENT
+  IMPERSONATION
+  NOT_DELIVERED
+  OTHER
+}
+
+/// A user reporting another from Contacts, for the admin to review.
+model UserReport {
+  id         String       @id @default(cuid())
+  reporterId String
+  reportedId String
+  reporter   User         @relation("reporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  reported   User         @relation("reported", fields: [reportedId], references: [id], onDelete: Cascade)
+  reason     ReportReason
+  details    String       @default("")
+  status     String       @default("OPEN")
+  createdAt  DateTime     @default(now())
+
+  @@index([reportedId])
+  @@index([reporterId])
+}
+
 enum GroupRole {
   ADMIN
   MEMBER
@@ -433,25 +539,49 @@ model Group {
   invites   GroupInvite[]
   links     GroupLink[]
   rules     GroupRuleProposal[]
-  /// Set when this group is a company's signers: its deals are paid from the company wallet.
+  /// Set when this group is a company's signers, or has its own group wallet: its deals are paid
+  /// from (and its sales paid into) that wallet.
   company   Company?
+  messages  GroupMessage[]
+}
+
+/// The group chat. userId null = the group's AI agent (its tool steps in `steps`).
+model GroupMessage {
+  id        String   @id @default(cuid())
+  groupId   String
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId    String?
+  text      String
+  steps     Json?
+  createdAt DateTime @default(now())
+
+  @@index([groupId, createdAt])
+}
+
+enum CompanyKind {
+  /// A registered company (juristic id checked).
+  COMPANY
+  /// A group of friends with a shared wallet: no registration.
+  GROUP
 }
 
 /// A company account: its own e-money account and agent wallet, run by a group of signers.
 /// Members switch to it ("Acting as"); its deals lock only after N of M signers approve.
 model Company {
-  id            String   @id @default(cuid())
+  id            String      @id @default(cuid())
+  kind          CompanyKind @default(COMPANY)
   name          String
   /// Masked registration id (Thai juristic id / Chinese unified social credit code) and its HMAC.
-  maskedTaxId   String
-  taxIdHash     String   @unique
+  /// Null for a group wallet.
+  maskedTaxId   String?
+  taxIdHash     String?     @unique
   currency      Currency
-  customerId    String   @unique
-  walletAddress String   @unique
-  groupId       String   @unique
-  group         Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  customerId    String      @unique
+  walletAddress String      @unique
+  groupId       String      @unique
+  group         Group       @relation(fields: [groupId], references: [id], onDelete: Cascade)
   createdById   String
-  createdAt     DateTime @default(now())
+  createdAt     DateTime    @default(now())
 }
 
 /// Someone asked to join a group; they become a member only by accepting.
@@ -544,7 +674,13 @@ model GroupProposal {
   group      Group               @relation(fields: [groupId], references: [id], onDelete: Cascade)
   proposerId String
   /// The proposer's bank-deal draft; it is locked from the proposer's account once approved.
-  draftId    String              @unique
+  /// Null for a payout.
+  draftId    String?             @unique
+  /// A payout from the company's / group's shared account to members: [{ userId, amount }] (minor units).
+  payout     Json?
+  /// A move on a deal of the shared wallet that pays money out, decided by the signers' vote:
+  /// { dealId, index, action: "approve" (release a delivered milestone) | "accept" (pay a seller's offer) }.
+  dealAction Json?
   status     GroupProposalStatus @default(OPEN)
   createdAt  DateTime            @default(now())
 
@@ -614,6 +750,8 @@ model SellerInvite {
   id              String        @id @default(cuid())
   /// sha256 of the link's secret; the secret itself is shown to the buyer once.
   tokenHash       String        @unique
+  /// The link's secret, encrypted for the inviter (shown again on the deal's page).
+  tokenEnc        String?
   /// The buyer who invited them.
   userId          String
   buyerWallet     String
@@ -632,10 +770,15 @@ model SellerInvite {
   payoutSetAt     DateTime?
   /// BANK payouts through Opn Payments (test mode): the recipient created for this seller.
   opnRecipientId  String?
+  /// A seller who already has an account opened the link signed in: the invite is linked to them
+  /// (earnings to their own wallet account, the deals listed in their app).
+  claimedByUserId String?
+  claimedAt       DateTime?
   expiresAt       DateTime
   createdAt       DateTime      @default(now())
 
   @@index([userId])
+  @@index([claimedByUserId])
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -878,4 +1021,24 @@ model UserPreference {
   /// A linked card covers a short balance when a deal is approved.
   cardCover    Boolean  @default(true)
   updatedAt    DateTime @updatedAt
+}
+
+/// A buyer without an account: a seller offers them work or goods through a link. The server runs a
+/// wallet for them (like an invited seller's), they pay the offer by card (Stripe test mode) and
+/// approve the delivery on the link's page. The link's secret is the only credential (hash stored).
+model BuyerInvite {
+  id           String   @id @default(cuid())
+  tokenHash    String   @unique
+  /// The link's secret, encrypted for the inviter (shown again on the deal's page).
+  tokenEnc     String?
+  /// The seller who invited them, and the wallet that sells.
+  userId       String
+  sellerWallet String
+  buyerWallet  String   @unique
+  name         String
+  currency     Currency
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
 }

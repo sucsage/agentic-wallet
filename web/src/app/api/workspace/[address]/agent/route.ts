@@ -2,7 +2,8 @@ import { prefsOf } from "@/lib/prefs";
 import { extractText, getDocumentProxy } from "unpdf";
 import { z } from "zod";
 
-import { type Attachment, llmConfigured, runAgent } from "@/lib/agent";
+import { type Attachment, llmConfigured, readsImagesNatively, runAgent } from "@/lib/agent";
+import { describeImage } from "@/lib/vision";
 import { ChatLimitError, appendToChat, createChat, getChat, historyOf, publicStep } from "@/lib/chats";
 import { HttpError, errorResponse, rateLimit, requireUser, userWallet } from "@/lib/guard";
 import { scanForInjection } from "@/lib/policy";
@@ -23,12 +24,22 @@ const Body = z.object({
     .discriminatedUnion("kind", [
       z.object({ kind: z.literal("pdf"), name: z.string().max(200), base64: z.string().max(4_000_000) }),
       z.object({ kind: z.literal("text"), name: z.string().max(200), text: z.string().max(60_000) }),
+      // Images are downscaled in the browser (about 1600 px) so they stay well under the request limit.
+      z.object({ kind: z.literal("image"), name: z.string().max(200), mediaType: z.enum(["image/png", "image/jpeg", "image/webp", "image/gif"]), base64: z.string().max(4_000_000) }),
     ])
     .optional(),
 });
 
-async function attachmentText(a: Attachment): Promise<string> {
+async function attachmentText(a: Attachment): Promise<string | undefined> {
   if (a.kind === "text") return a.text;
+  if (a.kind === "image") {
+    // Claude looks at the image itself; other models get it as text from one vision call.
+    if (readsImagesNatively()) return undefined;
+    return describeImage(a).catch((e) => {
+      console.error("vision", e);
+      throw new HttpError(502, "The AI could not read that image right now. Try again, or describe it in words.");
+    });
+  }
   try {
     const pdf = await getDocumentProxy(new Uint8Array(Buffer.from(a.base64, "base64")));
     const { text } = await extractText(pdf, { mergePages: true });
@@ -68,7 +79,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/workspace/[addr
 
     // Advisory pre-scan of untrusted content, shown to the user next to the agent's answer.
     const text = attachment ? await attachmentText(attachment) : undefined;
-    const flags = text !== undefined ? scanForInjection(text, await readWallet(wallet)) : [];
+    const flags = text ? scanForInjection(text, await readWallet(wallet)) : [];
     // Streaming (Server-Sent Events) when the client asks for it: the chat shows each tool call and
     // the reply as it is written. Plain JSON otherwise (scripts, agent-eval).
     if (req.headers.get("accept")?.includes("text/event-stream")) {

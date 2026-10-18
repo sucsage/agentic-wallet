@@ -103,6 +103,11 @@ describe("API routes: who must be signed in (DB route matrix)", () => {
     "invite/[token]/deliver/route.ts",
     "invite/[token]/payout/route.ts",
     "invite/[token]/dispute/route.ts", // bearer link, like the other invite routes
+    // Buyer links for people without an account (24 random bytes, only the hash is stored): bearer links as well.
+    "pay/[token]/route.ts",
+    "pay/[token]/files/[dealId]/[index]/route.ts",
+    "pay/[token]/preview/[dealId]/[index]/route.ts",
+    "pay/[token]/site/[dealId]/[index]/route.ts",
     // The mock ID provider (OIDC endpoints called server to server and by the browser redirect).
     "mock-id/[provider]/authorize/route.ts",
     "mock-id/[provider]/openid-configuration/route.ts",

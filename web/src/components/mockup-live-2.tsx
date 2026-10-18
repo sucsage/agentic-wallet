@@ -10,6 +10,13 @@ import { localizeMockupNode, useLang } from "@/lib/i18n";
 import { api, download, tokenMoney, useAppData } from "./app-data";
 import { DisputeFlow, type DisputeFlowData, isStagedDispute } from "./dispute-flow";
 import { usePrefs } from "./prefs";
+import { FundCompany, setActing } from "./company";
+import { GroupChat } from "./group-chat";
+import { SendMoneyDialog } from "./send-money";
+import { BlockDialog, BlockedPanel, ReportDialog } from "./contact-safety";
+import { DealDocuments, SiteMockup, WitnessPanel } from "./deal-extras";
+import { SaveTemplateDialog, type TemplatePayload } from "./deal-templates";
+import { SEND_LIMITS } from "@/lib/send-limits";
 import { BalanceBar } from "./mockup-live";
 import { Button, Card, Loading, PageTitle } from "./mockup-ui";
 
@@ -60,9 +67,21 @@ function useAction() {
     setBusy(key);
     setMessage(null);
     try {
-      const r = (await fn()) as { outcome?: Outcome; status?: string; error?: string } | undefined;
+      const r = (await fn()) as { outcome?: Outcome; status?: string; error?: string; groupVote?: { status: string; yes: number; threshold: number; group: string } } | undefined;
       const o = r?.outcome;
-      if (o && o.status !== "success") setMessage({ ok: false, text: o.error ?? o.status, url: o.url });
+      const v = r?.groupVote;
+      if (v)
+        setMessage({
+          ok: v.status !== "FAILED" && v.status !== "REJECTED",
+          text:
+            v.status === "EXECUTED"
+              ? `${v.group}'s signers approved it: done.`
+              : v.status === "OPEN"
+                ? `Sent to ${v.group}'s signers: ${v.yes} of ${v.threshold} yes so far. It happens when ${v.threshold} approve (they vote on the group's page).`
+                : `The vote ${v.status.toLowerCase()}.`,
+        });
+      else if (r?.status === "OPEN" || r?.status === "EXECUTED") setMessage({ ok: true, text: r.status === "EXECUTED" ? "Approved and done" : "Your vote is counted" });
+      else if (o && o.status !== "success") setMessage({ ok: false, text: o.error ?? o.status, url: o.url });
       // Accepting a seller's offer reports a funding status instead of one transaction.
       else if (r?.status && !["FUNDED", "success"].includes(r.status))
         setMessage({ ok: false, text: r.status === "REFUNDED" ? `Not accepted · money refunded to your wallet${r.error ? ` (${r.error})` : ""}` : `Still processing (${r.status}) · try again in a moment` });
@@ -97,6 +116,7 @@ const when = (unix: number) =>
   unix ? new Date(unix * 1000).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
 
 // ------------------------------------------------------------------------------------------
+
 // Approvals
 // ------------------------------------------------------------------------------------------
 
@@ -308,16 +328,13 @@ export function LivePolicy() {
   const address = me?.wallets[0]?.address;
   const { data: state, reload: reloadState } = useApi<{ audit: AuditEntry[] }>(address ? `/api/workspace/${address}` : null);
   const { busy, run, note } = useAction();
-  const [editing, setEditing] = useState(false);
-  const [perTx, setPerTx] = useState("");
-  const [perDay, setPerDay] = useState("");
   const currency = data?.token.currency ?? me?.bank.currency ?? "THB";
 
   return localizeMockupNode(
     <div className="aw-policy-page">
       <BalanceBar />
       <main className="aw-policy-content">
-        <PageTitle title="Policy & Allowlist" description="The policy engine and the smart contract enforce the same rules" />
+        <PageTitle title="Policy & Allow transfer list" description="The policy engine and the smart contract enforce the same rules" />
         {error && <p className="aw-bank-error">{error}</p>}
         {!data && !error && <Loading block text="Reading your policy from the chain…" />}
         {note}
@@ -325,7 +342,7 @@ export function LivePolicy() {
           {[
             ["Tier 0", "Read", "Balance, deals, history", "green"],
             ["Tier 1", "Propose", "Lock money, add payees · you approve", "amber"],
-            ["Tier 2", "Act alone", "Within limits and allowlist only", "blue"],
+            ["Tier 2", "Act alone", "Within limits and the allow transfer list only", "blue"],
             ["Tier 3", "Pause", "Anyone can pause · only you resume", "red"],
           ].map(([tier, title, description, tone]) => (
             <article className={`aw-policy-tier ${tone}`} key={tier}>
@@ -339,55 +356,23 @@ export function LivePolicy() {
           <Card className="aw-policy-limits">
             <header>
               <h2>Agent limits</h2>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setPerTx(data?.session.maxPerTx ?? "");
-                  setPerDay(data?.session.dailyLimit ?? "");
-                  setEditing((v) => !v);
-                }}
-              >
-                {editing ? "Cancel" : "Edit"}
+              {/* Changed next to the AI agent on the chat page. */}
+              <Button variant="outline" onClick={() => (window.location.href = "/chat")}>
+                Change on the AI page →
               </Button>
             </header>
-            {editing ? (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void run("limits", () => send("/api/policy/limits", "PUT", { maxPerTx: Number(perTx), dailyLimit: Number(perDay) }), async () => {
-                    setEditing(false);
-                    await reload();
-                  });
-                }}
-              >
-                <label className="aw-policy-limit">
-                  <span>Per transaction</span>
-                  <input aria-label="Per transaction limit" type="number" min="1" step="any" value={perTx} onChange={(e) => setPerTx(e.target.value)} />
-                </label>
-                <label className="aw-policy-limit">
-                  <span>Per day</span>
-                  <input aria-label="Per day limit" type="number" min="1" step="any" value={perDay} onChange={(e) => setPerDay(e.target.value)} />
-                </label>
-                <Button type="submit" disabled={busy === "limits"}>
-                  {busy === "limits" ? "Saving on-chain…" : "Save"}
-                </Button>
-              </form>
-            ) : (
-              <>
-                <div className="aw-policy-limit">
-                  <span>Per transaction</span>
-                  <b>{data ? tokenMoney(data.session.maxPerTx, currency) : "…"}</b>
-                </div>
-                <div className="aw-policy-limit">
-                  <span>Per day</span>
-                  <b>{data ? tokenMoney(data.session.dailyLimit, currency) : "…"}</b>
-                </div>
-                <div className="aw-policy-limit">
-                  <span>Left today</span>
-                  <b>{data ? tokenMoney(data.session.remainingToday, currency) : "…"}</b>
-                </div>
-              </>
-            )}
+            <div className="aw-policy-limit">
+              <span>Per transaction</span>
+              <b>{data ? tokenMoney(data.session.maxPerTx, currency) : "…"}</b>
+            </div>
+            <div className="aw-policy-limit">
+              <span>Per day</span>
+              <b>{data ? tokenMoney(data.session.dailyLimit, currency) : "…"}</b>
+            </div>
+            <div className="aw-policy-limit">
+              <span>Left today</span>
+              <b>{data ? tokenMoney(data.session.remainingToday, currency) : "…"}</b>
+            </div>
             <div className="aw-policy-limit">
               <span>Check balance before approval</span>
               <b className="aw-green">Always on</b>
@@ -411,7 +396,7 @@ export function LivePolicy() {
           </Card>
           <Card className="aw-policy-allowlist">
             <header>
-              <h2>Allowlist · who can be paid</h2>
+              <h2>Allow transfer list · who can be paid</h2>
             </header>
             <div className="aw-policy-recipient-list">
               {data?.recipients.map((r) => (
@@ -546,7 +531,13 @@ export function LiveFriends() {
   const [found, setFound] = useState<{ username: string; name: string }[]>([]);
   const [tab, setTab] = useState<"all" | "group" | "allow">("all");
   const [myQr, setMyQr] = useState<{ image: string; url: string } | null>(null);
-  const { me } = useAppData();
+  const [sending, setSending] = useState(false);
+  const [sendId, setSendId] = useState(() => crypto.randomUUID());
+  const [reporting, setReporting] = useState<{ userId: string; name: string } | null>(null);
+  const [blocking, setBlocking] = useState<{ userId: string; name: string } | null>(null);
+  const [safetyMsg, setSafetyMsg] = useState<string | null>(null);
+  const [blockVersion, setBlockVersion] = useState(0);
+  const { me, refresh } = useAppData();
   const { data: groupsData } = useApi<{ groups: { members: { userId: string }[] }[] }>("/api/groups");
   const friends = data?.friends ?? [];
   // Someone scanned your "My code" QR: their page opens with your username ready to add.
@@ -594,7 +585,29 @@ export function LiveFriends() {
             <h1>Contacts</h1>
             <p>Add contacts who use Agentic Wallet to invite them to groups and make them payees</p>
           </div>
+          <Button onClick={() => setSending(true)} disabled={!!me?.acting} title={me?.acting ? "Switch to Personal to send from your own wallet" : undefined}>
+            ⇄ Send money
+          </Button>
         </header>
+        {sending && (
+          <SendMoneyDialog
+            title="Send money"
+            intro="From your own wallet to one or several contacts at once. Everyone is paid together, or nobody is. Test money only."
+            people={friends.filter((f) => f.status === "ACCEPTED").map((f) => ({ userId: f.userId, name: f.name }))}
+            currency={me?.bank.currency ?? "THB"}
+            submitLabel="Send now"
+            limits={SEND_LIMITS}
+            onClose={() => {
+              setSending(false);
+              setSendId(crypto.randomUUID());
+            }}
+            onSubmit={async (recipients) => {
+              const r = await send<{ total: string; already: boolean }>("/api/transfers", "POST", { recipients, requestId: sendId });
+              await refresh();
+              return r.already ? "Already sent (this request was paid before)." : `Sent ${tokenMoney(Number(r.total) / 100, me?.bank.currency ?? "THB")} to ${recipients.length} ${recipients.length === 1 ? "person" : "people"}.`;
+            }}
+          />
+        )}
         {error && <p className="aw-bank-error">{error}</p>}
         {!data && !error && <Loading block text="Loading contacts and payees…" />}
         {note}
@@ -666,7 +679,14 @@ export function LiveFriends() {
             )}
           </section>
         </div>
-        <InviteByLink />
+        <section className="aw-friends-panel">
+          <h2>Someone without an account?</h2>
+          <p>
+            Ask the AI to draft the deal with their name (hiring them, or selling to them). Nothing is sent yet: when you press Confirm, their private link is made, shown to you,
+            and kept on the deal&apos;s page to send them. They need no sign-up.
+          </p>
+        </section>
+        {safetyMsg && <p className="aw-live-ok aw-safety-msg">{safetyMsg}</p>}
         <Nicknames />
         <section className="aw-friends-panel aw-friend-requests">
           <header>
@@ -685,6 +705,9 @@ export function LiveFriends() {
                 <Button variant="outline" disabled={!!busy} onClick={() => run(`x${f.friendshipId}`, () => send(`/api/friends/${f.friendshipId}`, "DELETE"), reload)}>
                   Decline
                 </Button>
+                <Button variant="outline" disabled={!!busy} onClick={() => setBlocking({ userId: f.userId, name: f.name })}>
+                  Block
+                </Button>
                 <Button disabled={!!busy} onClick={() => run(`a${f.friendshipId}`, () => send(`/api/friends/${f.friendshipId}`, "POST"), reload)}>
                   Accept
                 </Button>
@@ -700,7 +723,7 @@ export function LiveFriends() {
                 [
                   ["all", `All ${mutual.length}`],
                   ["group", `Same group ${mutual.filter((f) => inMyGroups.has(f.userId)).length}`],
-                  ["allow", `Allowlisted ${mutual.filter((f) => f.allowlisted).length}`],
+                  ["allow", `Allow transfer list ${mutual.filter((f) => f.allowlisted).length}`],
                 ] as const
               ).map(([k, label]) => (
                 <button type="button" role="tab" key={k} aria-selected={tab === k} className={tab === k ? "active" : ""} onClick={() => setTab(k)}>
@@ -709,7 +732,7 @@ export function LiveFriends() {
               ))}
             </div>
           </header>
-          <div className="aw-friend-policy">ⓘ &nbsp; A contact is not automatically in your allowlist. Making someone a payee is an on-chain action you approve.</div>
+          <div className="aw-friend-policy">ⓘ &nbsp; A contact is not automatically on your allow transfer list. Making someone a payee is an on-chain action you approve.</div>
           <div className="aw-friend-cards">
             {shown.length === 0 && <small>No contacts here.</small>}
             {shown.map((f) => (
@@ -721,7 +744,7 @@ export function LiveFriends() {
                     <small>@{f.username}</small>
                   </span>
                 </div>
-                <div className="aw-friend-tags">{f.allowlisted && <span className="allow">allowlist</span>}</div>
+                <div className="aw-friend-tags">{f.allowlisted && <span className="allow">allow transfer</span>}</div>
                 <div className="aw-friend-card-actions">
                   <Button onClick={() => (window.location.href = `/chat?draft=${encodeURIComponent(`Hire ${f.name} for `)}`)}>New deal</Button>
                   <Button
@@ -729,117 +752,60 @@ export function LiveFriends() {
                     disabled={!!busy || !f.wallet}
                     onClick={() => run(`p${f.friendshipId}`, () => send(`/api/friends/${f.friendshipId}/payee`, "PUT", { allowed: !f.allowlisted }), reload)}
                   >
-                    {busy === `p${f.friendshipId}` ? "Updating the allowlist on-chain…" : f.allowlisted ? "Allowlisted ✓ · remove" : f.wallet ? "Add to allowlist" : "No wallet yet"}
+                    {busy === `p${f.friendshipId}` ? "Updating the allow transfer list on-chain…" : f.allowlisted ? "On allow transfer list ✓ · remove" : f.wallet ? "Add to allow transfer list" : "No wallet yet"}
                   </Button>
                   <Button variant="outline" disabled={!!busy} onClick={() => run(`u${f.friendshipId}`, () => send(`/api/friends/${f.friendshipId}`, "DELETE"), reload)}>
                     Remove contact
                   </Button>
                 </div>
+                <div className="aw-friend-safety">
+                  <button type="button" onClick={() => setReporting({ userId: f.userId, name: f.name })}>
+                    ⚑ Report
+                  </button>
+                  <button type="button" onClick={() => setBlocking({ userId: f.userId, name: f.name })}>
+                    ⦸ Block
+                  </button>
+                </div>
               </article>
             ))}
           </div>
         </section>
+        <BlockedPanel
+          version={blockVersion}
+          onChange={(m) => {
+            setSafetyMsg(m);
+            void reload();
+          }}
+        />
+        {blocking && (
+          <BlockDialog
+            person={blocking}
+            onClose={() => setBlocking(null)}
+            onDone={(m) => {
+              setSafetyMsg(m);
+              setBlockVersion((v) => v + 1);
+              void reload();
+            }}
+          />
+        )}
+        {reporting && (
+          <ReportDialog
+            person={reporting}
+            onClose={() => setReporting(null)}
+            onDone={(m) => {
+              setSafetyMsg(m);
+              setBlockVersion((v) => v + 1);
+              void reload();
+            }}
+          />
+        )}
       </main>
     </div>,
     lang,
   );
 }
 
-type InviteRow = { id: string; name: string; wallet: string; payoutSet: boolean; expiresAt: string };
 
-/**
- * Hire someone without an account: their wallet is made and allowlisted at once, and they get a
- * link (also as a QR code) to accept, deliver and choose a PromptPay id or bank account for payment.
- */
-function InviteByLink() {
-  const { data, reload } = useApi<{ invites: InviteRow[] }>("/api/invites");
-  const { busy, run, note } = useAction();
-  const [name, setName] = useState("");
-  const [shown, setShown] = useState<{ name: string; link: string; qr: string } | null>(null);
-  const [copied, setCopied] = useState(false);
-
-  const show = async (who: string, link: string) => {
-    setCopied(false);
-    setShown({ name: who, link, qr: await QRCode.toDataURL(link, { margin: 1, width: 220 }) });
-  };
-
-  return (
-    <section className="aw-friends-panel aw-invite-panel">
-      <h2>Hire someone without an account</h2>
-      <p>They get a link: no sign-up, they accept, deliver and are paid to PromptPay or any bank account. Creating the link makes them a payee.</p>
-      {note}
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void run(
-            "invite",
-            async () => {
-              const r = await send<{ link: string; invite: { name: string } }>("/api/invites", "POST", { name });
-              await show(r.invite.name, r.link);
-              return r;
-            },
-            async () => {
-              setName("");
-              await reload();
-            },
-          );
-        }}
-      >
-        <label className="aw-friends-search">
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Seller's name, e.g. Somchai Jaidee" maxLength={80} />
-        </label>
-        <Button type="submit" disabled={name.trim().length < 2 || !!busy}>
-          {busy === "invite" ? "Creating wallet…" : "Create link"}
-        </Button>
-      </form>
-      {shown && (
-        <div className="aw-invite-link">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={shown.qr} alt={`QR code of the link for ${shown.name}`} width={140} height={140} />
-          <div>
-            <b>Link for {shown.name}</b>
-            <code>{shown.link}</code>
-            <small>Send it privately (LINE, email). Anyone with it acts as the seller; it is shown only now.</small>
-            <Button
-              variant="outline"
-              onClick={() => {
-                void navigator.clipboard.writeText(shown.link).then(() => setCopied(true));
-              }}
-            >
-              {copied ? "Copied ✓" : "Copy link"}
-            </Button>
-          </div>
-        </div>
-      )}
-      {(data?.invites.length ?? 0) > 0 && (
-        <div className="aw-invite-list">
-          {data!.invites.map((i) => (
-            <div key={i.id} className="aw-friend-result">
-              <span className="aw-friend-avatar blue">{initials(i.name)}</span>
-              <span className="aw-friend-name">
-                <b>{i.name}</b>
-                <small>{i.payoutSet ? "payout account set" : "no payout account yet"} · allowlisted</small>
-              </span>
-              <Button
-                variant="outline"
-                disabled={!!busy}
-                onClick={() =>
-                  run(`l${i.id}`, async () => {
-                    const r = await send<{ link: string }>(`/api/invites/${i.id}/link`, "POST");
-                    await show(i.name, r.link);
-                    return r;
-                  })
-                }
-              >
-                {busy === `l${i.id}` ? "…" : "New link"}
-              </Button>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
 
 // ------------------------------------------------------------------------------------------
 // Groups
@@ -854,7 +820,7 @@ type GroupSummary = {
   members: GroupMemberView[];
   openProposals: number;
   invited?: number;
-  company?: { id: string; name: string } | null;
+  company?: { id: string; kind: "COMPANY" | "GROUP"; name: string } | null;
 };
 type GroupInviteView = { id: string; groupId: string; name: string; company: string | null; members: number; threshold: number; canSign: boolean; invitedBy: string };
 type GroupDetail = {
@@ -865,7 +831,7 @@ type GroupDetail = {
   myRole: "ADMIN" | "MEMBER";
   iSign: boolean;
   signers: number;
-  company: { id: string; name: string; maskedTaxId: string; wallet: string; accountNo: string | null; balance: string } | null;
+  company: { id: string; kind: "COMPANY" | "GROUP"; name: string; maskedTaxId: string | null; wallet: string; accountNo: string | null; balance: string } | null;
   stats: { committed: number; deals: number; openVotes: number };
   members: (GroupMemberView & { joinedAt: string })[];
   invites: { id: string; userId: string; name: string; canSign: boolean }[];
@@ -882,6 +848,8 @@ type GroupDetail = {
     myVote: boolean | null;
     voters: { name: string; approve: boolean }[];
     milestones: { amount: string }[];
+    side: "BUY" | "SELL" | "PAYOUT" | "RELEASE";
+    payout: { name: string; amount: number }[];
   }[];
   rules: { id: string; kind: string; text: string; status: string; proposer: string; yes: number; no: number; myVote: boolean | null }[];
   activity: { at: string; text: string }[];
@@ -980,7 +948,14 @@ export function LiveGroups({ initialCreateOpen = false, joinToken = null }: { in
   const { data: invitesData, reload: reloadInvites } = useApi<{ invites: GroupInviteView[] }>("/api/groups/invites");
   const { data: friendsData } = useApi<{ friends: Friend[] }>("/api/friends");
   const [selected, setSelected] = useState<string | null>(null);
-  const { data: detail, reload: reloadDetail } = useApi<GroupDetail>(selected ? `/api/groups/${selected}` : null, selected ? 8000 : undefined);
+  const { data: loaded, error: detailError, reload: reloadDetail } = useApi<GroupDetail>(selected ? `/api/groups/${selected}` : null, selected ? 8000 : undefined);
+  // Only the selected group's wallet: right after switching, the previous one is still loaded.
+  const detail = loaded?.id === selected ? loaded : null;
+  const detailShown = Boolean(selected && detail);
+  // The wallet opens below the cards and panels, out of view: bring it up when it opens.
+  useEffect(() => {
+    if (selected) document.getElementById("aw-group-wallet")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [selected, detailShown]);
   const { busy, run, note } = useAction();
   const [creating, setCreating] = useState(initialCreateOpen);
   const [joining, setJoining] = useState<string | null>(joinToken);
@@ -993,10 +968,13 @@ export function LiveGroups({ initialCreateOpen = false, joinToken = null }: { in
   const [invitePick, setInvitePick] = useState<Record<string, "signer" | "member">>({});
   const [rule, setRule] = useState<{ kind: string; target: string; threshold: number }>({ kind: "SET_THRESHOLD", target: "", threshold: 2 });
   const [qrError, setQrError] = useState<string | null>(null);
+  const [funding, setFunding] = useState(false);
+  const [payingOut, setPayingOut] = useState(false);
   const currency = me?.bank.currency ?? "THB";
   const friends = (friendsData?.friends ?? []).filter((f) => f.status === "ACCEPTED");
-  // Only purchases lock money, so only they go to a vote. A company group votes on the company's drafts.
-  const openDrafts = drafts.filter((d) => d.status === "DRAFT" && d.side === "BUY");
+  // A personal purchase locks money, so it goes to a vote; in a company's or group wallet's name
+  // (Acting as) its offers to sell go to the vote too.
+  const openDrafts = drafts.filter((d) => d.status === "DRAFT" && (d.side === "BUY" || !!me?.acting));
   const signers = 1 + Object.values(picked).filter((r) => r === "signer").length;
   const total = (ms: { amount: string }[]) => ms.reduce((t, m) => t + Number(m.amount), 0);
   const invites = invitesData?.invites ?? [];
@@ -1112,7 +1090,7 @@ export function LiveGroups({ initialCreateOpen = false, joinToken = null }: { in
                   <small>
                     Pays from
                     <br />
-                    <b>{g.company ? `Company · ${g.company.name}` : "the proposer's wallet"}</b>
+                    <b>{g.company ? `${g.company.kind === "GROUP" ? "Group wallet" : "Company"} · ${g.company.name}` : "the proposer's wallet"}</b>
                   </small>
                 </div>
                 <footer>
@@ -1191,16 +1169,40 @@ export function LiveGroups({ initialCreateOpen = false, joinToken = null }: { in
             </section>
           </div>
         )}
-        {selected && !detail && <Loading text="Opening the group…" />}
+        {selected && !detail && (
+          <div id="aw-group-wallet">{detailError ? <p className="aw-bank-error">{detailError}</p> : <Loading text="Opening the group…" />}</div>
+        )}
         {selected && detail && (
-          <section className="aw-group-live">
+          <section className="aw-group-live" id="aw-group-wallet">
+            {funding && detail.company && (
+              <FundCompany
+                company={{ id: detail.company.id, name: detail.company.name, currency, kind: detail.company.kind }}
+                onDone={() => void afterChange()}
+                onClose={() => setFunding(false)}
+              />
+            )}
+            {payingOut && detail.company && (
+              <SendMoneyDialog
+                title={`Pay out from ${detail.name}`}
+                intro={`From the group account (${tokenMoney(Number(detail.company.balance) / 100, currency)}) to members, e.g. to share what a sale earned. It goes to the vote: paid once ${detail.threshold} signers approve. Your yes counts now.`}
+                people={detail.members.map((m) => ({ userId: m.userId, name: m.userId === me?.user.id ? `${m.name} (you)` : m.name }))}
+                currency={currency}
+                submitLabel="Propose payout"
+                onClose={() => setPayingOut(false)}
+                onSubmit={async (recipients) => {
+                  const r = await send<{ status: string; yes: number }>(`/api/groups/${detail.id}/payouts`, "POST", { recipients });
+                  await afterChange();
+                  return r.status === "EXECUTED" ? "Approved and paid out." : `Put to the vote: ${r.yes} of ${detail.threshold} yes so far.`;
+                }}
+              />
+            )}
             <header className="aw-group-live-head">
               <div>
                 <small className="aw-gr-eyebrow">GROUP WALLET · {roleOf({ role: detail.myRole, canSign: detail.iSign }).toUpperCase()}</small>
                 <h2>{detail.name}</h2>
                 <small>
                   {detail.threshold} of {detail.signers} signers must approve a payment or a rule change
-                  {detail.company ? ` · company reg. ${detail.company.maskedTaxId}` : ""}
+                  {detail.company?.maskedTaxId ? ` · company reg. ${detail.company.maskedTaxId}` : ""}
                 </small>
               </div>
               <div className="aw-gw-actions">
@@ -1216,7 +1218,39 @@ export function LiveGroups({ initialCreateOpen = false, joinToken = null }: { in
               <div>
                 <small>Pays from</small>
                 <b>{detail.company ? tokenMoney(Number(detail.company.balance) / 100, currency) : "Proposer's wallet"}</b>
-                <small>{detail.company ? `Company account ${detail.company.accountNo ?? ""}` : "Each payment is taken from whoever proposed it"}</small>
+                <small>{detail.company ? `${detail.company.kind === "GROUP" ? "Group" : "Company"} account ${detail.company.accountNo ?? ""}` : "Each payment is taken from whoever proposed it"}</small>
+                {detail.company ? (
+                  <span className="aw-gw-wallet-actions">
+                    {me?.acting?.companyId !== detail.company.id && (
+                      <Button variant="outline" onClick={() => void setActing(detail.company!.id)}>
+                        Act as {detail.company.name}
+                      </Button>
+                    )}
+                    <Button variant="outline" onClick={() => setFunding(true)}>
+                      Add money
+                    </Button>
+                    {detail.iSign && (
+                      <Button variant="outline" onClick={() => setPayingOut(true)}>
+                        Pay out to members
+                      </Button>
+                    )}
+                  </span>
+                ) : detail.myRole === "ADMIN" ? (
+                  <span className="aw-gw-wallet-actions">
+                    <Button
+                      disabled={!!busy}
+                      onClick={() => {
+                        if (!window.confirm(`Open a shared wallet for "${detail.name}"? The group can then hire and sell in its own name; its money moves only after ${detail.threshold} signers approve.`)) return;
+                        void run("gwallet", () => send(`/api/groups/${detail.id}/wallet`, "POST"), afterChange);
+                      }}
+                    >
+                      {busy === "gwallet" ? "Opening the wallet (about 10 s)…" : "Open a group wallet"}
+                    </Button>
+                    <small>To hire or sell in the group&apos;s name</small>
+                  </span>
+                ) : (
+                  <small>The owner can open a group wallet to hire and sell in the group&apos;s name.</small>
+                )}
               </div>
               <div>
                 <small>Paid through the group</small>
@@ -1262,8 +1296,31 @@ export function LiveGroups({ initialCreateOpen = false, joinToken = null }: { in
                       <small>{m.canSign === false ? "Can propose" : "Can approve payments"}</small>
                     </span>
                     <span className={`aw-group-role ${m.role === "ADMIN" ? "yellow" : m.canSign === false ? "" : "blue"}`}>{roleOf(m)}</span>
+                    {detail.myRole === "ADMIN" && m.role !== "ADMIN" && (
+                      <span className="aw-gr-owner-actions">
+                        <button
+                          type="button"
+                          disabled={!!busy}
+                          onClick={() => void run(`sign${m.userId}`, () => send(`/api/groups/${detail.id}/members/${m.userId}`, "PATCH", { canSign: m.canSign === false }), afterChange)}
+                        >
+                          {m.canSign === false ? "Make signer" : "Stop signing"}
+                        </button>
+                        <button
+                          type="button"
+                          className="danger"
+                          disabled={!!busy}
+                          onClick={() => {
+                            if (!window.confirm(`Remove ${m.name} from "${detail.name}"?`)) return;
+                            void run(`kick${m.userId}`, () => send(`/api/groups/${detail.id}/members/${m.userId}`, "DELETE"), afterChange);
+                          }}
+                        >
+                          Remove
+                        </button>
+                      </span>
+                    )}
                   </div>
                 ))}
+                {detail.myRole === "ADMIN" && <small className="aw-gr-muted">As the owner you change signers and remove members directly; other members propose changes for a vote.</small>}
                 {detail.invites.map((i) => (
                   <div className="aw-gr-member pending" key={i.id}>
                     <span className="aw-group-avatar">{initials(i.name)}</span>
@@ -1277,7 +1334,7 @@ export function LiveGroups({ initialCreateOpen = false, joinToken = null }: { in
               <Card className="aw-group-panel">
                 <h3>Group rules</h3>
                 <p className="aw-gr-muted">
-                  {detail.threshold} of {detail.signers} signers approve · {detail.company ? "pays from the company account" : "pays from the proposer's wallet"}. Changing a rule needs the same vote.
+                  {detail.threshold} of {detail.signers} signers approve · {detail.company ? `pays from the ${detail.company.kind === "GROUP" ? "group" : "company"} account` : "pays from the proposer's wallet"}. Changing a rule needs the same vote.
                 </p>
                 <div className="aw-gr-rule">
                   <select value={rule.kind} onChange={(e) => setRule({ ...rule, kind: e.target.value })}>
@@ -1298,7 +1355,7 @@ export function LiveGroups({ initialCreateOpen = false, joinToken = null }: { in
                     <select value={rule.target} onChange={(e) => setRule({ ...rule, target: e.target.value })}>
                       <option value="">Who…</option>
                       {detail.members
-                        .filter((m) => m.userId !== me?.user.id && (rule.kind === "ADD_SIGNER" ? m.canSign === false : rule.kind === "REMOVE_SIGNER" ? m.canSign !== false : true))
+                        .filter((m) => m.userId !== me?.user.id && (rule.kind === "ADD_SIGNER" ? m.canSign === false : m.role !== "ADMIN" && (rule.kind === "REMOVE_SIGNER" ? m.canSign !== false : true)))
                         .map((m) => (
                           <option key={m.userId} value={m.userId}>
                             {m.name}
@@ -1323,11 +1380,12 @@ export function LiveGroups({ initialCreateOpen = false, joinToken = null }: { in
                 </div>
               </Card>
             </div>
+            <GroupChat groupId={detail.id} threshold={detail.threshold} shared={detail.company?.name ?? null} />
             <Card className="aw-group-wallet-card aw-group-wallet-votes">
               <h3>＋ Propose a payment</h3>
               <p>
                 {detail.company
-                  ? `Draft a purchase in the AI chat while acting as ${detail.company.name}; it is paid from the company account once ${detail.threshold} signers approve.`
+                  ? `Ask the AI (here in the group chat, or acting as ${detail.company.name}) to hire or sell in the group's name; it happens once ${detail.threshold} signers approve. Purchases are paid from the ${detail.company.kind === "GROUP" ? "group" : "company"} account and sales are paid into it.`
                   : `Draft a purchase in the AI chat first. It stays on hold while the group votes, and is paid from your wallet once ${detail.threshold} signers approve.`}
               </p>
               {openDrafts.length === 0 && <small>No purchase drafts {me?.acting ? `for ${me.acting.name}` : "of yours"} yet.</small>}
@@ -1380,7 +1438,11 @@ export function LiveGroups({ initialCreateOpen = false, joinToken = null }: { in
               <article className="aw-gw-proposal" key={p.id}>
                 <div>
                   <b>
-                    Pay · {p.title} · {tokenMoney(total(p.milestones), currency)}
+                    {p.side === "PAYOUT"
+                      ? `Payout · ${p.payout.map((r) => `${r.name} ${tokenMoney(r.amount, currency)}`).join(", ")} · ${tokenMoney(p.payout.reduce((t, r) => t + r.amount, 0), currency)}`
+                      : p.side === "RELEASE"
+                        ? p.title
+                        : `${p.side === "SELL" ? "Sell" : "Pay"} · ${p.title} · ${tokenMoney(total(p.milestones), currency)}`}
                   </b>
                   <small className="aw-gw-proposal-meta">
                     Proposed by {p.mine ? "you" : p.proposer} · {p.yes}/{detail.threshold} approved{p.no ? ` · ${p.no} no` : ""} · {PROPOSAL_STATUS[p.status] ?? p.status}
@@ -1436,19 +1498,19 @@ export function LiveGroups({ initialCreateOpen = false, joinToken = null }: { in
               >
                 Leave group
               </Button>
-              {detail.myRole === "ADMIN" && !detail.company && (
+              {detail.myRole === "ADMIN" && detail.company?.kind !== "COMPANY" && (
                 <Button
                   variant="danger"
                   disabled={!!busy}
                   onClick={() => {
-                    if (!window.confirm(`Delete "${detail.name}" for everyone? Open votes end; drafts stay with their proposers.`)) return;
+                    if (!window.confirm(`Dissolve "${detail.name}" for everyone? Open votes end; drafts stay with their proposers.${detail.company ? " The group wallet must be empty (pay it out first)." : ""}`)) return;
                     void run("delete", () => send(`/api/groups/${detail.id}`, "DELETE"), async () => {
                       setSelected(null);
                       await reload();
                     });
                   }}
                 >
-                  Delete group
+                  Dissolve group
                 </Button>
               )}
             </div>
@@ -1467,15 +1529,32 @@ export function LiveGroups({ initialCreateOpen = false, joinToken = null }: { in
 type Summary = {
   currency: "THB" | "CNY";
   totals: { income: number; spent: number; refunds: number; net: number; openingDeposits: number };
-  months: { month: string; income: number; spent: number; refunds: number }[];
+  months: {
+    month: string;
+    income: number;
+    spent: number;
+    refunds: number;
+    dealIncome: number;
+    transfersIn: number;
+    dealSpent: number;
+    transfersOut: number;
+    topups: number;
+    count: number;
+  }[];
   deals: { title: string; spent: number; refunded: number }[];
   tax: { kind: string; year: number; income: number; taxable: number; tax: number; vatWarning: string | null; notes: string[] } | null;
 };
 
 export function LiveSummary() {
   const lang = useLang();
-  const { wallet, drafts } = useAppData();
-  const { data, error } = useApi<Summary>("/api/summary");
+  const { wallet, drafts, me } = useAppData();
+  // Keyed by the wallet being viewed, re-read every 30 s and whenever its balance moves.
+  const { data, error, reload } = useApi<Summary>(`/api/summary?as=${me?.acting?.companyId ?? "me"}`, 30_000);
+  const balanceKey = (me?.accounts ?? []).map((a) => a.balance).join(",");
+  useEffect(() => {
+    if (balanceKey) void reload();
+  }, [balanceKey, reload]);
+  const [hover, setHover] = useState<number | null>(null);
   const [ai, setAi] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
@@ -1520,8 +1599,8 @@ export function LiveSummary() {
         <div className="aw-summary-metrics">
           {(
             [
-              ["Received", data?.totals.income, "Paid to you as a seller", "green"],
-              ["Spent", data?.totals.spent, "Locked into deals from your wallet", "red"],
+              ["Received", data?.totals.income, "Paid to you by deals and transfers", "green"],
+              ["Spent", data?.totals.spent, "Locked into deals and sent to people", "red"],
               ["Locked now", locked, "Still in escrow", "yellow"],
               ["Refunded", data?.totals.refunds, "Came back to your wallet", "blue"],
             ] as const
@@ -1580,16 +1659,64 @@ export function LiveSummary() {
               <i className="green-dot" /> Received <i className="red-dot" /> Spent
             </span>
           </header>
-          <div className="aw-summary-bars">
-            {(data?.months ?? []).map((m) => (
-              <div className="aw-summary-bar-group" key={m.month}>
-                <div className="aw-summary-bars-pair">
-                  <i style={{ height: `${Math.round((m.income / max) * 100)}px` }} />
-                  <i style={{ height: `${Math.round((m.spent / max) * 100)}px` }} />
+          <div className="aw-summary-bars" onMouseLeave={() => setHover(null)}>
+            {(data?.months ?? []).map((m, i) => {
+              const label = new Date(`${m.month}-01T00:00:00Z`).toLocaleDateString(lang === "th" ? "th-TH" : "en-US", { month: "short", year: "numeric", timeZone: "UTC" });
+              const rows = (
+                [
+                  ["Paid to you by deals", m.dealIncome, "green"],
+                  ["Sent to you", m.transfersIn, "green"],
+                  ["Locked into deals", m.dealSpent, "red"],
+                  ["You sent", m.transfersOut, "red"],
+                  ["Refunded", m.refunds, "blue"],
+                  ["Topped up", m.topups, "blue"],
+                ] as const
+              ).filter(([, v]) => v > 0);
+              return (
+                <div
+                  className={`aw-summary-bar-group${hover === i ? " hover" : ""}`}
+                  key={m.month}
+                  tabIndex={0}
+                  aria-label={`${label}: received ${tokenMoney(m.income, c)}, spent ${tokenMoney(m.spent, c)}`}
+                  onMouseEnter={() => setHover(i)}
+                  onFocus={() => setHover(i)}
+                  onBlur={() => setHover(null)}
+                >
+                  {hover === i && (
+                    <div className={`aw-summary-tip${i >= (data?.months.length ?? 0) - 2 ? " right" : ""}`} role="tooltip">
+                      <b>{label}</b>
+                      <p>
+                        <span>Received</span>
+                        <strong className="green">{tokenMoney(m.income, c)}</strong>
+                      </p>
+                      <p>
+                        <span>Spent</span>
+                        <strong className="red">{tokenMoney(m.spent, c)}</strong>
+                      </p>
+                      <p>
+                        <span>Net</span>
+                        <strong>{tokenMoney(m.income + m.refunds - m.spent, c)}</strong>
+                      </p>
+                      {rows.length > 0 && <hr />}
+                      {rows.map(([k, v, tone]) => (
+                        <p key={k} className="sub">
+                          <span>{k}</span>
+                          <strong className={tone}>{tokenMoney(v, c)}</strong>
+                        </p>
+                      ))}
+                      <small>
+                        {m.count} transaction{m.count === 1 ? "" : "s"}
+                      </small>
+                    </div>
+                  )}
+                  <div className="aw-summary-bars-pair">
+                    <i style={{ height: `${m.income > 0 ? Math.max(2, Math.round((m.income / max) * 100)) : 0}%` }} />
+                    <i style={{ height: `${m.spent > 0 ? Math.max(2, Math.round((m.spent / max) * 100)) : 0}%` }} />
+                  </div>
+                  <small>{label}</small>
                 </div>
-                <small>{m.month}</small>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
         {data?.tax && (
@@ -1666,6 +1793,13 @@ export function LiveSummary() {
 
 type DealDetail = {
   id: number;
+  /** Who made the offer: while it is Proposed, only the other side can accept it. */
+  offeredBy: "me" | "them";
+  /** The other side has no account and this user invited them: their private link. */
+  invite: { kind: "seller" | "buyer"; name: string; link: string | null; expiresAt: string; linked: boolean } | null;
+  witnesses?: { side: string; name: string; contact: string; mine: boolean }[];
+  /** This offer was withdrawn and replaced by an amended one. */
+  replacedBy?: number | null;
   title: string;
   summary: string | null;
   kind: "HIRE" | "GOODS";
@@ -1693,6 +1827,8 @@ type DealDetail = {
     moves: string[];
     delivers: "file" | "parcel" | "note";
     canPreview: boolean;
+    canMockup?: boolean;
+    deposit?: boolean;
     delivery: {
       note: string;
       fileName: string | null;
@@ -1909,7 +2045,7 @@ function DeliverForm({ dealId, index, parcel, onDone }: { dealId: number; index:
 type Parcel = NonNullable<NonNullable<DealDetail["milestones"][number]["delivery"]>["parcel"]>;
 
 /** Where the parcel is: the carrier's tracking events as a timeline (Napat's v0.8 layout). */
-function ParcelPanel({ p, shipTo, role, reviewing }: { p: Parcel; shipTo: string | null; role: "buyer" | "seller"; reviewing: boolean }) {
+function ParcelPanel({ p, shipTo, role, reviewing, onArrive }: { p: Parcel; shipTo: string | null; role: "buyer" | "seller"; reviewing: boolean; onArrive?: () => void }) {
   const t = (iso: string) => new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   // Events arrive newest first; the timeline reads oldest first, ending at the latest one.
   const events = [...p.events].reverse();
@@ -1964,6 +2100,11 @@ function ParcelPanel({ p, shipTo, role, reviewing }: { p: Parcel; shipTo: string
         <p className="aw-parcel-ok">{role === "buyer" && reviewing ? "✓ Delivered. Check the item, then approve to pay the seller (or dispute)." : "✓ Delivered."}</p>
       )}
       {p.delivered === false && role === "buyer" && reviewing && <p>Not delivered yet. Approve only once you have the item.</p>}
+      {p.tracked && !p.delivered && onArrive && (
+        <button type="button" className="aw-parcel-test" onClick={onArrive}>
+          ⚡ Deliver now (test mode)
+        </button>
+      )}
     </div>
   );
 }
@@ -2056,7 +2197,73 @@ function NoteForm({ dealId, kind, index, deadline, onDone, onCancel }: { dealId:
   );
 }
 
+/** The private link for the other side of the deal (made when the deal was confirmed). */
+function InviteLinkCard({ dealId, invite, onDone }: { dealId: number; invite: NonNullable<DealDetail["invite"]>; onDone: () => Promise<void> }) {
+  const [link, setLink] = useState<string | null>(invite.link);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const shown = link ?? invite.link;
+  return (
+    <section className="aw-invite-link-card">
+      <div>
+        <b>
+          {invite.kind === "seller" ? "Seller link" : "Buyer link"} for {invite.name}
+        </b>
+        <small>
+          {invite.linked
+            ? "They opened it signed in: the deal is linked to their account."
+            : invite.kind === "seller"
+              ? "No account needed: they accept, deliver and get paid on this page. Send it to them privately."
+              : "No account needed: they pay by card and approve the delivery on this page. Send it to them privately."}{" "}
+          Works until {new Date(invite.expiresAt).toLocaleDateString()}.
+        </small>
+      </div>
+      {shown ? (
+        <div className="aw-invite-link-row">
+          <input readOnly value={shown} onFocus={(e) => e.currentTarget.select()} aria-label="Private link" />
+          <Button
+            variant="outline"
+            onClick={() => {
+              void navigator.clipboard.writeText(shown);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            }}
+          >
+            {copied ? "Copied" : "Copy"}
+          </Button>
+        </div>
+      ) : (
+        <small>This link was made before links were kept here: make a new one below.</small>
+      )}
+      <button
+        type="button"
+        className="aw-invite-link-new"
+        disabled={busy}
+        onClick={async () => {
+          if (shown && !window.confirm("Make a new link? The old one stops working.")) return;
+          setBusy(true);
+          setErr(null);
+          try {
+            setLink((await send<{ link: string }>(`/api/deals/${dealId}/invite-link`, "POST")).link);
+            await onDone();
+          } catch (e) {
+            setErr((e as Error).message);
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        {busy ? "…" : shown ? "Make a new link (the old one stops working)" : "Make a new link"}
+      </button>
+      {err && <p className="aw-bank-error">{err}</p>}
+    </section>
+  );
+}
+
 export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: string) => void }) {
+  const [templateMsg, setTemplateMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [templateFrom, setTemplateFrom] = useState<TemplatePayload | null>(null);
   const lang = useLang();
   const { me, refresh } = useAppData();
   const id = Number(dealId.replace(/\D/g, ""));
@@ -2095,10 +2302,32 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
               {data?.demoSeller ? " (acts automatically for the demo)" : ""} · review window {data?.reviewHours ?? "…"} h
             </p>
           </div>
-          <Button variant="outline" onClick={() => go("ดีลทั้งหมด")}>
-            ← All deals
-          </Button>
+          <div className="aw-d012-head-actions">
+            <Button
+              variant="outline"
+              disabled={!data}
+              onClick={() =>
+                data &&
+                setTemplateFrom({
+                  name: data.title,
+                  side: data.role === "buyer" ? "BUY" : "SELL",
+                  kind: data.kind,
+                  title: data.title,
+                  summary: data.summary ?? "",
+                  milestones: data.milestones.map((m) => ({ name: m.name, amount: String(Number(m.amount)), delivery: m.delivers, acceptance: m.acceptance ?? "", dueDays: null })),
+                })
+              }
+            >
+              ☆ Save as template
+            </Button>
+            <Button variant="outline" onClick={() => go("ดีลทั้งหมด")}>
+              ← All deals
+            </Button>
+          </div>
         </header>
+        {templateMsg && <p className={templateMsg.ok ? "aw-live-ok" : "aw-bank-error"}>{templateMsg.text}</p>}
+        {templateFrom && <SaveTemplateDialog payload={templateFrom} currency={c} onClose={() => setTemplateFrom(null)} onSaved={(text) => setTemplateMsg({ ok: true, text })} />}
+        {data?.invite && <InviteLinkCard dealId={id} invite={data.invite} onDone={reload} />}
         {error && <p className="aw-bank-error">{error}</p>}
         {!data && !error && <Loading block text="Reading the deal from the chain…" />}
         {note}
@@ -2141,7 +2370,18 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
               </div>
             );
           })()}
+        {data?.replacedBy != null && (
+          <p className="aw-dd-note">
+            ✎ This offer was changed: it was withdrawn and replaced by <a href={`/deals/D-${data.replacedBy}`}>D-{data.replacedBy}</a> (same person, same link).
+          </p>
+        )}
         {data?.summary && <p>{data.summary}</p>}
+        {data && data.status !== "Cancelled" && (
+          <div className="aw-deal-paper">
+            <DealDocuments dealId={id} milestones={data.milestones} />
+            <WitnessPanel dealId={id} role={data.role} witnesses={data.witnesses ?? []} onDone={reload} />
+          </div>
+        )}
         {data?.notes
           ?.filter((n) => n.kind === "REVISION")
           .map((n, i) => (
@@ -2154,9 +2394,16 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
             <section className="aw-d012-card" key={m.index}>
               <h2>
                 {m.index + 1}. {m.name}
+                {m.deposit && <span className="aw-deposit-tag">💰 Deposit · paid on signing</span>}
               </h2>
               <div className="aw-d012-payout">
-                <span>{(data.role === "seller" ? SELLER_STEP : STEP)[m.status] ?? m.status}</span>
+                <span>
+                  {data.status === "Proposed"
+                    ? data.offeredBy === "me"
+                      ? `Starts when ${data.counterpartyLabel} accepts${data.role === "seller" ? " and pays" : ""}`
+                      : "Starts when you accept"
+                    : ((data.role === "seller" ? SELLER_STEP : STEP)[m.status] ?? m.status)}
+                </span>
                 <b>{tokenMoney(m.amount, c)}</b>
               </div>
               {m.acceptance && <p>Acceptance: {m.acceptance}</p>}
@@ -2177,6 +2424,7 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
                       <small>Watermarked, reduced preview. The original unlocks once you approve and the key is released.</small>
                     </div>
                   )}
+                  {m.canMockup && <SiteMockup src={`/api/deals/${id}/site/${m.index}`} name={m.delivery.fileName ?? "website"} />}
                   {m.canDownload ? (
                     <>
                       <br />
@@ -2189,7 +2437,15 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
                   )}
                 </div>
               )}
-              {m.delivery?.parcel && <ParcelPanel p={m.delivery.parcel} shipTo={data.shipTo} role={data.role} reviewing={m.status === "Delivered"} />}
+              {m.delivery?.parcel && (
+                <ParcelPanel
+                  p={m.delivery.parcel}
+                  shipTo={data.shipTo}
+                  role={data.role}
+                  reviewing={m.status === "Delivered"}
+                  onArrive={() => void run(`parcel${m.index}`, () => send(`/api/deals/${id}/parcel`, "POST", { index: m.index }), after)}
+                />
+              )}
               {!m.delivery?.parcel && m.delivers === "parcel" && data.shipTo && data.role === "seller" && (
                 <p>
                   📦 Ship to: <MaskedAddress text={data.shipTo} />

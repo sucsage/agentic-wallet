@@ -1,5 +1,7 @@
 "use client";
 
+import { TwoFactorGate } from "./two-factor";
+import { UiScale } from "./ui-scale";
 import { type ReactNode, useEffect, useState } from "react";
 import { useAppRouter as useRouter, useNavigationPending } from "./navigation";
 import { LoadingSkeleton } from "./loading-skeleton";
@@ -8,7 +10,7 @@ import { AppDataProvider, useAppData } from "./app-data";
 import { BankAuthorizeLive, LiveChat, LiveDeals, LivePrivacy } from "./mockup-live";
 import { LiveApprovals, LiveDealDetail, LiveFriends, LiveGroups, LivePolicy, LiveSummary } from "./mockup-live-2";
 import { translateMockupText, useLang } from "@/lib/i18n";
-import { AuthScreen, OnboardingScreen, ResetPasswordScreen } from "./onboarding";
+import { AuthScreen, OnboardingScreen, ResetPasswordScreen, safeNext } from "./onboarding";
 import { Header, Loading, SIDEBAR_GROUPS, SidebarIcon, type ScreenName } from "./mockup-ui";
 import { LandingScreen } from "./mockup-screens";
 import type { BankChoice } from "./mockup-screens";
@@ -30,6 +32,13 @@ export function MockupApp({ initialRoute = "landing", initialBank = "thai", init
   const pending = useNavigationPending();
   const [route, setRoute] = useState<Route>(initialScreen ?? (initialRoute === "authorize" ? "bank-authorize" : initialRoute === "chat" ? "สร้างดีล" : initialRoute === "deals" ? "ดีลทั้งหมด" : initialRoute === "deal-detail" ? `รายละเอียดดีล ${initialDealId}` : initialRoute));
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  // On the AI chat the menu starts closed and opens while hovered (as an overlay, so the chat does
+  // not move); its toggle pins it open there. Other pages keep the toggle as it was.
+  const onChat = route === "สร้างดีล";
+  const [chatMenuPinned, setChatMenuPinned] = useState(false);
+  const [menuPeek, setMenuPeek] = useState(false);
+  const menuOpen = onChat ? chatMenuPinned || menuPeek : sidebarOpen;
+  const toggleMenu = () => (onChat ? setChatMenuPinned((v) => !v) : setSidebarOpen((open) => !open));
   const [selectedBank, setSelectedBank] = useState<BankChoice>(initialBank);
   const lang = useLang();
   const goToScreen = (next: string) => {
@@ -52,8 +61,13 @@ export function MockupApp({ initialRoute = "landing", initialBank = "thai", init
   useEffect(() => {
     if (isPending) return;
     // App screens need a bank sign-in; a signed-in user skips the login page.
-    if (isApp && !session) router.replace("/login");
-    if (route === "login" && session) router.replace("/chat");
+    if (isApp && !session) router.replace(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+    if (route === "login" && session) {
+      // Back to the page the user came from, if any (src/proxy.ts, a seller invite; see AuthScreen).
+      const next = safeNext(new URLSearchParams(window.location.search).get("next"));
+      if (next?.startsWith("/invite/")) window.location.assign(next);
+      else router.replace(next ?? "/chat");
+    }
   }, [isApp, isPending, route, router, session]);
   const screen = () => {
     switch (route) {
@@ -85,13 +99,14 @@ export function MockupApp({ initialRoute = "landing", initialBank = "thai", init
   };
 
   return <div className={`aw-app aw-v08${route === "landing" ? " aw-app-landing" : ""}`}>
+    <UiScale />
     {route !== "bank-authorize" && <Header onLogin={openLogin} onSignup={openLogin} authenticated={isApp} landing={route === "landing"} authPage={route === "login" || route === "reset-password"} />}
     {route === "landing" && <LandingScreen onStart={openLogin} />}
     {route === "login" && <AuthScreen onSignedIn={() => router.replace("/chat")} />}
     {route === "reset-password" && <ResetPasswordScreen />}
     {route === "bank-authorize" && <BankAuthorizeLive bank={selectedBank} onCancel={() => router.push("/login")} onContinue={enterApp} />}
     {isApp && !session && <main className="aw-main"><Loading block text={isPending ? "Checking your sign-in…" : "Taking you to sign in…"} /></main>}
-    {isApp && session && <AppDataProvider enabled><OnboardingGate><div className={`aw-workspace${route === "สร้างดีล" ? " aw-ai-chat-workspace" : ""}${sidebarOpen ? "" : " aw-sidebar-collapsed"}`}><aside className="aw-sidebar"><div className="aw-sidebar-menu-head"><small>{translateMockupText("MENU", lang)}</small><button className={`aw-sidebar-toggle${sidebarOpen ? " is-open" : " is-closed"}`} type="button" aria-label={translateMockupText(sidebarOpen ? "ซ่อนเมนูด้านข้าง" : "แสดงเมนูด้านข้าง", lang)} aria-expanded={sidebarOpen} title={translateMockupText(sidebarOpen ? "ซ่อนเมนู" : "แสดงเมนู", lang)} onClick={() => setSidebarOpen((open) => !open)}><svg className="aw-menu-glyph" viewBox="0 0 18 18" fill="none" aria-hidden="true"><rect x="2.25" y="2.75" width="13.5" height="12.5" rx="2.25" /><path d="M7 3v12.5" /><path className="aw-menu-chevron" d="m11.5 6.5-2.25 2.5 2.25 2.5" /></svg></button></div>{SIDEBAR_GROUPS.map(group => <nav className="aw-sidebar-group" key={group.title}><small className="aw-nav-title">{translateMockupText(group.title, lang)}</small>{group.items.map(item => <button key={item.label} title={translateMockupText(item.label, lang)} disabled={"disabled" in item && Boolean(item.disabled)} className={`aw-nav-item${item.route === route || (((typeof route === "string" && route.startsWith("รายละเอียดดีล ")) || route === "คำตัดสิน AI") && item.route === "ดีลทั้งหมด") ? " active" : ""}${"disabled" in item && item.disabled ? " disabled" : ""}`} onClick={() => { if (!item.route) return; if (item.route === "สร้างดีล") router.push("/chat"); else if (item.route === "ดีลทั้งหมด") router.push("/deals"); else { const path = SECTION_PATHS[item.route as ScreenName]; if (path) router.push(path); setRoute(item.route as Route); } }}><SidebarIcon name={item.icon} /><span className="aw-nav-label">{translateMockupText(item.label, lang)}</span><NavBadge route={item.route} /></button>)}</nav>)}<SidebarProfile onOpen={() => { router.push("/profile"); setRoute("ความเป็นส่วนตัว"); }} /></aside><main className={`aw-main${route === "สร้างดีล" ? " aw-main-chat" : route === "ดีลทั้งหมด" ? " aw-main-deals" : (typeof route === "string" && route.startsWith("รายละเอียดดีล ")) ? " aw-main-deal-detail" : route === "คำตัดสิน AI" ? " aw-main-decision" : route === "รออนุมัติ" ? " aw-main-approvals" : route === "กระเป๋" ? " aw-main-summary" : route === "เพื่อน" ? " aw-main-friends" : route === "กลุ่ม" ? " aw-main-groups" : route === "นโยบาย & Allowlist" ? " aw-main-policy" : ""}`}><div className="aw-screen">{pending ? <LoadingSkeleton /> : screen()}</div></main></div></OnboardingGate></AppDataProvider>}
+    {isApp && session && <TwoFactorGate><AppDataProvider enabled><OnboardingGate><div className={`aw-workspace${route === "สร้างดีล" ? " aw-ai-chat-workspace" : ""}${menuOpen ? "" : " aw-sidebar-collapsed"}${onChat && menuPeek && !chatMenuPinned ? " aw-sidebar-peek" : ""}`}><aside className="aw-sidebar" onMouseEnter={() => onChat && window.matchMedia("(hover: hover) and (min-width: 1051px)").matches && setMenuPeek(true)} onMouseLeave={() => setMenuPeek(false)}><div className="aw-sidebar-menu-head"><small>{translateMockupText("MENU", lang)}</small><button className={`aw-sidebar-toggle${menuOpen ? " is-open" : " is-closed"}${onChat && chatMenuPinned ? " is-pinned" : ""}`} type="button" aria-label={translateMockupText(onChat ? (chatMenuPinned ? "Unpin the menu" : "Keep the menu open") : sidebarOpen ? "ซ่อนเมนูด้านข้าง" : "แสดงเมนูด้านข้าง", lang)} aria-expanded={menuOpen} aria-pressed={onChat ? chatMenuPinned : undefined} title={translateMockupText(onChat ? (chatMenuPinned ? "Unpin the menu" : "Keep the menu open") : sidebarOpen ? "ซ่อนเมนู" : "แสดงเมนู", lang)} onClick={toggleMenu}><svg className="aw-menu-glyph" viewBox="0 0 18 18" fill="none" aria-hidden="true"><rect x="2.25" y="2.75" width="13.5" height="12.5" rx="2.25" /><path d="M7 3v12.5" /><path className="aw-menu-chevron" d="m11.5 6.5-2.25 2.5 2.25 2.5" /></svg></button></div>{SIDEBAR_GROUPS.map(group => <nav className="aw-sidebar-group" key={group.title}><small className="aw-nav-title">{translateMockupText(group.title, lang)}</small>{group.items.map(item => <button key={item.label} title={translateMockupText(item.label, lang)} disabled={"disabled" in item && Boolean(item.disabled)} className={`aw-nav-item${item.route === route || (((typeof route === "string" && route.startsWith("รายละเอียดดีล ")) || route === "คำตัดสิน AI") && item.route === "ดีลทั้งหมด") ? " active" : ""}${"disabled" in item && item.disabled ? " disabled" : ""}`} onClick={() => { if (!item.route) return; if (item.route === "สร้างดีล") router.push("/chat"); else if (item.route === "ดีลทั้งหมด") router.push("/deals"); else { const path = SECTION_PATHS[item.route as ScreenName]; if (path) router.push(path); setRoute(item.route as Route); } }}><SidebarIcon name={item.icon} /><span className="aw-nav-label">{translateMockupText(item.label, lang)}</span><NavBadge route={item.route} /></button>)}</nav>)}<SidebarProfile onOpen={() => { router.push("/profile"); setRoute("ความเป็นส่วนตัว"); }} /></aside><main className={`aw-main${route === "สร้างดีล" ? " aw-main-chat" : route === "ดีลทั้งหมด" ? " aw-main-deals" : (typeof route === "string" && route.startsWith("รายละเอียดดีล ")) ? " aw-main-deal-detail" : route === "คำตัดสิน AI" ? " aw-main-decision" : route === "รออนุมัติ" ? " aw-main-approvals" : route === "กระเป๋" ? " aw-main-summary" : route === "เพื่อน" ? " aw-main-friends" : route === "กลุ่ม" ? " aw-main-groups" : route === "นโยบาย & Allowlist" ? " aw-main-policy" : ""}`}><div className="aw-screen">{pending ? <LoadingSkeleton /> : screen()}</div></main></div></OnboardingGate></AppDataProvider></TwoFactorGate>}
   </div>;
 }
 
@@ -107,7 +122,7 @@ function SidebarProfile({ onOpen }: { onOpen: () => void }) {
   // Acting as a company: the sidebar says so, with the company's account.
   const name = me?.acting ? me.acting.name : (me?.user.name ?? "…");
   const account = me?.accounts.find((a) => a.isDefault) ?? me?.accounts[0];
-  const kind = me?.acting ? `Company · ${me.user.name}` : me?.bank.customerType === "COMPANY" ? "Company" : "Personal";
+  const kind = me?.acting ? `${me.acting.kind === "GROUP" ? "Group" : "Company"} · ${me.user.name}` : me?.bank.customerType === "COMPANY" ? "Company" : "Personal";
   return <button className="aw-sidebar-profile" type="button" title={`${name} · ${kind} ${account?.accountNo ?? ""}`} onClick={onOpen}><span className="aw-sidebar-avatar">{name.slice(0, 1).toUpperCase()}</span><span className="aw-profile-copy"><b>{name}</b><small>{translateMockupText(`${kind} · ${account?.accountNo ?? ""}`, lang)}</small></span></button>;
 }
 

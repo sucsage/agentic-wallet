@@ -23,8 +23,10 @@ export type AccountView = {
 
 export type CompanyView = {
   id: string;
+  /** COMPANY: a registered company; GROUP: a group of friends' shared wallet. */
+  kind: "COMPANY" | "GROUP";
   name: string;
-  maskedTaxId: string;
+  maskedTaxId: string | null;
   currency: "THB" | "CNY";
   wallet: string;
   groupId: string;
@@ -42,7 +44,7 @@ export type Me = {
   accounts: AccountView[];
   wallets: { address: string; role: string; label: string | null; openProposals: number; createdAt: string }[];
   /** The company the user acts as ("Acting as"); its account and wallet are the ones above. */
-  acting?: { companyId: string; name: string; groupId: string; threshold: number; maskedTaxId: string } | null;
+  acting?: { companyId: string; kind: "COMPANY" | "GROUP"; name: string; groupId: string; threshold: number; maskedTaxId: string | null } | null;
   companies?: CompanyView[];
   /** Present until the wallet account is open: the KYC application's status. */
   onboarding?: { status: "NOT_STARTED" | "PENDING" | "APPROVED" | "REJECTED"; note: string | null };

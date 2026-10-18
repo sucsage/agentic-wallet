@@ -154,3 +154,27 @@ The agent's own key calls `agentTransfer(0xBAd…Bad, 5000)`, skipping the AI an
 |---|---|---|
 | [`0x7f47a0c1…011f3191`](https://agentic-wallet-inky.vercel.app/explorer/tx/0x7f47a0c19501d7f7ae5f19863e99009eef2b3cb2c2365939d360e9c4011f3191) | #37040 | agentTransfer(0xBAd0000000000000000000000000000000000Bad, 500000) from the agent key · **reverted** |
 
+## Added on 2026-10-17 (FileEscrow `0x4283A0CF5DB1b490c9F334A768BE30Cd7d3c7e86`)
+
+### Deposit paid on signing (deal 51)
+
+A buyer hired a seller with a 100 THB deposit (milestone 1, `deposit: true` in the hashed terms) and a 200 THB web page. The moment the seller accepted, the server delivered and released the deposit in the next two blocks, with no delivery by the seller. The page (an HTML file) was then delivered and shown to the buyer in a sandboxed device mockup; the test ended with the seller refunding that milestone.
+
+| Tx | Block | What |
+|---|---|---|
+| [`0x7399ed3b…36a7d70a`](https://agentic-wallet-inky.vercel.app/explorer/tx/0x7399ed3b0238220a638ec9b4ad986827ab0b53814dbd1d97f3f189d536a7d70a) | #118938 | OfferCreated · deal 51 (buyer locks 300 THB) |
+| [`0xea13cd45…aab0912a`](https://agentic-wallet-inky.vercel.app/explorer/tx/0xea13cd453e393913d25682d43ef609d8a4f6cab909d300cc2695a9c4aab0912a) | #118943 | OfferAccepted · the contract is signed |
+| [`0x24c29f63…73d9a194`](https://agentic-wallet-inky.vercel.app/explorer/tx/0x24c29f635e8a1eb8fce923c5a3b5426e697c45d7c2d7afe068d47db173d9a194) | #118944 | Delivered · milestone 1 (deposit, recorded automatically) |
+| [`0x913bc90b…2e6f20e2`](https://agentic-wallet-inky.vercel.app/explorer/tx/0x913bc90bac869dec11e876fc714b2d3f0d573f2ec235f97595b5fc4a2e6f20e2) | #118945 | Released · deposit paid to the seller |
+| [`0x292fdc1e…112895fd`](https://agentic-wallet-inky.vercel.app/explorer/tx/0x292fdc1e8b54b6bd189419fe941a3f19efb5e9cf13cf2955215cb6c1112895fd) | #118958 | Delivered · milestone 2 (landing.html, previewed in the mockup) |
+| [`0x1b7c2d47…5375e63f`](https://agentic-wallet-inky.vercel.app/explorer/tx/0x1b7c2d47ad3ef474b9a4241839fc0944faadc1cae5c2ffb46c45b4665375e63f) | #119033 | Refunded · milestone 2 (end of test) |
+
+### An unaccepted offer amended, not duplicated (deal 34 → deal 50)
+
+The seller asked the AI to change D-34's price to 250 THB. The AI made an amendment preview (`amend_deal`); on Confirm the old offer was withdrawn and the new one made in the next block, to the same invited buyer and the same private link.
+
+| Tx | Block | What |
+|---|---|---|
+| [`0xc3ba9f16…295d9c5d`](https://agentic-wallet-inky.vercel.app/explorer/tx/0xc3ba9f168eeb8edc3a44273832dbf2b154c8bee6e6163830010d919c295d9c5d) | #118869 | OfferCancelled · deal 34 (200 THB) withdrawn by the amendment |
+| [`0xa7da58c2…8d4a595a`](https://agentic-wallet-inky.vercel.app/explorer/tx/0xa7da58c26b1a433890f9694bd0f2a110bd2cbd3f9baf73b0707e7b158d4a595a) | #118870 | OfferCreated · deal 50 (250 THB) replaces it |
+| [`0x611119fd…fd57bfcc`](https://agentic-wallet-inky.vercel.app/explorer/tx/0x611119fde31f21b07611e65dad32240cc88e5538b7959e44364e5fe0fd57bfcc) | #119034 | OfferCancelled · deal 50 (end of test) |

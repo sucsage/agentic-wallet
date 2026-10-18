@@ -1,7 +1,7 @@
 import type { ButtonHTMLAttributes, CSSProperties, ReactNode } from "react";
 import { setLang, translateMockupText, useLang } from "@/lib/i18n";
 import { useAppRouter } from "./navigation";
-import { NotificationsButton, SearchBox } from "./header-tools";
+import { NotificationsButton, SearchBox, WalletSwitcher } from "./header-tools";
 
 export const NAV_GROUPS = [
   { title: "ดีล", items: ["ภาพรวม", "ดีลทั้งหมด", "สร้างดีล", "รายละเอียดดีล", "ส่งงาน (ผู้ขาย)", "รับข้อเสนอ", "ข้อพิพาท", "คำตัดสิน AI"] },
@@ -16,7 +16,6 @@ export const SIDEBAR_GROUPS = [
   { title: "Main", items: [
     { label: "AI Chat", route: "สร้างดีล", icon: "bot" },
     { label: "Deals", route: "ดีลทั้งหมด", icon: "file" },
-    { label: "Approvals", route: "รออนุมัติ", icon: "check", badge: "3" },
   ] },
   { title: "Money", items: [
     { label: "Summary", route: "กระเป๋", icon: "chart" },
@@ -26,7 +25,7 @@ export const SIDEBAR_GROUPS = [
     { label: "Groups", route: "กลุ่ม", icon: "users" },
   ] },
   { title: "Settings", items: [
-    { label: "Policy & Allowlist", route: "นโยบาย & Allowlist", icon: "shield" },
+    { label: "Policy & Allow transfer list", route: "นโยบาย & Allowlist", icon: "shield" },
     { label: "Profile & Privacy", route: "ความเป็นส่วนตัว", icon: "lock" },
   ] },
 ] as const;
@@ -81,5 +80,5 @@ export function Header({ onLogin, onSignup, authenticated = false, landing = fal
   const router = useAppRouter();
   const lang = useLang();
   const milestonePublic = landing || authPage;
-  return <header className={`aw-topbar ${authenticated ? "aw-topbar-workspace" : "aw-topbar-public"}${landing ? " aw-topbar-landing" : ""}${authPage ? " aw-topbar-auth-page" : ""}`}><Brand onClick={() => router.push("/")} label={milestonePublic || authenticated ? "MilestonePay" : "Agentic Wallet"} />{authenticated ? <><SearchBox placeholder={translateMockupText("ค้นหาดีล รายชื่อผู้ติดต่อ กลุ่ม...", lang)} /><div className="aw-top-actions aw-workspace-actions"><button className="aw-lang-toggle" type="button" aria-label={translateMockupText("เปลี่ยนภาษา", lang)} title={translateMockupText("เปลี่ยนภาษา", lang)} onClick={() => setLang(lang === "en" ? "th" : "en")}>{lang === "en" ? "TH" : "EN"}</button><NotificationsButton label={translateMockupText("การแจ้งเตือน", lang)} /><Button variant="outline" className="aw-feedback-button">{translateMockupText("ข้อเสนอแนะ", lang)}</Button><button className="aw-avatar-button" type="button" aria-label={translateMockupText("บัญชีของฉัน", lang)}>ME</button></div></> : milestonePublic ? <><nav className="aw-landing-nav-links"><a href="#how-it-works">{translateMockupText("How it works", lang)}</a><a href="#security">{translateMockupText("Security", lang)}</a><a href="#faq">{translateMockupText("FAQ", lang)}</a></nav><div className="aw-top-actions aw-landing-nav-actions"><button className="aw-lang-toggle aw-public-language" type="button" aria-label="Switch language" title="Switch language" onClick={() => setLang(lang === "en" ? "th" : "en")}>{lang === "en" ? "TH" : "EN"}</button><Button onClick={onLogin}>{translateMockupText("Log in", lang)}</Button></div></> : <div className="aw-top-actions"><button className="aw-lang-toggle" type="button" aria-label={translateMockupText("เปลี่ยนภาษา", lang)} title={translateMockupText("เปลี่ยนภาษา", lang)} onClick={() => setLang(lang === "en" ? "th" : "en")}>{lang === "en" ? "TH" : "EN"}</button><Button variant="outline" className="aw-header-login" onClick={onLogin}>{translateMockupText("เข้าสู่ระบบ", lang)}</Button><Button className="aw-header-signup" onClick={onSignup}>{translateMockupText("เริ่มใช้งาน", lang)}</Button></div>}</header>;
+  return <header className={`aw-topbar ${authenticated ? "aw-topbar-workspace" : "aw-topbar-public"}${landing ? " aw-topbar-landing" : ""}${authPage ? " aw-topbar-auth-page" : ""}`}><Brand onClick={() => router.push("/")} label={milestonePublic || authenticated ? "MilestonePay" : "Agentic Wallet"} />{authenticated ? <><SearchBox placeholder={translateMockupText("ค้นหาดีล รายชื่อผู้ติดต่อ กลุ่ม...", lang)} /><div className="aw-top-actions aw-workspace-actions"><WalletSwitcher /><button className="aw-lang-toggle" type="button" aria-label={translateMockupText("เปลี่ยนภาษา", lang)} title={translateMockupText("เปลี่ยนภาษา", lang)} onClick={() => setLang(lang === "en" ? "th" : "en")}>{lang === "en" ? "TH" : "EN"}</button><NotificationsButton label={translateMockupText("การแจ้งเตือน", lang)} /><Button variant="outline" className="aw-feedback-button">{translateMockupText("ข้อเสนอแนะ", lang)}</Button><button className="aw-avatar-button" type="button" aria-label={translateMockupText("บัญชีของฉัน", lang)}>ME</button></div></> : milestonePublic ? <><nav className="aw-landing-nav-links"><a href="#how-it-works">{translateMockupText("How it works", lang)}</a><a href="#security">{translateMockupText("Security", lang)}</a><a href="#faq">{translateMockupText("FAQ", lang)}</a></nav><div className="aw-top-actions aw-landing-nav-actions"><button className="aw-lang-toggle aw-public-language" type="button" aria-label="Switch language" title="Switch language" onClick={() => setLang(lang === "en" ? "th" : "en")}>{lang === "en" ? "TH" : "EN"}</button><Button onClick={onLogin}>{translateMockupText("Log in", lang)}</Button></div></> : <div className="aw-top-actions"><button className="aw-lang-toggle" type="button" aria-label={translateMockupText("เปลี่ยนภาษา", lang)} title={translateMockupText("เปลี่ยนภาษา", lang)} onClick={() => setLang(lang === "en" ? "th" : "en")}>{lang === "en" ? "TH" : "EN"}</button><Button variant="outline" className="aw-header-login" onClick={onLogin}>{translateMockupText("เข้าสู่ระบบ", lang)}</Button><Button className="aw-header-signup" onClick={onSignup}>{translateMockupText("เริ่มใช้งาน", lang)}</Button></div>}</header>;
 }

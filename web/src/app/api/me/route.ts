@@ -38,7 +38,7 @@ export async function GET() {
         consentedAt: shown.consentedAt,
       },
       acting: company
-        ? { companyId: company.id, name: company.name, groupId: company.groupId, threshold: company.group.threshold, maskedTaxId: company.maskedTaxId }
+        ? { companyId: company.id, kind: company.kind, name: company.name, groupId: company.groupId, threshold: company.group.threshold, maskedTaxId: company.maskedTaxId }
         : null,
       companies,
       accounts: accounts.filter((a) => a.linkedAt).map(accountView),

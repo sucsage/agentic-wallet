@@ -16,6 +16,8 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/groups/[id]">) 
         id: p.id,
         proposerId: p.proposerId,
         title: p.title,
+        side: p.side,
+        payout: p.payout,
         milestones: p.milestones,
         status: p.status,
         dealId: p.dealId,

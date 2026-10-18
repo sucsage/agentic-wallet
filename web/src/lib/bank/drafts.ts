@@ -6,7 +6,7 @@ import { type Address, formatUnits, getAddress, hashTypedData, parseUnits } from
 
 import type { DealDraft, Prisma } from "@/generated/prisma/client";
 
-import { publicClient, roleAddresses } from "../chain";
+import { publicClient, roleAddresses, send } from "../chain";
 import { accountOf } from "./ledger";
 import { agentWalletAbi } from "../abis";
 import { db } from "../db";
@@ -37,6 +37,8 @@ export type DraftMilestone = {
   delivery?: "file" | "parcel" | "note";
   due: string | null;
   acceptance: string;
+  /** A deposit: paid to the seller as soon as the contract is signed (the offer accepted), no delivery needed. First milestone only. */
+  deposit?: boolean;
 };
 
 export const deliveryOf = (m: Pick<DraftMilestone, "hasFile" | "delivery"> | undefined) => m?.delivery ?? (m?.hasFile ? "file" : "note");
@@ -60,6 +62,8 @@ export type DraftView = {
   reviewHours: number;
   status: DealDraft["status"];
   dealId: number | null;
+  /** An amendment of this deal (an offer not accepted yet): confirming replaces it. */
+  replacesDealId: number | null;
   result: unknown;
   createdAt: Date;
 };
@@ -71,7 +75,9 @@ async function sellerAllowed(wallet: Address, seller: Address): Promise<boolean>
 }
 
 export async function draftView(d: DealDraft, sellerLabel = ""): Promise<DraftView> {
-  if (!sellerLabel && getAddress(d.seller) === roleAddresses().contractor) sellerLabel = "Demo contractor";
+  // Someone without an account: their wallet and link are made on Confirm.
+  if (!sellerLabel && d.inviteName) sellerLabel = d.inviteId ? `${d.inviteName} (invited)` : `${d.inviteName} (new · link made on Confirm)`;
+  if (!sellerLabel && d.seller && getAddress(d.seller) === roleAddresses().contractor) sellerLabel = "Demo contractor";
   const units = await walletUnits(getAddress(d.walletAddress));
   const milestones = d.milestones as DraftMilestone[];
   const total = milestones.reduce((t, m) => t + parseUnits(m.amount, units.decimals), 0n);
@@ -92,6 +98,7 @@ export async function draftView(d: DealDraft, sellerLabel = ""): Promise<DraftVi
     reviewHours: d.reviewHours,
     status: d.status,
     dealId: d.dealId,
+    replacesDealId: d.replacesDealId,
     result: d.result,
     createdAt: d.createdAt,
   };
@@ -103,16 +110,20 @@ function termsOf(input: { kind?: string; shipTo?: string | null; title: string; 
   return { ...base, kind: input.kind ?? "HIRE", ...(input.shipTo ? { shipTo: input.shipTo } : {}) };
 }
 
-/** Saves the agent's draft. Refuses sellers the wallet does not allowlist, so approval cannot fail on that. */
+/** Saves the agent's draft as a PREVIEW (nothing exists until the user confirms it). Refuses sellers the wallet does not allowlist, so approval cannot fail on that. */
 export async function createDraft(
   userId: string,
   wallet: Address,
-  input: { seller: string; kind?: "HIRE" | "GOODS"; shipTo?: string | null; title: string; summary: string; reviewHours: number; milestones: DraftMilestone[] },
+  input: { seller: string; inviteName?: string | null; kind?: "HIRE" | "GOODS"; shipTo?: string | null; title: string; summary: string; reviewHours: number; milestones: DraftMilestone[] },
 ): Promise<DealDraft> {
   const units = await walletUnits(wallet);
   if (!units.currency) throw new DraftError("This wallet is not paid from a bank account");
-  const seller = getAddress(input.seller);
-  if (!(await sellerAllowed(wallet, seller))) throw new DraftError(`Seller ${seller} is not in this wallet's allowlist`);
+  // A seller without an account has no wallet yet: it (and their link) is made on Confirm.
+  const seller = input.inviteName ? "" : getAddress(input.seller);
+  // A company's or group's wallet needs no allowlist entry first: its signers' vote approves the
+  // seller, who is added as payee when the vote passes (see allowSellerAfterVote).
+  const shared = await db.company.findUnique({ where: { walletAddress: getAddress(wallet) } });
+  if (seller && !shared && !(await sellerAllowed(wallet, seller as Address))) throw new DraftError(`Seller ${seller} is not in this wallet's allowlist`);
   for (const m of input.milestones) {
     if (parseUnits(m.amount, units.decimals) <= 0n) throw new DraftError(`Milestone "${m.name}" needs a positive amount`);
   }
@@ -121,8 +132,10 @@ export async function createDraft(
   return db.dealDraft.create({
     data: {
       userId,
+      status: "PREVIEW",
       walletAddress: wallet,
       seller,
+      inviteName: input.inviteName?.trim().slice(0, 80) || null,
       kind: input.kind ?? "HIRE",
       shipTo: input.shipTo || null,
       title: input.title,
@@ -141,15 +154,18 @@ export async function createDraft(
 export async function createSellDraft(
   userId: string,
   wallet: Address,
-  input: { buyer: string; kind?: "HIRE" | "GOODS"; shipTo?: string | null; title: string; summary: string; reviewHours: number; milestones: DraftMilestone[] },
+  input: { buyer: string; inviteName?: string | null; kind?: "HIRE" | "GOODS"; shipTo?: string | null; title: string; summary: string; reviewHours: number; milestones: DraftMilestone[] },
 ): Promise<DealDraft> {
   const units = await walletUnits(wallet);
   if (!units.currency) throw new DraftError("This wallet is not paid from a bank account");
-  const buyer = getAddress(input.buyer);
-  if (buyer === wallet) throw new DraftError("You cannot sell to yourself");
-  const buyerAccount = await accountOf(buyer);
-  if (!buyerAccount) throw new DraftError(`Buyer ${buyer} has no Mock Bank wallet`);
-  if (buyerAccount.currency !== units.currency) throw new DraftError(`The buyer banks in ${buyerAccount.currency}, this wallet in ${units.currency}`);
+  // A buyer without an account has no wallet yet: it (and their link) is made on Confirm.
+  const buyer = input.inviteName ? null : getAddress(input.buyer);
+  if (buyer) {
+    if (buyer === wallet) throw new DraftError("You cannot sell to yourself");
+    const buyerAccount = await accountOf(buyer);
+    if (!buyerAccount) throw new DraftError(`Buyer ${buyer} has no Mock Bank wallet`);
+    if (buyerAccount.currency !== units.currency) throw new DraftError(`The buyer banks in ${buyerAccount.currency}, this wallet in ${units.currency}`);
+  }
   for (const m of input.milestones) {
     if (parseUnits(m.amount, units.decimals) <= 0n) throw new DraftError(`Milestone "${m.name}" needs a positive amount`);
   }
@@ -158,10 +174,12 @@ export async function createSellDraft(
   return db.dealDraft.create({
     data: {
       userId,
+      status: "PREVIEW",
       side: "SELL",
       walletAddress: wallet,
       seller: wallet,
       buyer,
+      inviteName: input.inviteName?.trim().slice(0, 80) || null,
       kind: input.kind ?? "HIRE",
       shipTo: input.shipTo || null,
       title: input.title,
@@ -171,6 +189,75 @@ export async function createSellDraft(
       termsHash,
     },
   });
+}
+
+/**
+ * Changing a deal that was confirmed but not accepted yet: a new preview with the same other party
+ * (the same wallet, and the same private link for someone without an account). Confirming it
+ * withdraws the old offer first (approveDraft), so there is never a second deal.
+ */
+export async function createAmendDraft(
+  userId: string,
+  wallet: Address,
+  dealId: number,
+  changes: { kind?: "HIRE" | "GOODS"; shipTo?: string | null; title?: string; summary?: string; reviewHours?: number; milestones?: DraftMilestone[] },
+): Promise<DealDraft> {
+  const { dealForWallet } = await import("./deals");
+  const deal = await dealForWallet(wallet, dealId).catch(() => null);
+  if (!deal) throw new DraftError(`No deal D-${dealId} in this wallet`);
+  if (deal.status !== "Proposed") throw new DraftError(`D-${dealId} was already accepted (${deal.status}): its terms are fixed now. Changes need the other side to agree, e.g. cancel by agreement or a dispute.`);
+  if (deal.offeredBy !== "me") throw new DraftError(`D-${dealId} is the other side's offer: ask them to change it, or decline it`);
+  const old = await db.dealDraft.findFirst({ where: { userId, walletAddress: wallet, dealId }, orderBy: { createdAt: "desc" } });
+  if (!old) throw new DraftError(`D-${dealId} was not made from a draft here, so it cannot be amended`);
+  const units = await walletUnits(wallet);
+  const milestones = changes.milestones ?? (old.milestones as DraftMilestone[]);
+  for (const m of milestones) {
+    if (parseUnits(m.amount, units.decimals) <= 0n) throw new DraftError(`Milestone "${m.name}" needs a positive amount`);
+  }
+  const input = {
+    kind: changes.kind ?? old.kind,
+    shipTo: changes.shipTo === undefined ? old.shipTo : changes.shipTo,
+    title: changes.title ?? old.title,
+    summary: changes.summary ?? old.summary,
+    reviewHours: changes.reviewHours ?? old.reviewHours,
+    milestones,
+  };
+  const termsHash = createHash("sha256").update(JSON.stringify(termsOf(input))).digest("hex");
+  // Earlier amendment previews of the same deal are superseded.
+  await db.dealDraft.updateMany({ where: { userId, replacesDealId: dealId, status: "PREVIEW" }, data: { status: "CANCELLED" } });
+  return db.dealDraft.create({
+    data: {
+      userId,
+      status: "PREVIEW",
+      side: old.side,
+      walletAddress: wallet,
+      seller: old.seller,
+      buyer: old.buyer,
+      inviteName: old.inviteName,
+      inviteId: old.inviteId,
+      kind: input.kind,
+      shipTo: input.shipTo || null,
+      title: input.title,
+      summary: input.summary,
+      milestones: input.milestones as unknown as Prisma.InputJsonValue,
+      reviewHours: input.reviewHours,
+      termsHash,
+      replacesDealId: dealId,
+    },
+  });
+}
+
+/** Withdraws the offer an amendment replaces. Refuses if the other side accepted it meanwhile. */
+async function withdrawReplaced(wallet: Address, d: DealDraft) {
+  if (d.replacesDealId === null || d.status === "FUNDED") return;
+  const { buyerAction, dealForWallet, sellerAction, syncDeal } = await import("./deals");
+  const old = await dealForWallet(wallet, d.replacesDealId).catch(() => null);
+  if (!old || old.status === "Cancelled") return;
+  if (old.status !== "Proposed") throw new DraftError(`The other side already accepted D-${d.replacesDealId}, so it can no longer be changed. Nothing new was created.`);
+  const r = old.role === "buyer" ? await buyerAction(wallet, d.replacesDealId, "cancel") : await sellerAction(wallet, d.replacesDealId, "cancel");
+  if (r.outcome.status !== "success") throw new DraftError(`Could not withdraw D-${d.replacesDealId} first${"error" in r.outcome && r.outcome.error ? `: ${r.outcome.error}` : ""}`);
+  // A purchase's locked money goes back to the wallet before the new one is locked.
+  await syncDeal(wallet, d.replacesDealId).catch((e) => console.error("syncDeal", d.replacesDealId, e));
 }
 
 /** The user approves: sign, debit the bank just in time, lock in FileEscrow. Safe to call again. */
@@ -187,9 +274,10 @@ export async function approveDraft(
   if (!opts.viaGroup && (await db.groupProposal.findFirst({ where: { draftId, status: "OPEN" } }))) {
     throw new DraftError("This draft is waiting for its group's vote. It is locked when enough members approve.");
   }
-  // A company's purchase is locked only by its signers' vote (N of M), never by one member.
-  if (!opts.viaGroup && draft.side === "BUY" && (await db.company.findUnique({ where: { walletAddress: getAddress(wallet) } }))) {
-    throw new DraftError("A company deal needs its signers' approval: submit it for the company vote.");
+  // A company's or group wallet's deal (a purchase, or an offer to sell in its name) happens only
+  // by its signers' vote (N of M), never by one member.
+  if (!opts.viaGroup && (await db.company.findUnique({ where: { walletAddress: getAddress(wallet) } }))) {
+    throw new DraftError("A deal in a company's or group's name needs its signers' approval: submit it for their vote.");
   }
   // One approval at a time (DB-01): overlapping clicks used to sign several mandates and lock the
   // same draft several times. The lease expires on its own if a request dies half way.
@@ -200,13 +288,46 @@ export async function approveDraft(
   if (claimed.count !== 1) throw new DraftError("This draft is already being approved. Wait a few seconds: it is never charged twice.");
   try {
     // Re-read: an approval that just finished may have funded it or stored its mandate.
-    const fresh = await db.dealDraft.findUniqueOrThrow({ where: { id: draft.id } });
+    let fresh = await db.dealDraft.findUniqueOrThrow({ where: { id: draft.id } });
     const done = (fresh.result as { funding?: FundingResult } | null)?.funding;
     if (fresh.status === "FUNDED" && done) return { draft: fresh, funding: done };
+    fresh = await ensureInvite(userId, wallet, fresh);
+    await withdrawReplaced(wallet, fresh);
+    if (opts.viaGroup) await allowSellerAfterVote(wallet, fresh);
     return await approveClaimed(userId, wallet, fresh);
   } finally {
     await db.dealDraft.update({ where: { id: draft.id }, data: { approvingUntil: null } });
   }
+}
+
+/**
+ * Confirming a deal with someone who has no account makes their link now (not when the AI drafted
+ * it): a seller link for a purchase, a buyer link for a sale. Their wallet allows this one as payee,
+ * and the draft then points at it. Done once; a retry reuses the invite.
+ */
+async function ensureInvite(userId: string, wallet: Address, d: DealDraft): Promise<DealDraft> {
+  if (!d.inviteName || d.inviteId) return d;
+  if (d.side === "BUY") {
+    const { InviteError, createInvite } = await import("./invites");
+    const { invite } = await createInvite(userId, wallet, d.inviteName).catch((e) => {
+      throw e instanceof InviteError ? new DraftError(e.message) : e;
+    });
+    return db.dealDraft.update({ where: { id: d.id }, data: { seller: invite.sellerWallet, inviteId: invite.id } });
+  }
+  const { BuyerInviteError, createBuyerInvite } = await import("./buyer-invites");
+  const { invite } = await createBuyerInvite(userId, wallet, d.inviteName).catch((e) => {
+    throw e instanceof BuyerInviteError ? new DraftError(e.message) : e;
+  });
+  return db.dealDraft.update({ where: { id: d.id }, data: { buyer: invite.buyerWallet, inviteId: invite.id } });
+}
+
+/** The signers voted for this purchase: its seller becomes a payee of the shared wallet. */
+async function allowSellerAfterVote(wallet: Address, d: DealDraft) {
+  if (d.side !== "BUY" || !d.seller) return;
+  const seller = getAddress(d.seller);
+  if (await sellerAllowed(wallet, seller)) return;
+  const r = await send("owner", { address: wallet, abi: agentWalletAbi, functionName: "setRecipient", args: [seller, true] });
+  if (r.status !== "success") throw new DraftError(`Could not add the seller as a payee${"error" in r && r.error ? `: ${r.error}` : ""}`);
 }
 
 async function approveClaimed(userId: string, wallet: Address, draft: DealDraft): Promise<{ draft: DealDraft; funding: FundingResult }> {
@@ -327,7 +448,7 @@ async function approveSellDraft(
 /** Discarding a draft also withdraws it from any group vote it was in. */
 export async function discardDraft(userId: string, wallet: Address, draftId: string): Promise<boolean> {
   const done = await db.dealDraft.updateMany({
-    where: { id: draftId, userId, walletAddress: wallet, status: { in: ["DRAFT", "FAILED"] } },
+    where: { id: draftId, userId, walletAddress: wallet, status: { in: ["PREVIEW", "DRAFT", "FAILED"] } },
     data: { status: "CANCELLED" },
   });
   if (done.count === 1) await db.groupProposal.updateMany({ where: { draftId, status: "OPEN" }, data: { status: "REJECTED" } });

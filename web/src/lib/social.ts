@@ -6,10 +6,13 @@ import { Prisma, type Currency } from "@/generated/prisma/client";
 
 import { agentWalletAbi } from "./abis";
 import { type DraftMilestone, approveDraft } from "./bank/drafts";
+import { buyerInviteLabels } from "./bank/buyer-invites";
 import { inviteLabels } from "./bank/invites";
+import { type Recipient, SendError, cleanRecipients, payMany } from "./bank/send";
 import { type TxOutcome, publicClient, send } from "./chain";
 import { db } from "./db";
 import { KycRequired, requireKycFor } from "./kyc";
+import { blockedBetween } from "./safety";
 import { primaryWalletAddress } from "./user-wallets";
 
 /**
@@ -81,6 +84,8 @@ export async function requestFriend(userId: string, currency: Currency, username
   // beyond what the bank's own username lookup already implies.
   if (!target?.userId) throw new SocialError("No app user with that username at your bank");
   if (target.userId === userId) throw new SocialError("You cannot add yourself");
+  // A block either way: the same answer as an unknown user, so a blocked person learns nothing.
+  if (await blockedBetween(userId, target.userId)) throw new SocialError("No app user with that username at your bank");
   const existing = await db.friendship.findFirst({
     where: {
       OR: [
@@ -130,8 +135,8 @@ export async function setFriendPayee(userId: string, friendshipId: string, allow
 
 /** Display names for addresses this user deals with: friends' wallets and sellers they invited. */
 export async function friendLabels(userId: string): Promise<Map<string, string>> {
-  const [friends, invited] = await Promise.all([listFriends(userId), inviteLabels(userId)]);
-  return new Map([...invited, ...friends.filter((f) => f.wallet).map((f) => [f.wallet!.toLowerCase(), f.name] as const)]);
+  const [friends, invited, buyers] = await Promise.all([listFriends(userId), inviteLabels(userId), buyerInviteLabels(userId)]);
+  return new Map([...invited, ...buyers, ...friends.filter((f) => f.wallet).map((f) => [f.wallet!.toLowerCase(), f.name] as const)]);
 }
 
 // ------------------------------------------------------------------------------------------
@@ -294,10 +299,29 @@ export async function listGroups(userId: string) {
       members: { include: { user: { select: { id: true, name: true } } } },
       proposals: { where: { status: "OPEN" }, select: { id: true } },
       invites: { select: { id: true } },
-      company: { select: { id: true, name: true, walletAddress: true } },
+      company: { select: { id: true, kind: true, name: true, walletAddress: true } },
     },
     orderBy: { createdAt: "desc" },
   });
+}
+
+const draftIdsOf = (ps: { draftId: string | null }[]) => ps.map((p) => p.draftId).filter((x): x is string => !!x);
+
+/** A payout proposal's recipients, in minor units. */
+function payoutOf(p: { payout: unknown }): { userId: string; amount: string }[] {
+  return Array.isArray(p.payout) ? (p.payout as { userId: string; amount: string }[]) : [];
+}
+
+type DealAction = { dealId: number; index: number; action: "approve" | "accept" };
+const dealActionOf = (p: { dealAction?: unknown }): DealAction | null => (p.dealAction && typeof p.dealAction === "object" ? (p.dealAction as DealAction) : null);
+
+function proposalTitle(p: { payout: unknown; dealAction?: unknown }, draftTitle: string | undefined, nameOf: (id: string | null) => string): string {
+  const a = dealActionOf(p);
+  if (a) return a.action === "accept" ? `Accept and pay the offer D-${a.dealId}` : `Approve the delivery of D-${a.dealId}, milestone ${a.index + 1} (pays the seller)`;
+  const out = payoutOf(p);
+  if (!out.length) return draftTitle ?? "a deal";
+  const total = out.reduce((t, r) => t + Number(r.amount), 0) / 100;
+  return `Pay out ${total.toLocaleString("en-US", { maximumFractionDigits: 2 })} to ${out.map((r) => nameOf(r.userId)).join(", ")}`;
 }
 
 /** Totals of the group's executed deals: what was paid through it and what is still locked. */
@@ -319,20 +343,20 @@ export async function groupDetail(userId: string, groupId: string) {
       company: true,
     },
   });
-  const drafts = await db.dealDraft.findMany({ where: { id: { in: g.proposals.map((p) => p.draftId) } } });
+  const drafts = await db.dealDraft.findMany({ where: { id: { in: draftIdsOf(g.proposals) } } });
   const byId = new Map(drafts.map((d) => [d.id, d]));
   const nameOf = (id: string | null) => (id ? (g.members.find((m) => m.userId === id)?.user.name ?? g.invites.find((i) => i.userId === id)?.user.name ?? "a former member") : "");
   const signers = g.members.filter((m) => m.canSign);
-  const money = await groupMoney(g.proposals.filter((p) => p.status === "EXECUTED").map((p) => p.draftId));
+  const money = await groupMoney(draftIdsOf(g.proposals.filter((p) => p.status === "EXECUTED")));
   const companyAccount = g.company ? await db.bankAccount.findUnique({ where: { ownerAddress: g.company.walletAddress.toLowerCase() } }) : null;
   const me = g.members.find((m) => m.userId === userId);
 
   // Recent activity: payments proposed / executed, rule changes, people joining.
   const activity = [
     ...g.proposals.map((p) => {
-      const d = byId.get(p.draftId);
-      const verb = p.status === "EXECUTED" ? "Paid" : p.status === "REJECTED" ? "Rejected" : p.status === "FAILED" ? "Failed" : "Proposed";
-      return { at: p.createdAt, text: `${verb} · ${d?.title ?? "a deal"}${p.status === "OPEN" ? ` by ${nameOf(p.proposerId)}` : ""}` };
+      const d = byId.get(p.draftId ?? "");
+      const verb = p.status === "EXECUTED" ? (d?.side === "SELL" ? "Offered" : "Paid") : p.status === "REJECTED" ? "Rejected" : p.status === "FAILED" ? "Failed" : "Proposed";
+      return { at: p.createdAt, text: `${verb} · ${proposalTitle(p, d?.title, nameOf)}${p.status === "OPEN" ? ` by ${nameOf(p.proposerId)}` : ""}` };
     }),
     ...g.rules.map((r) => ({ at: r.decidedAt ?? r.createdAt, text: `${r.status === "EXECUTED" ? "Rule changed" : r.status === "REJECTED" ? "Rule change rejected" : "Rule change proposed"} · ${ruleText(r, nameOf)}` })),
     ...g.members.map((m) => ({ at: m.joinedAt, text: `${m.user.name} joined` })),
@@ -349,15 +373,17 @@ export async function groupDetail(userId: string, groupId: string) {
     myRole: me?.role ?? "MEMBER",
     iSign: Boolean(me?.canSign),
     signers: signers.length,
-    company: g.company ? { id: g.company.id, name: g.company.name, maskedTaxId: g.company.maskedTaxId, wallet: g.company.walletAddress, accountNo: companyAccount?.accountNo ?? null, balance: companyAccount?.balance.toString() ?? "0" } : null,
+    company: g.company ? { id: g.company.id, kind: g.company.kind, name: g.company.name, maskedTaxId: g.company.maskedTaxId, wallet: g.company.walletAddress, accountNo: companyAccount?.accountNo ?? null, balance: companyAccount?.balance.toString() ?? "0" } : null,
     stats: { committed: money.committed, deals: money.deals, openVotes: g.proposals.filter((p) => p.status === "OPEN").length },
     members: g.members.map((m) => ({ userId: m.userId, name: m.user.name, role: m.role, canSign: m.canSign, joinedAt: m.joinedAt, user: m.user })),
     invites: g.invites.map((i) => ({ id: i.id, userId: i.userId, name: i.user.name, canSign: i.canSign })),
     proposals: g.proposals.map((p) => {
-      const d = byId.get(p.draftId);
+      const d = byId.get(p.draftId ?? "");
       return {
         ...p,
-        title: d?.title ?? "",
+        side: p.payout ? ("PAYOUT" as const) : p.dealAction ? ("RELEASE" as const) : (d?.side ?? "BUY"),
+        payout: payoutOf(p).map((r) => ({ name: nameOf(r.userId), amount: Number(r.amount) / 100 })),
+        title: proposalTitle(p, d?.title, nameOf),
         milestones: d?.milestones ?? [],
         dealId: d?.dealId ?? null,
         yes: p.votes.filter((v) => v.approve).length,
@@ -393,21 +419,26 @@ function ruleText(r: { kind: string; targetUserId: string | null; threshold: num
 /** A member puts one of their own drafts to the group's vote. A signer's own yes is counted at once. */
 export async function proposeToGroup(userId: string, groupId: string, draftId: string) {
   const group = await memberGroup(userId, groupId);
-  const draft = await db.dealDraft.findFirst({ where: { id: draftId, userId, status: "DRAFT" } });
+  const draft = await db.dealDraft.findFirst({ where: { id: draftId, userId, status: { in: ["DRAFT", "PREVIEW"] } } });
   if (!draft) throw new SocialError("Draft not found or already used");
-  // Only a purchase locks money; a sale offer has nothing for the group to approve.
-  if (draft.side !== "BUY") throw new SocialError("Only a purchase can be put to a group vote");
   const company = await db.company.findUnique({ where: { groupId } });
   if (company && getAddress(draft.walletAddress) !== getAddress(company.walletAddress)) {
-    throw new SocialError(`Draft it as ${company.name} (Acting as) so it is paid from the company account`);
+    throw new SocialError(`Draft it as ${company.name} (Acting as) so it is paid from the ${company.kind === "GROUP" ? "group" : "company"} account`);
   }
+  // A sale is voted on only when it is made in the group's own name (its shared wallet); a member's
+  // personal sale locks nothing and needs no vote.
+  if (draft.side !== "BUY" && !company) throw new SocialError("Only a purchase can be put to this group's vote: open a group wallet to sell in the group's name");
   const customer = await db.bankCustomer.findFirst({ where: { userId }, select: { currency: true } });
   if (customer?.currency !== group.currency) throw new SocialError(`This group pays in ${group.currency}`);
   // Checked now, so a passing vote does not fail on the proposer's missing KYC.
   const total = (draft.milestones as DraftMilestone[]).reduce((t, m) => t + Number(m.amount), 0);
-  await requireKycFor(userId, group.currency, total).catch((e) => {
-    throw e instanceof KycRequired ? new SocialError(e.message) : e;
-  });
+  if (draft.side === "BUY") {
+    await requireKycFor(userId, group.currency, total).catch((e) => {
+      throw e instanceof KycRequired ? new SocialError(e.message) : e;
+    });
+  }
+  // Putting an AI preview to the vote is the user confirming it: from now on it is a real draft.
+  if (draft.status === "PREVIEW") await db.dealDraft.update({ where: { id: draft.id }, data: { status: "DRAFT" } });
   // A draft whose earlier vote was rejected or withdrawn may be put to a vote again.
   await db.groupProposal.deleteMany({ where: { draftId, status: { in: ["REJECTED", "FAILED"] } } });
   try {
@@ -455,9 +486,39 @@ async function removeMember(groupId: string, userId: string, companyWallet: stri
 /** The admin deletes the group; open votes end and their drafts go back to their proposers. */
 export async function deleteGroup(userId: string, groupId: string) {
   const m = await db.groupMember.findUnique({ where: { groupId_userId: { groupId, userId } } });
-  if (m?.role !== "ADMIN") throw new SocialError("Only the group's admin can delete it");
-  if (await db.company.findUnique({ where: { groupId } })) throw new SocialError("A company's signers group cannot be deleted while the company has an account");
+  if (m?.role !== "ADMIN") throw new SocialError("Only the group's owner can dissolve it");
+  const company = await db.company.findUnique({ where: { groupId } });
+  if (company?.kind === "COMPANY") throw new SocialError("A company's signers group cannot be dissolved while the company has an account");
+  if (company) {
+    // A group wallet is dissolved only when empty: nobody's money may be left behind.
+    const account = await db.bankAccount.findUnique({ where: { ownerAddress: company.walletAddress.toLowerCase() } });
+    if (account && account.balance > 0n) throw new SocialError("The group wallet still holds money: pay it out to members first (Pay out to members)");
+    await db.userWallet.deleteMany({ where: { walletAddress: company.walletAddress } });
+  }
   await db.group.delete({ where: { id: groupId } });
+}
+
+/**
+ * The owner manages the group directly (no vote): make a member a signer or stop them signing, or
+ * remove them. The owner's own place cannot be changed this way, and the group must keep enough
+ * signers for its votes-needed rule.
+ */
+export async function ownerSetMember(ownerId: string, groupId: string, targetUserId: string, change: { canSign: boolean } | { remove: true }) {
+  const g = await db.group.findFirst({ where: { id: groupId, members: { some: { userId: ownerId, role: "ADMIN" } } }, include: { members: true, company: true } });
+  if (!g) throw new SocialError("Only the group's owner can change members");
+  const t = g.members.find((m) => m.userId === targetUserId);
+  if (!t) throw new SocialError("Not a member of this group");
+  if (t.role === "ADMIN") throw new SocialError("The owner's own place cannot be changed here");
+  const signers = g.members.filter((m) => m.canSign).length;
+  const losesSigner = t.canSign && ("remove" in change || !change.canSign);
+  if (losesSigner && signers - 1 < g.threshold) {
+    throw new SocialError(`The group needs ${g.threshold} signers to approve and would have ${signers - 1}: lower the votes needed first`);
+  }
+  if ("remove" in change) return removeMember(groupId, targetUserId, g.company?.walletAddress ?? null);
+  await db.groupMember.update({ where: { groupId_userId: { groupId, userId: targetUserId } }, data: { canSign: change.canSign } });
+  if (g.company) {
+    await db.userWallet.updateMany({ where: { userId: targetUserId, walletAddress: g.company.walletAddress }, data: { role: change.canSign ? "APPROVER" : "VIEWER" } });
+  }
 }
 
 /**
@@ -496,10 +557,40 @@ export async function vote(userId: string, proposalId: string, approve: boolean)
 export async function executeProposal(proposalId: string, yes = 0, no = 0, retry = false) {
   const claimed = await db.groupProposal.updateMany({ where: { id: proposalId, status: retry ? "FAILED" : "OPEN" }, data: { status: "EXECUTED" } });
   if (claimed.count !== 1) return { status: "EXECUTED", yes, no };
-  const p = await db.groupProposal.findUniqueOrThrow({ where: { id: proposalId } });
-  const draft = await db.dealDraft.findUniqueOrThrow({ where: { id: p.draftId } });
+  const p = await db.groupProposal.findUniqueOrThrow({ where: { id: proposalId }, include: { group: { include: { company: true } } } });
+  // A move on one of the shared wallet's deals that pays money out (release a milestone, pay an offer).
+  const act = dealActionOf(p);
+  if (act) {
+    try {
+      if (!p.group.company) throw new SocialError("This group has no shared wallet");
+      const wallet = getAddress(p.group.company.walletAddress);
+      const deals = await import("./bank/deals");
+      const r =
+        act.action === "accept" ? await deals.acceptAndPay(wallet, act.dealId) : await deals.buyerAction(wallet, act.dealId, "approve", act.index);
+      const ok = "outcome" in r ? r.outcome.status === "success" : r.status === "FUNDED";
+      if (!ok) await db.groupProposal.update({ where: { id: p.id }, data: { status: "FAILED" } });
+      void deals.syncDeal(wallet, act.dealId).catch(() => null);
+      return { status: ok ? "EXECUTED" : "FAILED", yes, no };
+    } catch (err) {
+      await db.groupProposal.update({ where: { id: p.id }, data: { status: "FAILED" } });
+      throw err;
+    }
+  }
+  // A payout: the shared account pays its members, all or nothing.
+  if (p.payout) {
+    try {
+      const from = p.group.company ? await db.bankAccount.findUnique({ where: { ownerAddress: p.group.company.walletAddress.toLowerCase() } }) : null;
+      if (!from) throw new SocialError("This group has no shared account");
+      await payMany(from.id, payoutOf(p).map((r) => ({ userId: r.userId, minor: BigInt(r.amount) })), `group-payout:${p.id}`);
+      return { status: "EXECUTED", yes, no };
+    } catch (err) {
+      await db.groupProposal.update({ where: { id: p.id }, data: { status: "FAILED" } });
+      throw err instanceof SendError ? new SocialError(err.message) : err;
+    }
+  }
+  const draft = await db.dealDraft.findUniqueOrThrow({ where: { id: p.draftId! } });
   try {
-    const { funding } = await approveDraft(p.proposerId, getAddress(draft.walletAddress), p.draftId, { viaGroup: true });
+    const { funding } = await approveDraft(p.proposerId, getAddress(draft.walletAddress), draft.id, { viaGroup: true });
     // PENDING stays EXECUTED: the funding resumes when the draft is retried.
     if (funding.status !== "FUNDED" && funding.status !== "PENDING") {
       await db.groupProposal.update({ where: { id: p.id }, data: { status: "FAILED" } });
@@ -521,6 +612,62 @@ export async function retryProposal(userId: string, proposalId: string) {
   return executeProposal(proposalId, yes, 0, true);
 }
 
+/**
+ * A member asks the signers to approve a money-moving move on one of the shared wallet's deals:
+ * releasing a delivered milestone to the seller, or paying a seller's offer. One open vote per move;
+ * asking again just counts the asker's yes.
+ */
+export async function proposeDealAction(userId: string, groupId: string, act: DealAction) {
+  const g = await db.group.findFirst({ where: { id: groupId, members: { some: { userId } } }, include: { members: true } });
+  if (!g) throw new SocialError("Group not found");
+  const open = (await db.groupProposal.findMany({ where: { groupId, status: "OPEN", dealAction: { not: Prisma.AnyNull } } })).find((p) => {
+    const a = dealActionOf(p);
+    return a?.dealId === act.dealId && a.index === act.index && a.action === act.action;
+  });
+  const p = open ?? (await db.groupProposal.create({ data: { groupId, proposerId: userId, dealAction: act } }));
+  const me = g.members.find((m) => m.userId === userId);
+  if (me?.canSign) return { ...(await vote(userId, p.id, true)), threshold: g.threshold, group: g.name };
+  const yes = await db.groupVote.count({ where: { proposalId: p.id, approve: true } });
+  return { status: "OPEN", yes, no: 0, threshold: g.threshold, group: g.name };
+}
+
+/**
+ * A signer proposes paying members out of the shared account (e.g. sharing what a sale earned).
+ * It goes to the same N of M vote as a purchase; the proposer's own yes counts at once.
+ */
+export async function proposePayout(userId: string, groupId: string, list: Recipient[]) {
+  const g = await db.group.findFirst({ where: { id: groupId, members: { some: { userId } } }, include: { members: true, company: true } });
+  if (!g) throw new SocialError("Group not found");
+  if (!g.company) throw new SocialError("This group has no shared account");
+  let recipients;
+  try {
+    recipients = cleanRecipients(list);
+  } catch (err) {
+    throw err instanceof SendError ? new SocialError(err.message) : err;
+  }
+  // Members, or the proposer's accepted contacts (e.g. staff paid a salary): the vote decides.
+  const allowed = await payoutRecipients(userId, groupId);
+  if (recipients.some((r) => !allowed.some((a) => a.userId === r.userId))) throw new SocialError("A payout goes to members of the group or to your contacts");
+  const p = await db.groupProposal.create({
+    data: { groupId, proposerId: userId, payout: recipients.map((r) => ({ userId: r.userId, amount: r.minor.toString() })) },
+  });
+  const me = g.members.find((m) => m.userId === userId);
+  if (me?.canSign) return vote(userId, p.id, true);
+  return { status: "OPEN", yes: 0, no: 0 };
+}
+
+/** Who a payout from the group's account may go to: its members and the proposer's accepted contacts. */
+export async function payoutRecipients(userId: string, groupId: string): Promise<{ userId: string; name: string; member: boolean }[]> {
+  const [members, friends] = await Promise.all([
+    db.groupMember.findMany({ where: { groupId }, include: { user: { select: { id: true, name: true } } } }),
+    listFriends(userId),
+  ]);
+  const out = new Map<string, { userId: string; name: string; member: boolean }>();
+  for (const m of members) out.set(m.userId, { userId: m.userId, name: m.user.name, member: true });
+  for (const f of friends) if (f.status === "ACCEPTED" && !out.has(f.userId)) out.set(f.userId, { userId: f.userId, name: f.name, member: false });
+  return [...out.values()];
+}
+
 // ------------------------------------------------------------------------------------------
 // Group rules: changed by the same signer vote as a payment
 // ------------------------------------------------------------------------------------------
@@ -535,6 +682,8 @@ export async function proposeRule(userId: string, groupId: string, input: { kind
     if (input.threshold === g.threshold) throw new SocialError("That is already the rule");
   } else {
     if (!target) throw new SocialError("Choose a member of the group");
+    // The owner is never voted out or stripped of signing: they leave (or hand over) themselves.
+    if (target.role === "ADMIN" && input.kind !== "ADD_SIGNER") throw new SocialError("The group's owner cannot be removed or stop signing by a vote; only they can leave or hand over the group");
     if (input.kind === "ADD_SIGNER" && target.canSign) throw new SocialError("Already a signer");
     if (input.kind === "REMOVE_SIGNER" && (!target.canSign || signers - 1 < g.threshold)) {
       throw new SocialError(target.canSign ? `The group would have fewer signers than the ${g.threshold} votes needed; lower that first` : "Not a signer");
@@ -577,6 +726,8 @@ export async function ruleVote(userId: string, proposalId: string, approve: bool
   if (r.kind === "SET_THRESHOLD") {
     if (!r.threshold || r.threshold > nowSigners) return fail("Not enough signers for that rule any more");
     await db.group.update({ where: { id: groupId }, data: { threshold: r.threshold } });
+  } else if (r.kind !== "ADD_SIGNER" && now.find((m) => m.userId === r.targetUserId)?.role === "ADMIN") {
+    return fail("The group's owner cannot be removed or stop signing by a vote");
   } else if (r.kind === "ADD_SIGNER" || r.kind === "REMOVE_SIGNER") {
     if (r.kind === "REMOVE_SIGNER" && nowSigners - 1 < r.group.threshold) return fail("The group would have too few signers");
     await db.groupMember.update({ where: { groupId_userId: { groupId, userId: r.targetUserId! } }, data: { canSign: r.kind === "ADD_SIGNER" } });
@@ -598,12 +749,13 @@ export async function pendingVotes(userId: string) {
     where: { status: "OPEN", group: { members: { some: { userId, canSign: true } } }, votes: { none: { userId } } },
     include: { group: { select: { id: true, name: true, threshold: true } }, votes: true },
   });
-  const drafts = await db.dealDraft.findMany({ where: { id: { in: open.map((p) => p.draftId) } } });
+  const drafts = await db.dealDraft.findMany({ where: { id: { in: draftIdsOf(open) } } });
   const byId = new Map(drafts.map((d) => [d.id, d]));
+  const names = new Map((await db.user.findMany({ where: { id: { in: open.flatMap((p) => payoutOf(p).map((r) => r.userId)) } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
   return open.map((p) => ({
     proposalId: p.id,
     group: p.group,
-    title: byId.get(p.draftId)?.title ?? "",
+    title: proposalTitle(p, byId.get(p.draftId ?? "")?.title, (id) => names.get(id ?? "") ?? "a member"),
     yes: p.votes.filter((v) => v.approve).length,
   }));
 }

@@ -41,7 +41,7 @@ export async function GET() {
       tiers: [
         { tier: 0, rule: "Read balances, deals and history" },
         { tier: 1, rule: "New deals, payees and anything above the caps need your click" },
-        { tier: 2, rule: `The agent approves deliveries alone up to ${state.session.maxPerTx} per transaction and ${state.session.dailyLimit} per day, allowlisted payees only` },
+        { tier: 2, rule: `The agent approves deliveries alone up to ${state.session.maxPerTx} per transaction and ${state.session.dailyLimit} per day, payees on the allow transfer list only` },
         { tier: 3, rule: "Anyone can pause; only you can resume" },
       ],
     });

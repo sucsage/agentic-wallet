@@ -2,6 +2,13 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
+import { SaveTemplateDialog, type TemplatePayload, TemplatesPanel } from "./deal-templates";
+import { ATTACH_ACCEPT, type ChatAttachment, fileToChatAttachment } from "./chat-attach";
+import { toast } from "./header-tools";
+import { SecurityCard } from "./two-factor";
+import { DisplaySizeCard } from "./ui-scale";
+import { ChatMarkdown, OpenDealButton, copyText, startDeferredCopy } from "./chat-markdown";
+import { PayoutCard, type PayoutPreview } from "./payout-card";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -337,9 +344,10 @@ export function BankAuthorizeLive({ bank, onCancel, onContinue }: { bank: BankCh
 // AI chat (CreateDealScreen)
 // ------------------------------------------------------------------------------------------
 
-type Step = { tool: string; summary: string; draft?: DraftView; form?: DealFormData };
+type Step = { tool: string; summary: string; draft?: DraftView; form?: DealFormData; open?: { dealId: number; title: string }; payout?: PayoutPreview };
 type ChatItem =
-  | { kind: "user"; text: string; at: string }
+  /** `file`: an attached file's name; `image`: a data URL thumbnail (this session only). */
+  | { kind: "user"; text: string; at: string; file?: string; image?: string | null }
   /** `live`: still streaming; `running`: tool calls started but not finished yet. */
   | { kind: "agent"; text: string; at: string; steps: Step[]; live?: boolean; running?: { id: string; tool: string }[] }
   | { kind: "error"; text: string };
@@ -347,6 +355,9 @@ type ChatItem =
 /** What the agent is doing, in words, while a tool runs. */
 const TOOL_LABEL: Record<string, string> = {
   get_wallet_status: "Checking your wallet, limits and payees",
+  deal_templates: "Reading your deal templates",
+  amend_deal: "Preparing the change to your deal",
+  save_deal_template: "Saving a deal template",
   list_deals: "Reading your deals",
   propose_bank_deal: "Drafting the deal",
   propose_bank_sale: "Drafting the sale offer",
@@ -405,15 +416,124 @@ const remember = (id: string | null) => {
   }
 };
 
-type FundingResult = { status: string; steps: { step: string; outcome?: { url?: string | null; hash?: string } }[]; error?: string };
+/**
+ * The agent's Tier 2 caps (per transaction, per day), next to the AI agent on the chat page.
+ * Saving is an owner transaction on the wallet contract (setSession), so it takes a few seconds.
+ */
+function LimitsEditor({
+  wallet,
+  editing,
+  setEditing,
+  onSaved,
+}: {
+  wallet: ReturnType<typeof useAppData>["wallet"];
+  editing: boolean;
+  setEditing: (v: boolean) => void;
+  onSaved: () => Promise<void>;
+}) {
+  const [perTx, setPerTx] = useState("");
+  const [perDay, setPerDay] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const currency = wallet?.token.currency ?? "THB";
+  useEffect(() => {
+    if (!editing || !wallet) return;
+    // Opening the editor starts from the caps on-chain.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPerTx(String(Number(wallet.session.maxPerTx)));
+    setPerDay(String(Number(wallet.session.dailyLimit)));
+    setMsg(null);
+    // Only when the editor opens (or the wallet first loads): the app re-reads the wallet every few
+    // seconds, and that must not overwrite what is being typed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing, !wallet]);
 
-function DraftCard({
+  async function save(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setMsg(null);
+    try {
+      await api("/api/policy/limits", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ maxPerTx: Number(perTx), dailyLimit: Number(perDay) }),
+      });
+      await onSaved();
+      setEditing(false);
+      setMsg({ ok: true, text: "Saved on-chain." });
+    } catch (err) {
+      setMsg({ ok: false, text: (err as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="aw-v08-limits">
+      <div className="aw-v08-limits-head">
+        <small>Your limits</small>
+        <button type="button" onClick={() => setEditing(!editing)} disabled={busy || !wallet}>
+          {editing ? "Cancel" : "Edit"}
+        </button>
+      </div>
+      {editing ? (
+        <form onSubmit={save}>
+          <label>
+            <span>Per transaction</span>
+            <input aria-label="Per transaction limit" type="number" min="1" step="any" value={perTx} onChange={(e) => setPerTx(e.target.value)} />
+          </label>
+          <label>
+            <span>Per day</span>
+            <input aria-label="Per day limit" type="number" min="1" step="any" value={perDay} onChange={(e) => setPerDay(e.target.value)} />
+          </label>
+          <Button type="submit" disabled={busy || !(Number(perTx) > 0) || !(Number(perDay) > 0)}>
+            {busy ? "Saving on-chain…" : "Save limits"}
+          </Button>
+        </form>
+      ) : (
+        <>
+          <p>
+            Per transaction <strong>{wallet ? tokenMoney(wallet.session.maxPerTx, currency) : "…"}</strong>
+          </p>
+          <p>
+            Per day <strong>{wallet ? tokenMoney(wallet.session.dailyLimit, currency) : "…"}</strong>
+          </p>
+        </>
+      )}
+      {msg && <p className={msg.ok ? "aw-live-ok" : "aw-bank-error"}>{msg.text}</p>}
+    </div>
+  );
+}
+
+/** A draft as a template (everything but the other party), for the Save as template dialog. */
+export function templateFromDraft(d: DraftView): TemplatePayload {
+  return {
+    name: d.title,
+    side: d.side,
+    kind: d.kind,
+    title: d.title,
+    summary: d.summary ?? "",
+    milestones: d.milestones.map((m) => ({
+      name: m.name,
+      amount: String(Number(m.amount)),
+      delivery: m.delivery ?? (m.hasFile ? "file" : "note"),
+      acceptance: m.acceptance ?? "",
+      dueDays: m.due ? Math.max(0, Math.round((new Date(m.due).getTime() - new Date(d.createdAt).getTime()) / 86_400_000)) : null,
+    })),
+  };
+}
+
+type FundingResult = { status: string; dealId?: number | string; steps: { step: string; outcome?: { url?: string | null; hash?: string } }[]; error?: string };
+
+export function DraftCard({
   draft,
   currency,
   onApprove,
   onDiscard,
   balance = null,
   company = null,
+  busy = false,
+  onSaveTemplate,
 }: {
   draft: DraftView;
   currency: "THB" | "CNY";
@@ -423,6 +543,10 @@ function DraftCard({
   balance?: number | null;
   /** Drafted as a company: approval goes to its signers. */
   company?: { name: string; threshold: number } | null;
+  /** Confirm was pressed and is still running (on-chain steps take a few seconds). */
+  busy?: boolean;
+  /** Shows "Save as template" (the deal without its other party). */
+  onSaveTemplate?: (d: DraftView) => void;
 }) {
   const funded = draft.status === "FUNDED";
   if (draft.status === "CANCELLED") {
@@ -437,13 +561,15 @@ function DraftCard({
     );
   }
   const failed = draft.status === "FAILED";
+  const preview = draft.status === "PREVIEW";
   const sell = draft.side === "SELL";
   const who = draft.sellerLabel || `${draft.counterparty.slice(0, 6)}…${draft.counterparty.slice(-4)}`;
   return (
     <section className="aw-deal-draft">
       <div className="aw-draft-topline">
         <small>
-          {sell ? "DRAFT OFFER TO SELL" : "DRAFT DEAL"} · DR-{draft.id.slice(-6).toUpperCase()}
+          {draft.replacesDealId !== null && !funded ? `CHANGE TO D-${draft.replacesDealId} · ` : ""}
+          {preview ? (sell ? "PREVIEW · OFFER TO SELL" : "PREVIEW · DEAL") : sell ? "DRAFT OFFER TO SELL" : "DRAFT DEAL"} · DR-{draft.id.slice(-6).toUpperCase()}
         </small>
         <span>
           {funded
@@ -454,8 +580,10 @@ function DraftCard({
               ? sell
                 ? "Failed · nothing was offered"
                 : "Failed · money refunded"
-              : company && !sell
-                ? `Needs ${company.threshold} company signers`
+              : preview
+                ? "Not created yet · check and confirm"
+              : company
+                ? `Needs ${company.threshold} signers`
                 : "Needs your approval · Tier 1"}
         </span>
       </div>
@@ -467,7 +595,7 @@ function DraftCard({
         <span>
           {draft.kind === "HIRE" ? (sell ? "Client" : "Contractor") : sell ? "Buyer" : "Seller"}&nbsp; <b>{who}</b>
         </span>
-        {!sell && <i className="green">In allowlist ✓</i>}
+        {!sell && <i className="green">On allow transfer list ✓</i>}
       </div>
       {draft.milestones.map((m, i) => (
         <div className="aw-draft-milestone" key={i}>
@@ -475,7 +603,7 @@ function DraftCard({
           <span>
             <b>
               {m.name}
-              {(m.delivery ?? (m.hasFile ? "file" : "note")) === "parcel" ? " · 📦 parcel" : m.hasFile ? " · 📎 file" : ""}
+              {m.deposit ? " · 💰 deposit, paid on signing" : (m.delivery ?? (m.hasFile ? "file" : "note")) === "parcel" ? " · 📦 parcel" : m.hasFile ? " · 📎 file" : ""}
             </b>
             <small>{m.due ? `Due ${m.due}` : m.acceptance}</small>
           </span>
@@ -517,27 +645,58 @@ function DraftCard({
       )}
       <div className="aw-draft-notice">
         ⓘ &nbsp;
+        {preview && "The AI only proposed this: no deal exists until you confirm. "}
+        {draft.replacesDealId !== null && !funded && `Confirming withdraws D-${draft.replacesDealId} (not accepted yet${sell ? "" : "; its locked money comes back"}) and replaces it with this, same person and same link. `}
+        {draft.milestones[0]?.deposit && !funded && `The deposit (${tokenMoney(draft.milestones[0].amount, currency)}) is paid to ${sell ? "you" : "the seller"} as soon as the offer is accepted. `}
         {company && !sell
           ? `Submitting counts your yes. The total is taken from the ${company.name} account only after ${company.threshold} signers approve.`
+          : company && sell
+          ? `Submitting counts your yes. Once ${company.threshold} signers approve, the offer goes on-chain in the name of ${company.name}; it locks nothing, and the buyer's payments go into its account.`
           : sell
           ? "Sending puts the offer on-chain and locks nothing. The buyer pays the total from their wallet when they accept; you are paid as each delivery is approved."
           : "Approving takes the total from your wallet balance and locks it in escrow. Each milestone is paid only after you approve its delivery."}
       </div>
+      {busy && (
+        <div className="aw-draft-busy" role="status" aria-live="polite">
+          <i className="aw-spinner" aria-hidden />
+          <span>
+            {company
+              ? "Submitting to the signers…"
+              : sell
+                ? "Creating the deal and sending the offer on-chain… (about 10 s)"
+                : "Creating the deal, debiting and locking in escrow… (about 10–20 s)"}
+          </span>
+        </div>
+      )}
       {!funded && (
         <div className="aw-draft-actions">
-          <Button variant="outline" onClick={() => onDiscard(draft)}>
+          <Button variant="outline" disabled={busy} onClick={() => onDiscard(draft)}>
             Discard
           </Button>
-          <Button onClick={() => onApprove(draft)}>
-            {failed
-              ? "Try again"
-              : sell
-                ? `Send offer · ${tokenMoney(draft.total, currency)}`
-                : company
-                  ? `Submit to company signers · ${tokenMoney(draft.total, currency)}`
-                  : `Approve & lock ${tokenMoney(draft.total, currency)}`}
+          <Button disabled={busy} aria-busy={busy} onClick={() => onApprove(draft)}>
+            {busy ? (
+              <>
+                <i className="aw-spinner" aria-hidden /> Working…
+              </>
+            ) : (
+              <>
+                {preview && (draft.replacesDealId !== null ? `Confirm change to D-${draft.replacesDealId} · ` : "Confirm · ")}
+                {failed
+                  ? "Try again"
+                  : company
+                    ? `Submit to ${company.name} signers · ${tokenMoney(draft.total, currency)}`
+                    : sell
+                      ? `Send offer · ${tokenMoney(draft.total, currency)}`
+                      : `Approve & lock ${tokenMoney(draft.total, currency)}`}
+              </>
+            )}
           </Button>
         </div>
+      )}
+      {onSaveTemplate && (
+        <button type="button" className="aw-draft-template" onClick={() => onSaveTemplate(draft)}>
+          ☆ Save as template
+        </button>
       )}
     </section>
   );
@@ -546,7 +705,7 @@ function DraftCard({
 const TIER_TEXT = [
   "Read balance, deals, history",
   "Draft a deal · you approve the debit",
-  "Approve small deliveries within limits + allowlist",
+  "Approve small deliveries within limits + allow transfer list",
   "Pause · anyone can, only owner resumes",
 ];
 
@@ -567,7 +726,13 @@ export function LiveChat() {
   const [maxChats, setMaxChats] = useState(5);
   const [chatId, setChatId] = useState<string | null>(null);
   const [loadingChat, setLoadingChat] = useState(false);
-  const [agentOpen, setAgentOpen] = useState(true);
+  // Both side panels start closed: on desktop they open while hovered (the agent's toggle pins it).
+  const [agentOpen, setAgentOpen] = useState(false);
+  const [agentHover, setAgentHover] = useState(false);
+  const agentShown = agentOpen || agentHover;
+  const [limitsEditing, setLimitsEditing] = useState(false);
+  const [attached, setAttached] = useState<{ att: ChatAttachment; url: string | null } | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const [chatPrefs] = usePrefs();
   const aiOff = chatPrefs?.aiChat === false;
   // "New deal" on a contact opens the chat with a message started for them.
@@ -590,6 +755,12 @@ export function LiveChat() {
   // must not subtract the same deal twice.
   const [balanceAtOpen, setBalanceAtOpen] = useState<number | null>(null);
   const [debiting, setDebiting] = useState(false);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+  // The dialog can be closed while the debit runs on-chain; the result then lands in the chat.
+  const confirmOpen = useRef(false);
+  useEffect(() => {
+    confirmOpen.current = confirm !== null;
+  }, [confirm]);
   const [debitResult, setDebitResult] = useState<FundingResult | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const currency = me?.bank.currency ?? "THB";
@@ -638,7 +809,7 @@ export function LiveChat() {
   }
 
   async function removeChat(c: SavedChat) {
-    if (!address || busy || !window.confirm(`Delete the chat "${c.title}"? Drafts made in it stay in Approvals.`)) return;
+    if (!address || busy || !window.confirm(`Delete the chat "${c.title}"? Drafts made in it stay in Deals.`)) return;
     try {
       await api(`/api/workspace/${address}/chats/${c.id}`, { method: "DELETE" });
       if (c.id === chatId) newChat();
@@ -667,14 +838,30 @@ export function LiveChat() {
 
   const full = chats !== null && chats.length >= maxChats;
 
+  async function pickFile(file: File | null | undefined) {
+    if (!file) return;
+    try {
+      const att = await fileToChatAttachment(file);
+      setAttached({ att, url: att.kind === "image" ? `data:${att.mediaType};base64,${att.base64}` : null });
+    } catch (e) {
+      setItems((cur) => [...cur, { kind: "error", text: (e as Error).message }]);
+    }
+  }
+
   async function send(text: string) {
-    if (!text.trim() || !address || busy) return;
+    const att = attached;
+    if ((!text.trim() && !att) || !address || busy) return;
     if (!chatId && full) {
       setItems((cur) => [...cur, { kind: "error", text: `You have ${maxChats} chats. Delete one to start a new chat.` }]);
       return;
     }
-    setItems((cur) => [...cur, { kind: "user", text: text.trim(), at: now() }, { kind: "agent", text: "", at: now(), steps: [], live: true, running: [] }]);
+    setItems((cur) => [
+      ...cur,
+      { kind: "user", text: text.trim(), at: now(), file: att?.att.name, image: att?.url },
+      { kind: "agent", text: "", at: now(), steps: [], live: true, running: [] },
+    ]);
     setMessage("");
+    setAttached(null);
     setBusy(true);
     // Updates the agent message being streamed (always the last item).
     const patch = (fn: (m: Extract<ChatItem, { kind: "agent" }>) => Extract<ChatItem, { kind: "agent" }>) =>
@@ -692,7 +879,7 @@ export function LiveChat() {
       const res = await fetch(`/api/workspace/${address}/agent`, {
         method: "POST",
         headers: { "content-type": "application/json", accept: "text/event-stream" },
-        body: JSON.stringify({ message: text.trim(), lang, chatId: chatId ?? "new" }),
+        body: JSON.stringify({ message: text.trim(), lang, chatId: chatId ?? "new", attachment: att?.att }),
       });
       if (!res.ok || !res.headers.get("content-type")?.includes("text/event-stream")) {
         const body = await res.json().catch(() => null);
@@ -724,6 +911,9 @@ export function LiveChat() {
     }
   }
 
+  const [templateFrom, setTemplateFrom] = useState<TemplatePayload | null>(null);
+  const saveAsTemplate = (d: DraftView) => setTemplateFrom(templateFromDraft(d));
+
   async function discard(d: DraftView) {
     if (!address) return;
     try {
@@ -736,13 +926,35 @@ export function LiveChat() {
 
   async function approve(d: DraftView) {
     if (!address) return;
+    // A person without an account gets a private link on Confirm: the copy starts inside this click.
+    const copy = /link made on Confirm\)$/.test(d.sellerLabel) ? startDeferredCopy() : null;
+    setApprovingId(d.id);
     setDebiting(true);
     setDebitResult(null);
     try {
-      const res = await api<{ draft: DraftView; funding?: FundingResult; companyVote?: { status: string; yes: number; threshold: number; company: string } }>(
-        `/api/workspace/${address}/drafts/${d.id}/approve`,
-        { method: "POST" },
-      );
+      const res = await api<{
+        draft: DraftView;
+        funding?: FundingResult;
+        companyVote?: { status: string; yes: number; threshold: number; company: string };
+        invite?: { kind: "seller" | "buyer"; name: string; link: string | null } | null;
+      }>(`/api/workspace/${address}/drafts/${d.id}/approve`, { method: "POST" });
+      if (res.invite?.link) {
+        const inv = res.invite;
+        const dealNo = res.draft.dealId;
+        // Copied by the write the Confirm click started (or a plain copy); the message keeps a Copy button too.
+        copy?.resolve(inv.link!);
+        const copied = copy ? await copy.done : await copyText(inv.link!);
+        toast(copied ? { text: `Private link for ${inv.name} copied to your clipboard`, tone: "ok" } : { text: `Private link for ${inv.name} is ready: press Copy link in the chat`, tone: "info" });
+        setItems((cur) => [
+          ...cur,
+          {
+            kind: "agent",
+            at: now(),
+            steps: [],
+            text: `${copied ? "✓ **Copied to your clipboard.** " : ""}Private ${inv.kind} link for **${inv.name}** (send it to them; it is also on the deal's page${dealNo !== null ? `, D-${dealNo}` : ""}):\n\n${inv.link}`,
+          },
+        ]);
+      }
       if (res.companyVote) {
         const v = res.companyVote;
         setItems((cur) => [
@@ -754,7 +966,7 @@ export function LiveChat() {
             text:
               v.status === "EXECUTED"
                 ? `${v.company}'s signers approved: the deal is locked from the company account.`
-                : `Submitted to ${v.company}'s signers: ${v.yes} of ${v.threshold} approvals so far. It locks from the company account when ${v.threshold} signers approve (Approvals → Group votes).`,
+                : `Submitted to ${v.company}'s signers: ${v.yes} of ${v.threshold} approvals so far. It locks from the company account when ${v.threshold} signers approve (on the group's page under Groups).`,
           },
         ]);
         await refresh();
@@ -763,14 +975,24 @@ export function LiveChat() {
       const funding = res.funding;
       if (!funding) throw new Error("No funding result");
       setDebitResult(funding);
+      if (d.side !== "SELL" && !confirmOpen.current) {
+        setItems((cur) => [
+          ...cur,
+          funding.status === "FUNDED"
+            ? { kind: "agent", at: now(), steps: [], text: `**${d.title}** is locked in escrow${funding.dealId != null ? ` as D-${funding.dealId}` : ""}.` }
+            : { kind: "error", text: `${d.title}: ${funding.error ?? funding.status}` },
+        ]);
+      }
       if (d.side === "SELL" && funding.status !== "FUNDED") {
         setItems((cur) => [...cur, { kind: "error", text: `The offer was not sent: ${funding.error ?? funding.status}` }]);
       }
       await refresh();
     } catch (e) {
       setDebitResult({ status: "ERROR", steps: [], error: (e as Error).message });
-      if (d.side === "SELL") setItems((cur) => [...cur, { kind: "error", text: (e as Error).message }]);
+      if (d.side === "SELL" || !confirmOpen.current) setItems((cur) => [...cur, { kind: "error", text: (e as Error).message }]);
     } finally {
+      copy?.resolve(null);
+      setApprovingId(null);
       setDebiting(false);
     }
   }
@@ -789,8 +1011,19 @@ export function LiveChat() {
   return localizeMockupNode(
     <div className="aw-ai-chat-page">
       <BalanceBar />
-      <div className={`aw-ai-chat-layout${agentOpen ? "" : " agent-panel-collapsed"}`}>
+      <div className={`aw-ai-chat-layout aw-hover-panels${agentShown ? "" : " agent-panel-collapsed"}`}>
         <aside className="aw-v08-chats" aria-label="Saved chats">
+          <div className="aw-chats-strip" aria-hidden="true">
+            <span className="aw-chats-strip-icon">
+              <svg viewBox="0 0 24 24" fill="none">
+                <path d="M4 5h16v11H8l-4 4V5Z" />
+                <path d="M8 9h8M8 12h5" />
+              </svg>
+            </span>
+            {chats && <small>{chats.length}</small>}
+            <span className="aw-chats-strip-new">＋</span>
+          </div>
+          <div className="aw-chats-panel">
           <header>
             <b>Chats</b>
             {chats && (
@@ -827,6 +1060,7 @@ export function LiveChat() {
             ))}
           </div>
           <p>{full ? `${maxChats} chats max: delete one to start another. ` : ""}Deleting a chat removes only the conversation. Your deals and evidence stay.</p>
+          </div>
         </aside>
         <section className="aw-ai-conversation">
           <header className="aw-ai-chat-heading">
@@ -872,7 +1106,12 @@ export function LiveChat() {
               item.kind === "user" ? (
                 <div className="aw-ai-user-message" key={idx}>
                   <small>You · {item.at}</small>
-                  <p>{item.text}</p>
+                  {item.image && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img className="aw-ai-user-image" src={item.image} alt={item.file ?? "Attached image"} />
+                  )}
+                  {item.file && !item.image && <span className="aw-ai-user-file">📎 {item.file}</span>}
+                  {item.text && <p>{item.text}</p>}
                 </div>
               ) : item.kind === "error" ? (
                 <article className="aw-ai-agent-message" key={idx}>
@@ -907,8 +1146,18 @@ export function LiveChat() {
                   )}
                   <article className="aw-ai-agent-message aw-ai-draft-wrap">
                     <div className="aw-ai-markdown">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.text}</ReactMarkdown>
+                      <ChatMarkdown text={item.text} />
                     </div>
+                    {item.steps
+                      .filter((s) => s.payout)
+                      .map((s, k) => (
+                        <PayoutCard key={`payout-${k}`} p={s.payout!} currency={currency} />
+                      ))}
+                    {item.steps
+                      .filter((s) => s.open)
+                      .map((s, k) => (
+                        <OpenDealButton key={`open-${k}`} dealId={s.open!.dealId} title={s.open!.title} />
+                      ))}
                     {item.steps
                       .filter((s) => s.form)
                       .map((s, k) => (
@@ -928,6 +1177,8 @@ export function LiveChat() {
                           // A company's purchase debits nothing yet: it goes to the signers' vote.
                           onApprove={(d) => (d.side === "SELL" || me?.acting ? approve(d) : setConfirm(d))}
                           onDiscard={discard}
+                          busy={approvingId === s.draft!.id}
+                          onSaveTemplate={saveAsTemplate}
                         />
                       ))}
                   </article>
@@ -944,18 +1195,58 @@ export function LiveChat() {
               void send(message);
             }}
           >
-            <button type="button" aria-label="Attach file" disabled>
+            {attached && (
+              <div className="aw-ai-attached">
+                {attached.url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={attached.url} alt="" />
+                ) : (
+                  <span aria-hidden>📎</span>
+                )}
+                <b>{attached.att.name}</b>
+                <button type="button" aria-label="Remove attachment" onClick={() => setAttached(null)}>
+                  ×
+                </button>
+              </div>
+            )}
+            <input
+              ref={fileRef}
+              type="file"
+              accept={ATTACH_ACCEPT}
+              hidden
+              onChange={(e) => {
+                void pickFile(e.target.files?.[0]);
+                e.target.value = "";
+              }}
+            />
+            <button type="button" className="aw-ai-attach" aria-label="Attach an image, PDF or text file" title="Attach an image, PDF or text file" disabled={!address || aiOff || busy} onClick={() => fileRef.current?.click()}>
               ＋
             </button>
-            <input value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Message AI agent…" disabled={!address || aiOff} />
-            <button type="submit" aria-label="Send message" disabled={!address || busy}>
+            <input
+              value={message}
+              onChange={(event) => setMessage(event.target.value)}
+              onPaste={(event) => {
+                const f = [...event.clipboardData.files].find((x) => x.type.startsWith("image/"));
+                if (f) {
+                  event.preventDefault();
+                  void pickFile(f);
+                }
+              }}
+              placeholder={attached ? "Say what to do with it (optional)…" : "Message AI agent… (＋ or paste to add an image or PDF)"}
+              disabled={!address || aiOff}
+            />
+            <button type="submit" aria-label="Send message" disabled={!address || busy || (!message.trim() && !attached)}>
               ↑
             </button>
             <small>AI checks your balance and policy before any payment.</small>
           </form>
         </section>
-        <aside className={`aw-v08-agent-rail${agentOpen ? " expanded" : ""}`}>
-          <button className="aw-v08-agent-toggle" type="button" aria-label={agentOpen ? "Collapse agent details" : "Expand agent details"} aria-expanded={agentOpen} aria-controls="aw-agent-details" onClick={() => setAgentOpen((o) => !o)}>
+        <aside
+          className={`aw-v08-agent-rail${agentShown ? " expanded" : ""}${agentOpen ? " pinned" : ""}`}
+          onMouseEnter={() => window.matchMedia("(hover: hover) and (min-width: 1051px)").matches && setAgentHover(true)}
+          onMouseLeave={() => setAgentHover(false)}
+        >
+          <button className="aw-v08-agent-toggle" type="button" aria-label={agentOpen ? "Unpin agent details" : "Keep agent details open"} aria-pressed={agentOpen} aria-expanded={agentShown} aria-controls="aw-agent-details" onClick={() => setAgentOpen((o) => !o)}>
             <svg viewBox="0 0 18 18" fill="none" aria-hidden="true">
               <rect x="2.5" y="2.5" width="13" height="13" rx="2" />
               <path d="M7 2.5v13M10 6h3M10 9h3M10 12h3" />
@@ -967,12 +1258,28 @@ export function LiveChat() {
               <path d="M12 7V3H8M2 12v4M22 12v4M9 12v3M15 12v3" />
             </svg>
           </span>
+          <button
+            type="button"
+            className={`aw-v08-limits-btn${limitsEditing ? " active" : ""}`}
+            aria-label="Change the agent's limits per transaction and per day"
+            title="Agent limits: per transaction / per day"
+            onClick={() => {
+              setAgentOpen(true);
+              setLimitsEditing(true);
+            }}
+          >
+            <svg viewBox="0 0 18 18" fill="none" aria-hidden="true">
+              <path d="M3 5h12M3 13h12" />
+              <circle cx="7" cy="5" r="1.8" />
+              <circle cx="11" cy="13" r="1.8" />
+            </svg>
+          </button>
           {[0, 1, 2, 3].map((tier) => (
             <button key={tier} type="button" className={`aw-v08-tier tier${tier}`} aria-label={`Tier ${tier} details`} onClick={() => setAgentOpen(true)}>
               {tier}
             </button>
           ))}
-          <div id="aw-agent-details" className="aw-v08-agent-details" aria-hidden={!agentOpen} inert={!agentOpen}>
+          <div id="aw-agent-details" className="aw-v08-agent-details" aria-hidden={!agentShown} inert={!agentShown}>
             <h2>What the agent can do</h2>
             {TIER_TEXT.map((text, tier) => (
               <p key={text} className="aw-v08-agent-tier-row">
@@ -981,13 +1288,12 @@ export function LiveChat() {
               </p>
             ))}
             <hr />
-            <small>Your limits</small>
-            <p>
-              Per transaction <strong>{wallet ? tokenMoney(wallet.session.maxPerTx, wallet.token.currency) : "…"}</strong>
-            </p>
-            <p>
-              Per day <strong>{wallet ? tokenMoney(wallet.session.dailyLimit, wallet.token.currency) : "…"}</strong>
-            </p>
+            <LimitsEditor
+              wallet={wallet}
+              editing={limitsEditing}
+              setEditing={setLimitsEditing}
+              onSaved={refresh}
+            />
             <hr />
             <small>Recent drafts</small>
             {drafts.length === 0 && <p className="aw-v08-agent-recent">None yet</p>}
@@ -1000,6 +1306,14 @@ export function LiveChat() {
           </div>
         </aside>
       </div>
+      {templateFrom && (
+        <SaveTemplateDialog
+          payload={templateFrom}
+          currency={currency}
+          onClose={() => setTemplateFrom(null)}
+          onSaved={(text) => setItems((cur) => [...cur, { kind: "agent", at: now(), steps: [], text }])}
+        />
+      )}
       {confirm &&
         typeof document !== "undefined" &&
         createPortal(
@@ -1007,7 +1321,7 @@ export function LiveChat() {
             <div
               className="aw-debit-overlay"
               onMouseDown={(event) => {
-                if (event.target === event.currentTarget && !debiting) {
+                if (event.target === event.currentTarget) {
                   setConfirm(null);
                   setDebitResult(null);
                 }
@@ -1022,7 +1336,6 @@ export function LiveChat() {
                   <button
                     type="button"
                     aria-label="Close confirmation"
-                    disabled={debiting}
                     onClick={() => {
                       setConfirm(null);
                       setDebitResult(null);
@@ -1090,13 +1403,12 @@ export function LiveChat() {
                 <footer>
                   <Button
                     variant="outline"
-                    disabled={debiting}
                     onClick={() => {
                       setConfirm(null);
                       setDebitResult(null);
                     }}
                   >
-                    {debitResult ? "Close" : "Cancel"}
+                    {debitResult || debiting ? "Close" : "Cancel"}
                   </Button>
                   {!debitResult && (
                     <Button disabled={debiting} onClick={() => approve(confirm)}>
@@ -1123,6 +1435,7 @@ const STATUS_TONE: Record<string, string> = {
   Proposed: "blue",
   Active: "violet",
   Cancelled: "red",
+  PREVIEW: "yellow",
   DRAFT: "yellow",
   FAILED: "red",
 };
@@ -1135,17 +1448,77 @@ function deliveryType(d: DraftView): "Physical" | "Digital" | "Report" {
 
 export function LiveDeals({ go }: { go: (screen: string) => void }) {
   const lang = useLang();
-  const { wallet, drafts, me } = useAppData();
-  const [filter, setFilter] = useState<"All" | "Buying" | "Selling" | "Dispute">("All");
+  const { wallet, drafts, me, refresh } = useAppData();
+  // A draft opens here (it used to be on the Approvals page): approve or discard it in place.
+  const [openDraft, setOpenDraft] = useState<string | null>(null);
+  const [draftMsg, setDraftMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [draftBusy, setDraftBusy] = useState(false);
+  const draftAddress = me?.acting ? (me.wallets.find((w) => w.label === me.acting?.name)?.address ?? me.wallets[0]?.address) : me?.wallets[0]?.address;
+  async function draftAction(d: DraftView, kind: "approve" | "discard") {
+    const address = d.wallet || draftAddress;
+    if (!address || draftBusy) return;
+    const copy = kind === "approve" && /link made on Confirm\)$/.test(d.sellerLabel) ? startDeferredCopy() : null;
+    setDraftBusy(true);
+    setDraftMsg(null);
+    try {
+      if (kind === "discard") {
+        await api(`/api/workspace/${address}/drafts/${d.id}`, { method: "DELETE" });
+        setOpenDraft(null);
+        setDraftMsg({ ok: true, text: `Discarded “${d.title}”.` });
+      } else {
+        const r = await api<{
+          funding?: FundingResult;
+          companyVote?: { status: string; yes: number; threshold: number; company: string };
+          invite?: { kind: "seller" | "buyer"; name: string; link: string | null } | null;
+        }>(`/api/workspace/${address}/drafts/${d.id}/approve`, { method: "POST" });
+        const v = r.companyVote;
+        const link = r.invite?.link ?? null;
+        copy?.resolve(link);
+        const copied = link ? (copy ? await copy.done : await copyText(link)) : false;
+        const linkNote = link ? ` ${copied ? "The private link was copied to your clipboard" : "The private link is on the deal's page"} for ${r.invite!.name}.` : "";
+        setDraftMsg(
+          v
+            ? { ok: true, text: v.status === "EXECUTED" ? `${v.company}'s signers approved it.` : `Submitted to ${v.company}'s signers: ${v.yes} of ${v.threshold} so far (they vote on the group's page).` }
+            : r.funding?.status === "FUNDED"
+              ? { ok: true, text: (d.side === "SELL" ? `Offer sent: deal #${r.funding.dealId}.` : `Locked: deal #${r.funding.dealId}.`) + linkNote }
+              : { ok: false, text: r.funding?.error ?? `Not done (${r.funding?.status ?? "unknown"})` },
+        );
+      }
+      await refresh();
+    } catch (e) {
+      setDraftMsg({ ok: false, text: (e as Error).message });
+    } finally {
+      copy?.resolve(null);
+      setDraftBusy(false);
+    }
+  }
+  const [filter, setFilter] = useState<"All" | "Buying" | "Selling" | "Dispute" | "Templates">("All");
+  const [templateFrom, setTemplateFrom] = useState<TemplatePayload | null>(null);
+  const [templateCount, setTemplateCount] = useState<number | null>(null);
+  useEffect(() => {
+    api<{ templates: unknown[] }>("/api/templates")
+      .then((r) => setTemplateCount(r.templates.length))
+      .catch(() => setTemplateCount(null));
+  }, []);
+  // Deals someone hired the user for through a seller link, linked to this account.
+  const [linkedInvites, setLinkedInvites] = useState<{ id: string; buyer: string; href: string }[]>([]);
+  useEffect(() => {
+    api<{ invites: { id: string; buyer: string; href: string }[] }>("/api/invites/claimed")
+      .then((r) => setLinkedInvites(r.invites))
+      .catch(() => setLinkedInvites([]));
+  }, []);
   const currency = me?.bank.currency ?? "THB";
   const explorer = wallet?.explorer?.replace(/\/address\/.*/, "") ?? null;
 
   const rows = [
     ...drafts
-      .filter((d) => d.status === "DRAFT" || d.status === "FAILED")
+      // The AI's previews too: they are confirmed (or discarded) here, not only in the chat.
+      .filter((d) => d.status === "PREVIEW" || d.status === "DRAFT" || d.status === "FAILED")
+      .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
       .map((d) => ({
         key: `draft-${d.id}`,
-        id: "Draft",
+        draftId: d.id,
+        id: d.status === "PREVIEW" ? "Preview" : "Draft",
         title: d.title,
         kind: d.kind,
         type: deliveryType(d),
@@ -1153,15 +1526,24 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
         role: d.side === "SELL" ? ("Selling" as const) : ("Buying" as const),
         milestones: `0 / ${d.milestones.length}`,
         amount: tokenMoney(d.total, currency),
-        status: d.status === "DRAFT" ? "Awaiting your approval" : d.side === "SELL" ? "Failed · not offered" : "Failed · refunded",
+        status:
+          d.status === "PREVIEW"
+            ? "AI preview · confirm to create"
+            : d.status === "DRAFT"
+              ? "Awaiting your approval"
+              : d.side === "SELL"
+                ? "Failed · not offered"
+                : "Failed · refunded",
         tone: STATUS_TONE[d.status],
       })),
-    ...(wallet?.fileDeals ?? []).map((d) => {
+    // Newest first: a higher deal number is a newer deal.
+    ...[...(wallet?.fileDeals ?? [])].sort((a, b) => b.id - a.id).map((d) => {
       const done = d.milestones.filter((m) => m.status === "Released" || m.status === "Split").length;
       const disputed = d.milestones.some((m) => m.status === "Disputed");
       const draft = drafts.find((x) => x.dealId === d.id);
       return {
         key: `deal-${d.id}`,
+        draftId: null as string | null,
         id: `D-${d.id}`,
         title: draft?.title ?? `File deal #${d.id}`,
         kind: draft?.kind ?? null,
@@ -1170,8 +1552,18 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
         role: d.role === "buyer" ? ("Buying" as const) : ("Selling" as const),
         milestones: `${done} / ${d.milestones.length}`,
         amount: tokenMoney(d.total, currency),
-        status: disputed ? "Dispute" : done === d.milestones.length ? "Completed · paid" : d.status === "Proposed" ? "Waiting for seller" : "In progress",
-        tone: disputed ? "red" : done === d.milestones.length ? "green" : STATUS_TONE[d.status] ?? "blue",
+        status: d.status === "Cancelled"
+          ? "Cancelled · withdrawn"
+          : disputed
+          ? "Dispute"
+          : done === d.milestones.length
+            ? "Completed · paid"
+            : d.status === "Proposed"
+              ? d.offeredBy === "them"
+                ? "Offer to you · open to accept"
+                : d.role === "buyer" ? "Waiting for seller" : "Waiting for buyer"
+              : "In progress",
+        tone: d.status === "Cancelled" ? "gray" : disputed ? "red" : done === d.milestones.length ? "green" : STATUS_TONE[d.status] ?? "blue",
       };
     }),
   ];
@@ -1194,14 +1586,25 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
           </div>
           <Button onClick={() => go("สร้างดีล")}>New deal with AI</Button>
         </header>
+        {linkedInvites.length > 0 && (
+          <div className="aw-linked-invites">
+            <b>Hired through a link</b>
+            {linkedInvites.map((i) => (
+              <a key={i.id} href={`${i.href}${i.href.includes("?") ? "&" : "?"}stay=1`}>
+                {i.buyer} hired you · open →
+              </a>
+            ))}
+          </div>
+        )}
         <div className="aw-deals-tabs" role="tablist" aria-label="Filter deals">
-          {(["All", "Buying", "Selling", "Dispute"] as const).map((item) => (
+          {(["All", "Buying", "Selling", "Dispute", "Templates"] as const).map((item) => (
             <button type="button" role="tab" key={item} aria-selected={filter === item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>
-              {item} <span>{counts[item]}</span>
+              {item} <span>{item === "Templates" ? (templateCount ?? "…") : counts[item]}</span>
             </button>
           ))}
         </div>
-        <div className="aw-deals-table-wrap">
+        {filter === "Templates" && <TemplatesPanel currency={currency} onCount={setTemplateCount} />}
+        <div className="aw-deals-table-wrap" hidden={filter === "Templates"}>
           <table className="aw-deals-table">
             <thead>
               <tr>
@@ -1229,10 +1632,13 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
               {visible.map((r) => (
                 <tr
                   key={r.key}
-                  tabIndex={r.id.startsWith("D-") ? 0 : -1}
-                  onClick={() => r.id.startsWith("D-") && go(`รายละเอียดดีล ${r.id}`)}
+                  tabIndex={0}
+                  className={r.draftId && openDraft === r.draftId ? "selected" : undefined}
+                  onClick={() => (r.draftId ? setOpenDraft(openDraft === r.draftId ? null : r.draftId) : go(`รายละเอียดดีล ${r.id}`))}
                   onKeyDown={(e) => {
-                    if ((e.key === "Enter" || e.key === " ") && r.id.startsWith("D-")) go(`รายละเอียดดีล ${r.id}`);
+                    if (e.key !== "Enter" && e.key !== " ") return;
+                    if (r.draftId) setOpenDraft(openDraft === r.draftId ? null : r.draftId);
+                    else go(`รายละเอียดดีล ${r.id}`);
                   }}
                 >
                   <td>
@@ -1263,6 +1669,27 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
             </tbody>
           </table>
         </div>
+        {draftMsg && <p className={draftMsg.ok ? "aw-live-ok" : "aw-bank-error"}>{draftMsg.text}</p>}
+        {templateFrom && <SaveTemplateDialog payload={templateFrom} currency={currency} onClose={() => setTemplateFrom(null)} onSaved={(text) => setDraftMsg({ ok: true, text })} />}
+        {(() => {
+          const d = drafts.find((x) => x.id === openDraft && (x.status === "PREVIEW" || x.status === "DRAFT" || x.status === "FAILED"));
+          if (!d) return null;
+          return (
+            <div className="aw-deals-draft">
+              <DraftCard
+                draft={d}
+                currency={currency}
+                balance={me?.accounts[0] ? Number(me.accounts[0].balance) / 100 : null}
+                company={me?.acting ? { name: me.acting.name, threshold: me.acting.threshold } : null}
+                onApprove={(x) => void draftAction(x, "approve")}
+                onDiscard={(x) => void draftAction(x, "discard")}
+                busy={draftBusy}
+                onSaveTemplate={(x) => setTemplateFrom(templateFromDraft(x))}
+              />
+              {draftBusy && <Loading text="Working on it…" />}
+            </div>
+          );
+        })()}
         {explorer && wallet && (
           <p className="aw-profile-passbook-note">
             Every lock is an on-chain transaction:{" "}
@@ -1494,6 +1921,8 @@ export function LivePrivacy() {
             </div>
           </Card>
           <KycCard />
+          <SecurityCard />
+          <DisplaySizeCard />
           <StripeLinkCard />
           <Card className="aw-profile-passbooks">
             <header>

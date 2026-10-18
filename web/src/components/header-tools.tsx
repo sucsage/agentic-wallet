@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { useAppRouter } from "./navigation";
 
@@ -33,12 +34,77 @@ async function loadNotifications(): Promise<Item[]> {
   const items: Item[] = [];
   for (const r of a?.reviews ?? []) items.push({ text: `Review the delivery for D-${r.dealId} · ${r.title}`, href: `/deals/D-${r.dealId}`, tone: "warn" });
   for (const o of a?.offers ?? []) items.push({ text: `Offer from ${o.sellerLabel || "a seller"}: ${o.title}`, href: `/deals/D-${o.dealId}`, tone: "warn" });
-  for (const v of a?.groupVotes ?? []) items.push({ text: `${v.group.name} votes on: ${v.title}`, href: "/approvals", tone: "warn" });
+  for (const v of a?.groupVotes ?? []) items.push({ text: `${v.group.name} votes on: ${v.title}`, href: "/groups", tone: "warn" });
   for (const t of a?.sellerTodo ?? []) items.push({ text: `${t.step === "accept" ? "Accept" : "Deliver"} D-${t.dealId} · ${t.title}`, href: `/deals/D-${t.dealId}` });
-  for (const d of a?.drafts ?? []) items.push({ text: `Draft waiting for your approval: ${d.title}`, href: "/approvals" });
+  for (const d of a?.drafts ?? []) items.push({ text: `Draft waiting for your approval: ${d.title}`, href: "/deals" });
   for (const i of inv?.invites ?? []) items.push({ text: `${i.invitedBy} invited you to ${i.name}`, href: "/groups", tone: "info" });
   for (const f of (fr?.friends ?? []).filter((x) => x.direction === "incoming")) items.push({ text: `${f.name} wants to add you as a contact`, href: "/contacts", tone: "info" });
   return items;
+}
+
+// ------------------------------------------------------------------------------------------
+// Toasts: pop-ups in the top-right corner. New notifications appear there by themselves, and
+// any screen can raise one with toast({ text, tone, href }).
+// ------------------------------------------------------------------------------------------
+
+export type Toast = { text: string; tone?: "warn" | "info" | "ok" | "error"; href?: string };
+const TOAST_EVENT = "aw:toast";
+
+export function toast(t: Toast) {
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent<Toast>(TOAST_EVENT, { detail: t }));
+}
+
+function Toaster() {
+  const router = useAppRouter();
+  const [list, setList] = useState<(Toast & { id: number })[]>([]);
+  // Portals render only in the browser: wait for mount so the server HTML matches.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true);
+    let n = 0;
+    const on = (e: Event) => {
+      const t = (e as CustomEvent<Toast>).detail;
+      const id = ++n;
+      setList((cur) => [...cur.slice(-3), { ...t, id }]);
+      setTimeout(() => setList((cur) => cur.filter((x) => x.id !== id)), t.tone === "error" ? 10_000 : 7_000);
+    };
+    window.addEventListener(TOAST_EVENT, on);
+    return () => window.removeEventListener(TOAST_EVENT, on);
+  }, []);
+  if (!mounted) return null;
+  return createPortal(
+    <div className="aw-toasts" role="region" aria-label="Notifications" aria-live="polite">
+      {list.map((t) => (
+        <div key={t.id} className={`aw-toast ${t.tone ?? "info"}`}>
+          <span className="aw-toast-icon" aria-hidden>
+            {t.tone === "warn" ? "!" : t.tone === "ok" ? "✓" : t.tone === "error" ? "×" : "🔔"}
+          </span>
+          {t.href ? (
+            <button type="button" onClick={() => (setList((cur) => cur.filter((x) => x.id !== t.id)), router.push(t.href!))}>
+              {t.text}
+              <small>Open →</small>
+            </button>
+          ) : (
+            <p>{t.text}</p>
+          )}
+          <button type="button" className="aw-toast-x" aria-label="Dismiss" onClick={() => setList((cur) => cur.filter((x) => x.id !== t.id))}>
+            ×
+          </button>
+        </div>
+      ))}
+    </div>,
+    document.body,
+  );
+}
+
+/** Notifications already shown as a toast in this browser tab (so a refresh does not repeat them). */
+function seenStore(): Set<string> {
+  try {
+    return new Set(JSON.parse(sessionStorage.getItem("aw:seen-notifications") ?? "[]") as string[]);
+  } catch {
+    return new Set();
+  }
 }
 
 export function NotificationsButton({ label }: { label: string }) {
@@ -46,10 +112,26 @@ export function NotificationsButton({ label }: { label: string }) {
   const [items, setItems] = useState<Item[] | null>(null);
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
-  const refresh = useCallback(() => void loadNotifications().then(setItems), []);
+  const refresh = useCallback(
+    () =>
+      void loadNotifications().then((next) => {
+        setItems(next);
+        // Anything new since the last look pops up top-right (at most three at once).
+        const seen = seenStore();
+        const fresh = next.filter((i) => !seen.has(i.text));
+        for (const i of fresh.slice(0, 3)) toast({ text: i.text, tone: i.tone ?? "info", href: i.href });
+        if (fresh.length > 3) toast({ text: `${fresh.length - 3} more waiting for you`, tone: "info" });
+        try {
+          sessionStorage.setItem("aw:seen-notifications", JSON.stringify([...new Set([...seen, ...next.map((i) => i.text)])].slice(-200)));
+        } catch {
+          /* private mode: toasts may repeat */
+        }
+      }),
+    [],
+  );
   useEffect(() => {
     refresh();
-    const t = setInterval(refresh, 60_000);
+    const t = setInterval(refresh, 30_000);
     const close = (e: MouseEvent) => {
       if (box.current && !box.current.contains(e.target as Node)) setOpen(false);
     };
@@ -61,6 +143,7 @@ export function NotificationsButton({ label }: { label: string }) {
   }, [refresh]);
   return (
     <div className="aw-hdr-pop" ref={box}>
+      <Toaster />
       <button
         className="aw-notification-button"
         type="button"
@@ -112,7 +195,7 @@ async function loadIndex(): Promise<Hit[]> {
   ]);
   return [
     ...(d?.deals ?? []).map((x) => ({ kind: "Deal" as const, text: `D-${x.id} · ${x.title ?? "Deal"} · ${x.counterpartyLabel}`, href: `/deals/D-${x.id}` })),
-    ...(d?.drafts ?? []).map((x) => ({ kind: "Deal" as const, text: `Draft · ${x.title}`, href: "/approvals" })),
+    ...(d?.drafts ?? []).map((x) => ({ kind: "Deal" as const, text: `Draft · ${x.title}`, href: "/deals" })),
     ...(f?.friends ?? []).filter((x) => x.status === "ACCEPTED").map((x) => ({ kind: "Contact" as const, text: `${x.name} · @${x.username}`, href: "/contacts" })),
     ...(g?.groups ?? []).map((x) => ({ kind: "Group" as const, text: x.name, href: "/groups" })),
   ];
@@ -184,6 +267,104 @@ export function SearchBox({ placeholder }: { placeholder: string }) {
               <small>{h.kind}</small> {h.text}
             </button>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+type MeLite = {
+  user: { name: string };
+  bank: { currency: "THB" | "CNY" };
+  acting: { companyId: string; kind: "COMPANY" | "GROUP"; name: string } | null;
+  companies?: { id: string; kind: "COMPANY" | "GROUP"; name: string; role: string; balance: string }[];
+  accounts: { isDefault: boolean; balance: string }[];
+};
+
+const fmt = (minor: string, c: "THB" | "CNY") =>
+  `${c === "THB" ? "฿" : "¥"}${(Number(minor) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+/**
+ * Which wallet the app works on: your own, or a company's / group's shared wallet you belong to.
+ * Switching sets the "Acting as" cookie and reloads, so every page shows that wallet.
+ */
+export function WalletSwitcher() {
+  const router = useAppRouter();
+  const [me, setMe] = useState<MeLite | null>(null);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    void get<MeLite>("/api/me").then(setMe);
+  }, []);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => !box.current?.contains(e.target as Node) && setOpen(false);
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [open]);
+  if (!me) return null;
+  const current = me.acting?.companyId ?? null;
+  const own = me.acting ? null : (me.accounts.find((a) => a.isDefault) ?? me.accounts[0]);
+  const pick = async (id: string | null) => {
+    if (id === current) return setOpen(false);
+    setBusy(id ?? "me");
+    const r = await fetch("/api/companies/acting", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ companyId: id }) }).catch(() => null);
+    if (!r?.ok) return setBusy(null);
+    // Every page reads the acting wallet from the server: reload so nothing shows the old one.
+    window.location.reload();
+  };
+  const label = me.acting ? me.acting.name : `${me.user.name}`;
+  const icon = (kind?: string) => (kind === "GROUP" ? "♧" : kind === "COMPANY" ? "♟" : "♙");
+  return (
+    <div className="aw-wallet-switch" ref={box}>
+      <button type="button" className="aw-wallet-switch-button" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((v) => !v)} title="Switch wallet">
+        <span aria-hidden>{icon(me.acting?.kind)}</span>
+        <span className="aw-wallet-switch-name">{label}</span>
+        <small>{me.acting ? (me.acting.kind === "GROUP" ? "Group" : "Company") : "Personal"}</small>
+        <span aria-hidden>▾</span>
+      </button>
+      {open && (
+        <div className="aw-wallet-switch-menu" role="menu">
+          <small>Switch wallet</small>
+          <button type="button" role="menuitemradio" aria-checked={current === null} disabled={busy !== null} onClick={() => void pick(null)}>
+            <span aria-hidden>♙</span>
+            <span>
+              <b>{me.user.name}</b>
+              <small>Personal{own ? ` · ${fmt(own.balance, me.bank.currency)}` : ""}</small>
+            </span>
+            {current === null && <i>✓</i>}
+            {busy === "me" && <i>…</i>}
+          </button>
+          {(me.companies ?? []).map((c) => (
+            <button type="button" role="menuitemradio" aria-checked={current === c.id} key={c.id} disabled={busy !== null} onClick={() => void pick(c.id)}>
+              <span aria-hidden>{icon(c.kind)}</span>
+              <span>
+                <b>{c.name}</b>
+                <small>
+                  {c.kind === "GROUP" ? "Group wallet" : "Company"} · {c.role} · {fmt(c.balance, me.bank.currency)}
+                </small>
+              </span>
+              {current === c.id && <i>✓</i>}
+              {busy === c.id && <i>…</i>}
+            </button>
+          ))}
+          {(me.companies ?? []).length === 0 && <p>No shared wallets yet. A group&apos;s owner can open one, or register a company on Profile.</p>}
+          <button
+            type="button"
+            className="aw-wallet-switch-more"
+            onClick={() => {
+              setOpen(false);
+              router.push("/groups");
+            }}
+          >
+            Manage groups →
+          </button>
         </div>
       )}
     </div>

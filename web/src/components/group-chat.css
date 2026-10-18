@@ -1,0 +1,20 @@
+.aw-gchat{display:flex;flex-direction:column;gap:10px;padding:16px;border:1px solid #262626;border-radius:16px;background:#101010}
+.aw-gchat header h3{margin:0 0 4px;font-size:16px}
+.aw-gchat header small{color:#888;font-size:12px;line-height:1.5}
+.aw-gchat-list{display:flex;flex-direction:column;gap:12px;max-height:520px;overflow:auto;padding:4px 2px}
+.aw-gchat-empty{color:#888;font-size:13px;margin:8px 0}
+.aw-gchat-msg{display:flex;flex-direction:column;gap:4px;align-items:flex-start;max-width:100%}
+.aw-gchat-msg>small{color:#777;font-size:11px}
+.aw-gchat-msg.mine{align-items:flex-end}
+.aw-gchat-bubble{max-width:min(560px,92%);padding:8px 12px;border-radius:14px;background:#1c1c1c;color:#eee;font-size:14px;line-height:1.5;overflow-wrap:anywhere}
+.aw-gchat-bubble p{margin:0 0 6px}
+.aw-gchat-bubble p:last-child{margin:0}
+.aw-gchat-msg.mine .aw-gchat-bubble{background:#1d3a6e}
+.aw-gchat-msg.ai .aw-gchat-bubble{background:#1d1830;border:1px solid #3a2f63}
+.aw-gchat-msg.ai>small{color:#a993ff}
+.aw-gchat-card{width:min(560px,100%)}
+.aw-gchat-note{margin:0;color:#aaa;font-size:12px}
+.aw-gchat-form{display:flex;flex-direction:column;gap:8px}
+.aw-gchat-form textarea{width:100%;padding:10px 12px;border:1px solid #333;border-radius:12px;background:#0c0c0c;color:#fff;font:inherit;font-size:15px;resize:vertical}
+.aw-gchat-form>div{display:flex;justify-content:space-between;align-items:center}
+.aw-gchat-ai{display:flex;align-items:center;gap:6px;color:#bbb;font-size:13px;cursor:pointer}

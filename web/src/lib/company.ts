@@ -77,34 +77,75 @@ export async function createCompany(
   // Validate the signers before anything is deployed.
   const group = await createGroup(userId, currency, { name, members: input.members, threshold: input.threshold });
   try {
-    const { address, outcome } = await createWorkspace({ currency });
-    const customer = await db.bankCustomer.create({
-      data: {
-        currency,
-        username: `c_${randomBytes(6).toString("hex")}`,
-        displayName: name,
-        type: "COMPANY",
-        pinHash: `unused:${randomBytes(16).toString("hex")}`,
-        consentedAt: new Date(),
-      },
-    });
-    let account = null;
-    for (let attempt = 0; attempt < 5 && !account; attempt++) {
-      account = await db.bankAccount
-        .create({ data: { label: "Company account", currency, accountNo: walletNumber(), customerId: customer.id, isDefault: true, linkedAt: new Date() } })
-        .catch(() => null);
-    }
-    if (!account) throw new CompanyError("Could not open the company account");
-    if ("hash" in outcome) await linkNewWallet(userId, address, outcome.hash, config.bankToken(currency) ?? config.contracts.usdc);
-    await db.userWallet.update({ where: { userId_walletAddress: { userId, walletAddress: address } }, data: { label: name, role: "OWNER" } });
-    await backWallet(account.id, address);
-    return await db.company.create({
-      data: { name, maskedTaxId: mask(taxId), taxIdHash, currency, customerId: customer.id, walletAddress: address, groupId: group.id, createdById: userId },
-    });
+    return await openSharedWallet(userId, group.id, { kind: "COMPANY", name, currency, maskedTaxId: mask(taxId), taxIdHash });
   } catch (err) {
     await db.group.delete({ where: { id: group.id } }).catch(() => null);
     throw err instanceof SocialError ? new CompanyError(err.message) : err;
   }
+}
+
+/**
+ * A group of friends opens its own shared wallet (no registration): from then on its members can
+ * hire and sell in the group's name (Acting as), its money moves only after N of M signers approve,
+ * and what it earns lands in the group account. Only the group's owner opens it.
+ */
+export async function createGroupWallet(userId: string, groupId: string): Promise<Company> {
+  const group = await db.group.findFirst({ where: { id: groupId, members: { some: { userId, role: "ADMIN" } } }, include: { company: true } });
+  if (!group) throw new CompanyError("Only the group's owner can open its wallet");
+  if (group.company) throw new CompanyError("This group already has a wallet");
+  if (!(await kycOf(userId))) throw new CompanyError("Verify your identity first: the owner of a shared wallet must be a verified person");
+  return openSharedWallet(userId, group.id, { kind: "GROUP", name: group.name, currency: group.currency });
+}
+
+/** The shared account and agent wallet of a company or group; every member reaches it. */
+async function openSharedWallet(
+  userId: string,
+  groupId: string,
+  o: { kind: "COMPANY" | "GROUP"; name: string; currency: Currency; maskedTaxId?: string; taxIdHash?: string },
+): Promise<Company> {
+  const { address, outcome } = await createWorkspace({ currency: o.currency });
+  const customer = await db.bankCustomer.create({
+    data: {
+      currency: o.currency,
+      username: `${o.kind === "GROUP" ? "g" : "c"}_${randomBytes(6).toString("hex")}`,
+      displayName: o.name,
+      type: "COMPANY",
+      pinHash: `unused:${randomBytes(16).toString("hex")}`,
+      consentedAt: new Date(),
+    },
+  });
+  let account = null;
+  for (let attempt = 0; attempt < 5 && !account; attempt++) {
+    account = await db.bankAccount
+      .create({ data: { label: o.kind === "GROUP" ? "Group account" : "Company account", currency: o.currency, accountNo: walletNumber(), customerId: customer.id, isDefault: true, linkedAt: new Date() } })
+      .catch(() => null);
+  }
+  if (!account) throw new CompanyError(`Could not open the ${o.kind === "GROUP" ? "group" : "company"} account`);
+  if ("hash" in outcome) await linkNewWallet(userId, address, outcome.hash, config.bankToken(o.currency) ?? config.contracts.usdc);
+  await db.userWallet.update({ where: { userId_walletAddress: { userId, walletAddress: address } }, data: { label: o.name, role: "OWNER" } });
+  // Members already in the group reach the wallet too (signers approve, others view).
+  const members = await db.groupMember.findMany({ where: { groupId, userId: { not: userId } } });
+  for (const m of members) {
+    await db.userWallet.upsert({
+      where: { userId_walletAddress: { userId: m.userId, walletAddress: address } },
+      update: {},
+      create: { userId: m.userId, walletAddress: address, role: m.canSign ? "APPROVER" : "VIEWER", label: o.name },
+    });
+  }
+  await backWallet(account.id, address);
+  return db.company.create({
+    data: {
+      kind: o.kind,
+      name: o.name,
+      maskedTaxId: o.maskedTaxId ?? null,
+      taxIdHash: o.taxIdHash ?? null,
+      currency: o.currency,
+      customerId: customer.id,
+      walletAddress: address,
+      groupId,
+      createdById: userId,
+    },
+  });
 }
 
 /** Companies the user belongs to (as a member of their signers group). */
@@ -120,6 +161,7 @@ export async function companiesOf(userId: string) {
     const a = accounts.find((x) => x.ownerAddress === c.walletAddress.toLowerCase());
     return {
       id: c.id,
+      kind: c.kind,
       name: c.name,
       maskedTaxId: c.maskedTaxId,
       currency: c.currency,

@@ -1,6 +1,7 @@
 "use client";
 
 import jsQR from "jsqr";
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import { DisputeFlow, type DisputeFlowData, isStagedDispute } from "./dispute-flow";
@@ -47,6 +48,8 @@ type View = {
   sent: string;
   payout: { method: string; target: string; bank: string | null; name: string; setAt: string } | null;
   deals: Deal[];
+  /** Opened signed in: the invite is linked to that account (earnings to its wallet). */
+  linked?: { toYou: boolean; signedIn: boolean; error: string | null };
   /** Bank payouts through Opn Payments (test mode). */
   opn: { active: boolean | null; transfers: { amount: string; status: string; id: string | null; error: string | null; at: string }[] } | null;
 };
@@ -64,6 +67,52 @@ const STEP: Record<string, string> = {
   Refunded: "Refunded to the buyer",
   Split: "Split by the arbiter · your share is paid",
 };
+
+/** The buyer typed the seller's name when inviting: the seller can write their own. */
+function NameEditor({ base, name, onDone }: { base: string; name: string; onDone: () => Promise<void> }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(name);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  if (!editing) {
+    return (
+      <button type="button" className="inv-name-edit" onClick={() => (setValue(name), setEditing(true))}>
+        Not your name? Change it
+      </button>
+    );
+  }
+  return (
+    <form
+      className="inv-name-form"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setBusy(true);
+        setErr(null);
+        try {
+          await call(`${base}/name`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: value }) });
+          await onDone();
+          setEditing(false);
+        } catch (e2) {
+          setErr((e2 as Error).message);
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <label>
+        Your name (shown to the buyer)
+        <input value={value} onChange={(e) => setValue(e.target.value)} minLength={2} maxLength={80} autoFocus autoComplete="name" />
+      </label>
+      <button type="submit" disabled={busy || value.trim().length < 2}>
+        {busy ? "Saving…" : "Save"}
+      </button>
+      <button type="button" onClick={() => setEditing(false)} disabled={busy}>
+        Cancel
+      </button>
+      {err && <p className="inv-error">{err}</p>}
+    </form>
+  );
+}
 
 async function call<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { cache: "no-store", ...init });
@@ -94,6 +143,15 @@ export function InvitePage({ token }: { token: string }) {
     return () => clearInterval(t);
   }, [load]);
 
+  // Someone with an account (signed in here) goes straight into the app: the deal is linked to
+  // their account and listed on their Deals page. "?stay=1" (the link from that page) stays here.
+  const linkedToYou = Boolean(view?.linked?.toYou);
+  useEffect(() => {
+    if (!linkedToYou || new URLSearchParams(window.location.search).get("stay")) return;
+    const t = setTimeout(() => window.location.replace("/deals?from=link"), 1200);
+    return () => clearTimeout(t);
+  }, [linkedToYou]);
+
   const money = (amount: string | number, minor = false) => {
     const n = minor ? Number(amount) / 100 : Number(amount);
     return `${view ? SIGN[view.currency] : ""}${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -108,14 +166,42 @@ export function InvitePage({ token }: { token: string }) {
           <div>
             <small>Agentic Wallet · seller link</small>
             <h1>{view ? `Hi ${view.name}` : error ? "Link unavailable" : "Loading…"}</h1>
+            {view && <NameEditor base={base} name={view.name} onDone={load} />}
             {view && (
               <p>
-                <b>{view.buyerName}</b> wants to hire you. No account needed: accept, deliver, get paid to your bank or PromptPay.
+                <b>{view.buyerName}</b> wants to hire you.{" "}
+                {view.linked?.toYou ? "This deal is linked to your account." : "No account needed: accept, deliver, get paid to your bank or PromptPay."}
               </p>
             )}
           </div>
         </header>
         {error && <p className="inv-error">{error}</p>}
+        {view?.linked?.toYou && (
+          <section className="inv-card inv-linked">
+            <b>✓ Linked to your Agentic Wallet account</b>
+            {typeof window !== "undefined" && !new URLSearchParams(window.location.search).get("stay") && <p className="inv-muted">Opening your account…</p>}
+            <p>Earnings go straight into your wallet, {view.buyerName} is now in your contacts, and this deal is listed on your Deals page. Keep working here, or open the app.</p>
+            <div className="inv-actions">
+              <Link className="inv-linkbtn" href="/deals">
+                Open the app
+              </Link>
+            </div>
+          </section>
+        )}
+        {view?.linked?.error && <p className="inv-muted">Not linked to your account: {view.linked.error}</p>}
+        {view && !view.linked?.signedIn && (
+          <section className="inv-card inv-app">
+            <p className="inv-muted">Already have an Agentic Wallet account? Log in: this deal then links to your account and pays into your wallet. No account? You can keep using this page, or create one.</p>
+            <div className="inv-actions">
+              <a className="inv-linkbtn" href={`/login?mode=login&next=${encodeURIComponent(`/invite/${token}`)}`}>
+                Log in
+              </a>
+              <a className="inv-linkbtn ghost" href={`/login?next=${encodeURIComponent(`/invite/${token}`)}`}>
+                Create an account
+              </a>
+            </div>
+          </section>
+        )}
 
         {view && (
           <>

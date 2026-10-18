@@ -8,6 +8,12 @@ import { authClient } from "@/lib/auth-client";
 import { api, useAppData } from "./app-data";
 import { Button, Card, Loading } from "./mockup-ui";
 
+/** A ?next= target only if it stays on this site: a path, never "//other.site" or a full URL. */
+export function safeNext(next: string | null): string | null {
+  if (!next || !next.startsWith("/") || next.startsWith("//") || next.startsWith("/\\") || next.startsWith("/login")) return null;
+  return next.slice(0, 500);
+}
+
 type AuthOptions = { google: boolean; apple: boolean; passwordReset: boolean };
 
 /**
@@ -27,8 +33,21 @@ export function AuthScreen({ onSignedIn }: { onSignedIn: () => void }) {
   const [options, setOptions] = useState<AuthOptions | null>(null);
 
   useEffect(() => {
+    // Links from an invite page say which form to open: ?mode=login (sign up is the default).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (new URLSearchParams(window.location.search).get("mode") === "login") setMode("login");
+  }, []);
+
+  useEffect(() => {
     api<AuthOptions>("/api/auth-options").then(setOptions).catch(() => setOptions(null));
   }, []);
+  // Sent here from a page that needs sign-in (src/proxy.ts) or from a seller invite: go back there.
+  const nextPath = () => safeNext(new URLSearchParams(window.location.search).get("next"));
+  const signedIn = () => {
+    const next = nextPath();
+    if (next) window.location.assign(next);
+    else onSignedIn();
+  };
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -47,14 +66,14 @@ export function AuthScreen({ onSignedIn }: { onSignedIn: () => void }) {
         : await authClient.signIn.email({ email: email.trim(), password });
     setBusy(false);
     if (r.error) setError(r.error.message ?? "Something went wrong");
-    else onSignedIn();
+    else signedIn();
   }
 
   async function social(provider: "google" | "apple") {
     setBusy(true);
     setError(null);
     // On success the browser is already on its way to the provider.
-    const r = await authClient.signIn.social({ provider, callbackURL: "/chat" });
+    const r = await authClient.signIn.social({ provider, callbackURL: nextPath() ?? "/chat" });
     if (r.error) {
       setError(r.error.message ?? "Something went wrong");
       setBusy(false);
