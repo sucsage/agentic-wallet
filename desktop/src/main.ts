@@ -158,6 +158,11 @@ async function route(req: Request, path: string, port: number): Promise<Response
   }
   if (m === "GET" && path === "/app/drafts") return json(await wallet.drafts());
   if (m === "GET" && path === "/app/activity") return json(await wallet.activity());
+  if (m === "GET" && path === "/app/preview") {
+    const q = new URL(req.url).searchParams;
+    const { jpeg, pages } = await wallet.preview(Number(q.get("deal")), Number(q.get("index")), Number(q.get("page") ?? 1));
+    return new Response(new Uint8Array(jpeg), { headers: { "content-type": "image/jpeg", "cache-control": "no-store", "x-preview-pages": String(pages) } });
+  }
   if (m === "GET" && path === "/app/chats") return json(wallet.chatList());
   if (m === "GET" && path === "/app/chat") return json({ history: wallet.chatHistory(new URL(req.url).searchParams.get("id")) });
   if (m === "POST" && path === "/app/chat") return json(await wallet.chat(await body(req)));
@@ -266,7 +271,7 @@ async function main() {
         headers: {
           "content-type": "text/html; charset=utf-8",
           "cache-control": "no-store",
-          "content-security-policy": "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+          "content-security-policy": "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
           "x-frame-options": "DENY",
           "referrer-policy": "no-referrer",
         },

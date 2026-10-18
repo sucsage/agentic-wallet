@@ -1552,10 +1552,13 @@ function fileFlags(
 }
 
 /** Where a deal on the chain stands, for the status filter. */
+/** Milestones that are over: paid, refunded, or split by a ruling. */
+const SETTLED = ["Released", "Split", "Refunded"];
+
 function dealStage(status: string, milestones: { status: string }[]): DealStage {
   if (status === "Cancelled") return "cancelled";
   if (milestones.some((m) => m.status === "Disputed")) return "dispute";
-  if (milestones.length && milestones.every((m) => ["Released", "Split", "Refunded"].includes(m.status))) return "completed";
+  if (milestones.length && milestones.every((m) => SETTLED.includes(m.status))) return "completed";
   return status === "Proposed" ? "waiting" : "active";
 }
 
@@ -1683,7 +1686,8 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
       })),
     // Newest first: a higher deal number is a newer deal.
     ...[...(wallet?.fileDeals ?? [])].sort((a, b) => b.id - a.id).map((d) => {
-      const done = d.milestones.filter((m) => m.status === "Released" || m.status === "Split").length;
+      const done = d.milestones.filter((m) => SETTLED.includes(m.status)).length;
+        const refunded = d.milestones.some((m) => m.status === "Refunded" || m.status === "Split");
       const disputed = d.milestones.some((m) => m.status === "Disputed");
       const draft = drafts.find((x) => x.dealId === d.id);
       return {
@@ -1707,7 +1711,7 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
           : disputed
           ? "Dispute"
           : done === d.milestones.length
-            ? "Completed · paid"
+            ? refunded ? "Completed · refunded / settled" : "Completed · paid"
             : d.status === "Proposed"
               ? d.offeredBy === "them"
                 ? "Offer to you · open to accept"
@@ -1719,7 +1723,8 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
     // Hired through a link: the deal is on the link's own wallet and opens on the link's page.
     ...linkedInvites.flatMap((i) =>
       i.deals.map((d) => {
-        const done = d.milestones.filter((m) => m.status === "Released" || m.status === "Split").length;
+        const done = d.milestones.filter((m) => SETTLED.includes(m.status)).length;
+        const refunded = d.milestones.some((m) => m.status === "Refunded" || m.status === "Split");
         const disputed = d.milestones.some((m) => m.status === "Disputed");
         const stage = dealStage(d.status, d.milestones);
         return {
@@ -1744,7 +1749,7 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
               : disputed
                 ? "Dispute"
                 : stage === "completed"
-                  ? "Completed · paid"
+                  ? refunded ? "Completed · refunded / settled" : "Completed · paid"
                   : d.status === "Proposed"
                     ? "Offer to you · open to accept"
                     : "In progress",

@@ -857,6 +857,33 @@ async function sendChat(fd) {
   if (S.view === "chat") renderView();
 }
 
+/** A delivered image or PDF page, watermarked (the same preview as the website), with page buttons. */
+function previewDialog(dealId, index, name) {
+  const dlg = $("#dlg"), form = $("#dlg-form");
+  let page = 1, pages = 1;
+  dlg.style.width = "min(900px, 94vw)";
+  const show = async () => {
+    $("#pv").innerHTML = `<div class="loading" style="padding:40px 0;justify-content:center"><span class="spin"></span>Making the preview…</div>`;
+    try {
+      const res = await fetch(`/app/preview?deal=${dealId}&index=${index}&page=${page}`, { headers: { "x-app-token": TOKEN } });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Preview failed (${res.status})`);
+      pages = Number(res.headers.get("x-preview-pages")) || 1;
+      const url = URL.createObjectURL(await res.blob());
+      $("#pv").innerHTML = `<img src="${url}" alt="${esc(name)}, page ${page}" style="display:block;max-width:100%;max-height:70vh;margin:0 auto;border-radius:8px">`;
+    } catch (e) { $("#pv").innerHTML = `<div class="err" style="display:block">${esc(e.message)}</div>`; }
+    $("#pvnav").innerHTML = pages > 1 ? `<button type="button" id="pvp" ${page <= 1 ? "disabled" : ""}>‹ Prev</button><span class="hint">Page ${page} of ${pages}</span><button type="button" id="pvn" ${page >= pages ? "disabled" : ""}>Next ›</button>` : "";
+    const p = $("#pvp"), n = $("#pvn");
+    if (p) p.onclick = () => { page--; show(); };
+    if (n) n.onclick = () => { page++; show(); };
+  };
+  form.innerHTML = `<div class="row space"><h2 style="margin:0">${esc(name)}</h2><button value="close">Close</button></div>
+    <p class="hint">Watermarked preview (up to the first 5 pages of a PDF). The file itself opens for the buyer after approval.</p>
+    <div id="pv"></div><div class="row" id="pvnav" style="justify-content:center;margin-top:8px"></div>`;
+  dlg.showModal();
+  dlg.addEventListener("close", () => { dlg.style.width = ""; }, { once: true });
+  show();
+}
+
 function deliverDialog(dealId, index) {
   const d = (S.deals || []).find((x) => x.id === Number(dealId));
   const m = d.milestones[Number(index)];
@@ -921,7 +948,7 @@ function dealHtml(d) {
         if (d.role === "seller" && m.status === "Pending" && m.delivery !== "deposit") acts.push(`<button class="primary" data-deliver="${d.id}" data-i="${m.index}">Deliver</button>`);
         if (d.role === "seller" && ["Pending", "Delivered", "Disputed"].includes(m.status)) acts.push(btn("refund", m.index, "Refund buyer", "danger"));
       }
-      return `<div class="ms"><div>${esc(m.name)} · <b>${esc(m.amount)}</b> <span class="chip ${STATUS_CHIP[m.status] || ""}">${esc(m.status)}</span> <span class="hint">${esc(m.delivery || "")}</span>${dueHtml(d, m)}${m.split ? `<span class="hint"> seller ${esc(m.split.toSeller)} / buyer ${esc(m.split.toBuyer)}</span>` : ""}</div><div class="row">${acts.join("")}</div></div>`;
+      return `<div class="ms"><div>${esc(m.name)} · <b>${esc(m.amount)}</b> <span class="chip ${STATUS_CHIP[m.status] || ""}">${esc(m.status)}</span> <span class="hint">${esc(m.delivery || "")}</span>${dueHtml(d, m)}${m.split ? `<span class="hint"> seller ${esc(m.split.toSeller)} / buyer ${esc(m.split.toBuyer)}</span>` : ""}${m.file ? `<div class="hint">📎 ${esc(m.file.name)}</div>` : ""}</div><div class="row">${m.file && m.file.preview ? `<button data-preview="${d.id}" data-i="${m.index}" data-name="${esc(m.file.name)}">Preview</button>` : ""}${acts.join("")}</div></div>`;
     }).join("")}
   </div>`;
 }
@@ -965,6 +992,7 @@ function wireDealButtons() {
   wireDueButtons();
   document.querySelectorAll("[data-act]").forEach((b) => (b.onclick = () => confirmMove(b.dataset.act, b.dataset.deal, b.dataset.i)));
   document.querySelectorAll("[data-deliver]").forEach((b) => (b.onclick = () => deliverDialog(b.dataset.deliver, b.dataset.i)));
+  document.querySelectorAll("[data-preview]").forEach((b) => (b.onclick = () => previewDialog(b.dataset.preview, b.dataset.i, b.dataset.name)));
 }
 function wireAgentButtons() {
   document.querySelectorAll("[data-asign]").forEach((b) => (b.onclick = async () => {

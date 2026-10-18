@@ -162,7 +162,8 @@ Witnesses (optional): each side can add one under "Witnesses"; they appear on th
 2. Confirm pays part 1. The parts wait in a holding account (not your balance), so they cannot be spent twice.
 3. Pay the next parts on Deals → the deal's card ("Pay part 2 now"…). Paying the last part locks the deal in escrow at once.
 4. "Stop & get my money back" returns everything paid. A part more than 7 days late ends the plan the same way.
-- A seller can offer split payment too: the buyer starts it on the offer's page. Not for a buyer paying through a private link (they pay in one go), and not together with a deposit on signing.`,
+- A seller can offer split payment too: the buyer starts it on the offer's page. Not for a buyer paying through a private link (they pay in one go).
+- Split payment and a deposit (มัดจำ) work together: the buyer pays the parts first; when the last part is paid, the whole amount is locked, the deal is signed and the deposit goes to the seller at once; the other milestones are paid as each delivery is approved.`,
   public_link: `Private and public links:
 - A PRIVATE link is for one person you already chose (someone without an account): made on Confirm, with a one-time code.
 - A PUBLIC link is an open call, when you do not know who yet. Ask the AI, e.g. "post a public call for a logo designer, 6,000 baht in 2 milestones, applicants send a portfolio link and 2 samples".

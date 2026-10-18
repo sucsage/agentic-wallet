@@ -10,6 +10,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { Prisma } from "@/generated/prisma/client";
 
 import { chainAnchorAbi } from "../abis";
+import { config } from "../config";
 import { accountOf } from "../bank/ledger";
 import { customerOfUser } from "../bank/customers";
 import { type DealMove, DEAL_MOVES, runDealMove } from "../bank/deal-actions";
@@ -444,6 +445,11 @@ export async function deviceDeals(device: DeviceRow) {
   const counterDevices = await db.device.findMany({ where: { walletAddress: { in: [...new Set(deals.map((d) => d.counterparty))] }, revokedAt: null }, select: { walletAddress: true } });
   const withApp = new Set(counterDevices.map((d) => d.walletAddress.toLowerCase()));
   const dues = await Promise.all(deals.map((d) => dueDates(wallet, d.id).catch(() => [])));
+  // Delivered files (name and type only), so the app can offer the watermarked preview.
+  const files = await db.dealDelivery.findMany({
+    where: { dealId: { in: deals.map((d) => d.id) }, ciphertext: { not: null } },
+    select: { escrow: true, dealId: true, index: true, fileName: true, mime: true },
+  });
   return deals.map((d, i) => {
     const names = Array.isArray(terms[i]?.milestones) ? (terms[i]!.milestones as DraftMilestone[]) : [];
     return {
@@ -470,6 +476,12 @@ export async function deviceDeals(device: DeviceRow) {
           acceptance: t?.acceptance ?? null,
           fileTypes: t?.fileTypes ?? [],
           due: dues[i]?.find((x) => x.index === m.index) ?? null,
+          file: (() => {
+            const f = files.find((x) => x.dealId === d.id && x.index === m.index && x.escrow.toLowerCase() === config.fileEscrowOf(d.id).toLowerCase());
+            if (!f) return null;
+            const pdf = f.mime === "application/pdf" || /\.pdf$/i.test(f.fileName ?? "");
+            return { name: f.fileName ?? "file", mime: f.mime, preview: pdf || Boolean(f.mime?.startsWith("image/")) };
+          })(),
         };
       }),
     };

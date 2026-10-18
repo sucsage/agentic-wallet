@@ -733,6 +733,12 @@ class Wallet {
     return this.call<{ deals: unknown[] }>("GET", "/api/device/deals");
   }
 
+  /** A watermarked preview of a delivered image or PDF page (the website's rules: either party). */
+  async preview(dealId: number, index: number, page: number) {
+    const r = await this.call<{ jpeg: string; pages: number }>("POST", "/api/device/preview", { dealId, index, page });
+    return { jpeg: Buffer.from(r.jpeg, "base64"), pages: r.pages };
+  }
+
   async chain(limit = 200) {
     const blocks = store.lastBlocks(limit);
     const ids = blocks.filter((b) => b.kind === "event").map((b) => (b.body as { event: DealEventBody }).event.id);
