@@ -68,8 +68,12 @@ export async function requireAdmin() {
  * user's own things (identity, contacts, groups, top-ups) do not.
  */
 export async function actingAs(userId: string) {
-  const { cookies } = await import("next/headers");
+  const { cookies, headers } = await import("next/headers");
   const { ACTING_COOKIE, actingCompany } = await import("./company");
+  // The desktop app names the group in its signed request (?aw_as=<id>), not in a cookie.
+  const { VERIFIED_HEADER, readVerified } = await import("./device-chain/bridge");
+  const bridged = (await headers()).get(VERIFIED_HEADER);
+  if (bridged !== null) return actingCompany(userId, readVerified(bridged)?.acting);
   const id = (await cookies()).get(ACTING_COOKIE)?.value;
   return actingCompany(userId, id);
 }

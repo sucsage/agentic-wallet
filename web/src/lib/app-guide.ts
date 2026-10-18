@@ -97,7 +97,7 @@ Witnesses (optional): each side can add one under "Witnesses"; they appear on th
   files: `Files:
 - Attach files to a deal you created: Deals → the deal → "Attached files" → "＋ Attach a file" (up to 5, 4 MB each). The other side (and an outsider on their link) can open them.
 - Send a file to the AI: in AI Chat press ＋, paste an image, or drag a file onto the chat (images, PDFs, TXT / CSV / MD / JSON). The AI reads it, e.g. a quotation to turn into a deal.
-- In a group chat: ＋, paste or drag a file; everyone in the group can open it, and the AI reads it when "Ask AI" is on.`,
+`,
   templates: `Templates:
 - Save: on a deal or a preview card press "Save as template" (or ask the AI "save this deal as a template"). A template keeps the title, scope and milestones, never the other party.
 - Use: Deals → Templates, or tell the AI "use my <name> template for <person>". It drafts a new preview from it; change anything before you Confirm.`,
@@ -117,7 +117,7 @@ Witnesses (optional): each side can add one under "Witnesses"; they appear on th
 1. Groups → "Create group" → name it, invite contacts, choose how many yes votes a payment needs (at least 2).
 2. The owner can open a shared group wallet (or act as a registered company).
 3. A purchase is proposed by a member (from AI Chat: "put DR-… to <group>", or in the group's chat with "Ask AI"); signers vote on the group's page; the money is locked only when enough vote yes.
-4. Salaries and payouts from the shared wallet: ask the AI in the group chat; signers vote; then everyone is paid at once.`,
+4. Salaries and payouts from the shared wallet: "Pay out to members" on the group's page (or ask the AI acting as the group); signers vote; then everyone is paid at once.`,
   limits: `The agent's limits:
 - On AI Chat, the agent panel on the right → the limits button → "Edit": per transaction 10,000 to 100,000 baht, per day up to 1,000,000. Saved on-chain.
 - Within the limits and to someone on your allow transfer list, the agent may pay alone (Tier 2). Anything larger, any new deal, and any release without evidence waits for your approval (Tier 1). In an emergency it can pause the wallet (Tier 3); only you unpause it.

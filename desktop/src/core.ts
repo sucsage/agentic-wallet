@@ -22,7 +22,7 @@ import {
   verifyBlocks,
   verifyProof,
 } from "../../web/src/lib/device-chain/format";
-import { ApiError, plain, signed, signedForm } from "./api";
+import { ApiError, plain, signed, signedRaw, signedForm } from "./api";
 import * as store from "./store";
 import { currentProfile, setProfile } from "./paths";
 import { type VaultFile, WrongPassphrase, hasVault, lastAccount, listAccounts, openBackup, openKey, openLocal, readVault, rememberAccount, sealBackup, sealKey, sealLocal, writeVault } from "./vault";
@@ -31,6 +31,10 @@ export const DEFAULT_SERVER = "https://agentic-wallet-inky.vercel.app";
 
 type Head = { height: number; hash: Hex; serverSig: Hex; block: SignedBlock } | null;
 type Pending = { head: Head; server: Address; events: { event: DealEventBody; serverSig: Hex }[]; requests: WebRequest[] };
+/** Website routes the app may call for the user (not admin, sign-in, cron or the device routes, which have their own client). */
+const WEB_ALLOWED = /^\/api\/(address|approvals|bank|buyer-invites|companies|deals|friends|groups|invites|link-access|me|plans|policy|posts|profile|reports|samples|security|summary|templates|transfers|workspace|apply|kyc)(\/|$)/;
+const WEB_BLOCKED = /^\/api\/(admin|auth|cron|device|mock-id|rpc)(\/|$)/;
+
 export type McpSettings = { enabled: boolean; read: boolean; ask: boolean; request: boolean };
 export type McpCall = { at: number; client: string; tool: string; ok: boolean; ms: number; tokens?: number; error?: string };
 export type ChatMessage = { role: "user" | "assistant"; text: string; at: number; steps?: unknown[]; model?: string | null; usage?: { tokens: number; calls: number } | null };
@@ -125,6 +129,21 @@ class Wallet {
   private need() {
     if (!this.vault || !this.account || !this.key) throw new ApiError(423, "Unlock the app first");
     return { vault: this.vault, account: this.account, key: this.key };
+  }
+
+  /**
+   * The website's own API, signed by this device (the app's way to reach everything the website
+   * does: templates, summary, policy, profile, groups…). company: undefined follows "Acting as",
+   * null is the user's own wallet. Only paths under WEB_ALLOWED.
+   */
+  web(method: string, path: string, body: Uint8Array | null, contentType: string | null, company?: string | null) {
+    const { vault, account } = this.need();
+    const url = new URL(path, "http://x");
+    if (!WEB_ALLOWED.test(url.pathname) || WEB_BLOCKED.test(url.pathname)) throw new ApiError(403, "The app does not use that website route");
+    url.searchParams.delete("aw_as");
+    const id = company === undefined ? this.acting()?.companyId : company;
+    if (id) url.searchParams.set("aw_as", id);
+    return signedRaw(vault.server, account, method.toUpperCase(), url.pathname + url.search, body, contentType);
   }
 
   private call<T>(method: "GET" | "POST", path: string, body?: unknown) {

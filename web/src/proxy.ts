@@ -1,6 +1,8 @@
 import { getSessionCookie } from "better-auth/cookies";
 import { type NextRequest, NextResponse } from "next/server";
 
+import { VERIFIED_HEADER, verifySignedRequest } from "./lib/device-chain/bridge";
+
 /**
  * Runs before every page and API request (Next.js 16 Proxy, formerly Middleware):
  *
@@ -43,7 +45,7 @@ const SECRET_URLS = ["/invite/", "/pay/", "/reset-password", "/groups/join/", "/
 const SITE_PREVIEW = /^\/api\/(deals\/\d+|pay\/[^/]+)\/site\//;
 
 /** Work files (PDFs, images) previewed inside this app's own pages: framing allowed from this origin only. */
-const FILE_PREVIEW = /^\/api\/(deals\/\d+\/(attachments|files)\/|posts\/(files\/|[^/]+\/files\/)|apply\/[^/]+\/files\/|pay\/[^/]+\/(deal-files|files)\/|invite\/[^/]+\/deal-files\/|groups\/[^/]+\/chat\/[^/]+\/file)/;
+const FILE_PREVIEW = /^\/api\/(deals\/\d+\/(attachments|files)\/|posts\/(files\/|[^/]+\/files\/)|apply\/[^/]+\/files\/|pay\/[^/]+\/(deal-files|files)\/|invite\/[^/]+\/deal-files\/)/;
 
 const UNSAFE = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
@@ -61,7 +63,7 @@ function withHeaders(res: NextResponse, req: NextRequest): NextResponse {
   return res;
 }
 
-export function proxy(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const path = req.nextUrl.pathname;
 
   if (path.startsWith("/api/")) {
@@ -71,7 +73,15 @@ export function proxy(req: NextRequest) {
         return withHeaders(NextResponse.json({ error: "Cross-site request refused" }, { status: 403 }), req);
       }
     }
-    return withHeaders(NextResponse.next(), req);
+    const headers = new Headers(req.headers);
+    headers.delete(VERIFIED_HEADER);
+    // The desktop app's signed call to a website route (its own /api/device routes check themselves).
+    if (headers.has("x-aw-device") && !path.startsWith("/api/device/") && !path.startsWith("/api/auth/")) {
+      const v = await verifySignedRequest(req);
+      if ("error" in v) return withHeaders(NextResponse.json({ error: v.error }, { status: 401 }), req);
+      headers.set(VERIFIED_HEADER, v.header);
+    }
+    return withHeaders(NextResponse.next({ request: { headers } }), req);
   }
 
   const signedIn = Boolean(getSessionCookie(req));

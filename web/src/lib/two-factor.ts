@@ -70,6 +70,8 @@ export function publicSecurity(s: Awaited<ReturnType<typeof securityOf>>) {
 
 /** Whether this session passed 2FA (or the user has it off). */
 export async function twoFactorPassed(userId: string, sessionId: string): Promise<boolean> {
+  // The desktop app: its device key (linked after sign-in) is the second factor.
+  if (sessionId.startsWith("device:")) return true;
   const s = await db.userSecurity.findUnique({ where: { userId } });
   if (!s?.enabled || s.methods.length === 0) return true;
   const v = (await cookies()).get(COOKIE)?.value;

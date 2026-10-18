@@ -61,3 +61,18 @@ export async function signedForm<T>(server: string, account: PrivateKeyAccount, 
   });
   return parse<T>(res);
 }
+
+/**
+ * A signed call to one of the website's own routes (lib/device-chain/bridge.ts on the server): any
+ * method, the body's exact bytes, and the answer handed back as it came (JSON, a document, a file).
+ */
+export async function signedRaw(server: string, account: PrivateKeyAccount, method: string, path: string, body: Uint8Array | null, contentType: string | null): Promise<Response> {
+  const bytes = body ?? new Uint8Array();
+  const time = nextTime();
+  const sig = await account.signMessage({ message: requestMessage(method, path, time, bytes) });
+  const headers: Record<string, string> = { "x-aw-device": account.address, "x-aw-time": String(time), "x-aw-sig": sig };
+  if (contentType) headers["content-type"] = contentType;
+  return fetch(new URL(path, server), { method, headers, body: method === "GET" || method === "HEAD" ? undefined : (bytes as Uint8Array<ArrayBuffer>), redirect: "manual" }).catch((e) => {
+    throw new ApiError(0, `Cannot reach ${new URL(server).host}: ${e instanceof Error ? e.message : e}`);
+  });
+}

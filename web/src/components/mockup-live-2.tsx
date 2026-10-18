@@ -13,7 +13,6 @@ import { DueControl, type Due } from "./due-control";
 import { FileLink, PdfPagePreview } from "./file-preview";
 import { usePrefs } from "./prefs";
 import { FundCompany, setActing } from "./company";
-import { GroupChat } from "./group-chat";
 import { SendMoneyDialog } from "./send-money";
 import { BlockDialog, BlockedPanel, ReportDialog } from "./contact-safety";
 import { DealDocuments, DealFiles, SiteMockup, WitnessPanel } from "./deal-extras";
@@ -1404,12 +1403,11 @@ export function LiveGroups({ initialCreateOpen = false, joinToken = null }: { in
                 </div>
               </Card>
             </div>
-            <GroupChat groupId={detail.id} threshold={detail.threshold} shared={detail.company?.name ?? null} />
             <Card className="aw-group-wallet-card aw-group-wallet-votes">
               <h3>＋ Propose a payment</h3>
               <p>
                 {detail.company
-                  ? `Ask the AI (here in the group chat, or acting as ${detail.company.name}) to hire or sell in the group's name; it happens once ${detail.threshold} signers approve. Purchases are paid from the ${detail.company.kind === "GROUP" ? "group" : "company"} account and sales are paid into it.`
+                  ? `Ask the AI, acting as ${detail.company.name}, to hire or sell in the group's name; it happens once ${detail.threshold} signers approve. Purchases are paid from the ${detail.company.kind === "GROUP" ? "group" : "company"} account and sales are paid into it.`
                   : `Draft a purchase in the AI chat first. It stays on hold while the group votes, and is paid from your wallet once ${detail.threshold} signers approve.`}
               </p>
               {openDrafts.length === 0 && <small>No purchase drafts {me?.acting ? `for ${me.acting.name}` : "of yours"} yet.</small>}

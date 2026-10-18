@@ -1,3 +1,4 @@
+import { VERIFIED_HEADER, readVerified } from "./device-chain/bridge";
 import "server-only";
 
 import { betterAuth } from "better-auth";
@@ -108,5 +109,39 @@ export const auth = betterAuth({
 
 /** The signed-in user's session, or null. Use in Server Components, actions and route handlers. */
 export async function getSession() {
-  return auth.api.getSession({ headers: await headers() });
+  const h = await headers();
+  // The desktop app, signed with its device key (checked by the proxy, lib/device-chain/bridge.ts).
+  const bridged = h.get(VERIFIED_HEADER);
+  if (bridged !== null) return deviceSession(bridged);
+  return auth.api.getSession({ headers: h });
+}
+
+/**
+ * A session for a linked device's user: the device must still be linked, and each signature counts
+ * once (the same replay guard as /api/device). The id "device:<address>" also tells the second-factor
+ * check that the device key itself is the strong factor.
+ */
+const firstNonce = new Map<string, { nonce: string; at: number }>();
+
+async function deviceSession(value: string) {
+  const v = readVerified(value);
+  if (!v) return null;
+  const device = await db.device.findUnique({ where: { address: v.device } });
+  if (!device || device.revokedAt) return null;
+  const user = await db.user.findUnique({ where: { id: device.userId } });
+  if (!user) return null;
+  // Each signature counts once. Guards of the same request call this again: the proxy's nonce tells them apart from a replay.
+  const fresh = await db.deviceRequestSeen.create({ data: { sigHash: v.sigHash } }).then(
+    () => true,
+    () => false,
+  );
+  if (fresh) firstNonce.set(v.sigHash, { nonce: v.nonce, at: Date.now() });
+  else if (firstNonce.get(v.sigHash)?.nonce !== v.nonce) return null;
+  for (const [k, x] of firstNonce) if (Date.now() - x.at > 10 * 60_000) firstNonce.delete(k);
+  const now = new Date();
+  return {
+    user,
+    session: { id: `device:${device.address}`, userId: device.userId, token: "", expiresAt: new Date(now.getTime() + 60_000), createdAt: now, updatedAt: now, ipAddress: null, userAgent: "MilestonePay desktop" },
+    device: { address: device.address, acting: v.acting },
+  };
 }

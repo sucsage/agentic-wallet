@@ -118,6 +118,21 @@ async function route(req: Request, path: string, port: number): Promise<Response
     const b = await body<{ draftId: string; companyId?: string | null }>(req);
     return json(await wallet.discardDraft(String(b.draftId ?? ""), b.companyId === undefined ? undefined : b.companyId || null));
   }
+  // The website's own API for this user, signed by the device (the screens that reuse the website's features).
+  if (path.startsWith("/app/web/")) {
+    const u = new URL(req.url);
+    const company = u.searchParams.get("company");
+    u.searchParams.delete("company");
+    u.searchParams.delete("t");
+    const bytes = m === "GET" || m === "HEAD" ? null : new Uint8Array(await req.arrayBuffer());
+    const res = await wallet.web(m, `/api/${path.slice("/app/web/".length)}${u.search}`, bytes, req.headers.get("content-type"), company === null ? undefined : company || null);
+    const headers = new Headers({ "cache-control": "no-store" });
+    for (const h of ["content-type", "content-disposition", "x-preview-pages"]) {
+      const v = res.headers.get(h);
+      if (v) headers.set(h, v);
+    }
+    return new Response(res.body, { status: res.status, headers });
+  }
   if (m === "GET" && path === "/app/update") return json(await checkUpdate(new URL(req.url).searchParams.has("force")));
   if (m === "POST" && path === "/app/update") {
     const version = await installUpdate();
