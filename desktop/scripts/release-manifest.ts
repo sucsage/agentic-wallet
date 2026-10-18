@@ -43,7 +43,7 @@ const manifest = {
   // The browser build is gone (0.5.0): installers are the windowed app's. Copies of the browser build
   // find no file for them in assets, so their update card links to the release page.
   assets,
-  installers: Object.keys(installers).length ? installers : windowed,
+  installers: windowed,
   windowed,
 };
 writeFileSync("dist/latest.json", JSON.stringify(manifest, null, 2) + "\n");

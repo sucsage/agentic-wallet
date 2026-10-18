@@ -42,12 +42,9 @@ const HOW: Record<string, string> = {
 export default async function DownloadPage() {
   const r = await latest();
   const fileUrl = (file: string) => `https://github.com/${REPO}/releases/download/${encodeURIComponent(r!.tag)}/${file}`;
-  // The app in its own window (Electrobun). A platform whose windowed build is missing from a release falls back to the classic installer.
+  // The app in its own window (Electrobun): the only build since 0.5.0. Releases before it list the windowed builds next to the classic ones.
   const list = r
-    ? Object.entries(r.installers).map(([key, classic]) => {
-        const i = r.windowed?.[key] ?? classic;
-        return { key, label: classic.label, file: i.file, sha256: i.sha256, size: i.size, url: fileUrl(i.file), how: HOW[key] ?? "" };
-      })
+    ? Object.entries(r.windowed && Object.keys(r.windowed).length ? r.windowed : r.installers).map(([key, i]) => ({ key, label: i.label, file: i.file, sha256: i.sha256, size: i.size, url: fileUrl(i.file), how: HOW[key] ?? "" }))
     : [];
   return (
     <main className="dl-page">
