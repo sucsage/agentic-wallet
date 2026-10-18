@@ -14,10 +14,13 @@ const REPO = "sucsage/agentic-wallet";
 type Installer = { label: string; file: string; sha256: string; size: number };
 type Latest = { version: string; tag: string; date: string; notes: string; page: string; installers: Record<string, Installer> };
 
-/** The latest desktop release (its latest.json), re-read at most every 10 minutes. */
+/**
+ * The latest desktop release (its latest.json), read on each visit: a cached "no release yet"
+ * would hide a new release, and the file comes from GitHub's download servers, not the rate-limited API.
+ */
 async function latest(): Promise<Latest | null> {
   try {
-    const res = await fetch(`https://github.com/${REPO}/releases/latest/download/latest.json`, { next: { revalidate: 600 } });
+    const res = await fetch(`https://github.com/${REPO}/releases/latest/download/latest.json`, { cache: "no-store", signal: AbortSignal.timeout(5000) });
     if (!res.ok) return null;
     const j = (await res.json()) as Latest;
     return j && typeof j.version === "string" && j.installers ? j : null;
