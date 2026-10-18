@@ -1,6 +1,6 @@
 import { getAddress } from "viem";
 
-import { BuyerInviteError, buyerInviteByToken } from "@/lib/bank/buyer-invites";
+import { BuyerInviteError, buyerInviteForRequest } from "@/lib/bank/buyer-invites";
 import { DealError, deliveryPreview } from "@/lib/bank/deals";
 import { HttpError, errorResponse, rateLimit } from "@/lib/guard";
 
@@ -9,7 +9,7 @@ export async function GET(req: Request, ctx: RouteContext<"/api/pay/[token]/prev
   try {
     rateLimit(req, "pay-preview", 120, 60 * 60 * 1000);
     const p = await ctx.params;
-    const invite = await buyerInviteByToken(p.token).catch((e) => {
+    const invite = await buyerInviteForRequest(p.token).catch((e) => {
       throw e instanceof BuyerInviteError ? new HttpError(404, e.message) : e;
     });
     const id = Number(p.dealId);

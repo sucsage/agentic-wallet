@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 
 import { type Address, formatUnits, getAddress, hashTypedData, parseUnits } from "viem";
 
-import type { DealDraft, Prisma } from "@/generated/prisma/client";
+import { type DealDraft, Prisma } from "@/generated/prisma/client";
 
 import { publicClient, roleAddresses, send } from "../chain";
 import { accountOf } from "./ledger";
@@ -39,6 +39,10 @@ export type DraftMilestone = {
   acceptance: string;
   /** A deposit: paid to the seller as soon as the contract is signed (the offer accepted), no delivery needed. First milestone only. */
   deposit?: boolean;
+  /** For a file milestone: the formats the buyer accepts, e.g. [".pdf", ".dwg"] (lib/file-types). Empty or missing: any file. */
+  fileTypes?: string[];
+  /** Rounds of changes the buyer may ask for on this milestone (0-10; missing: 10, the most). */
+  revisions?: number;
 };
 
 export const deliveryOf = (m: Pick<DraftMilestone, "hasFile" | "delivery"> | undefined) => m?.delivery ?? (m?.hasFile ? "file" : "note");
@@ -64,6 +68,13 @@ export type DraftView = {
   dealId: number | null;
   /** An amendment of this deal (an offer not accepted yet): confirming replaces it. */
   replacesDealId: number | null;
+  /** The contract's written rules, whose guarantor it requires, and the terms review for the owner. */
+  rules: string | null;
+  guarantorsRequired: string | null;
+  review: { ok: boolean; blocking: boolean; issues: { level: "block" | "warn"; text: string }[] } | null;
+  /** Split payment: the agreed parts, and how far the buyer got (null: paid in one go). */
+  paymentPlan: { amount: string; due: string }[] | null;
+  plan: { id: string; status: string; paidParts: number } | null;
   result: unknown;
   createdAt: Date;
 };
@@ -99,22 +110,51 @@ export async function draftView(d: DealDraft, sellerLabel = ""): Promise<DraftVi
     status: d.status,
     dealId: d.dealId,
     replacesDealId: d.replacesDealId,
+    rules: d.rules,
+    guarantorsRequired: d.guarantorsRequired,
+    review: (d.review as DraftView["review"]) ?? null,
+    paymentPlan: (d.paymentPlan as DraftView["paymentPlan"]) ?? null,
+    plan: d.paymentPlan ? await db.paymentPlan.findUnique({ where: { draftId: d.id }, select: { id: true, status: true, paidParts: true } }) : null,
     result: d.result,
     createdAt: d.createdAt,
   };
 }
 
 /** What the termsHash commits to. Older drafts hashed only the first four fields. */
-function termsOf(input: { kind?: string; shipTo?: string | null; title: string; summary: string; reviewHours: number; milestones: DraftMilestone[] }) {
+/** The rules of the contract and whose guarantor it requires: part of the terms both sides sign. */
+export type ExtraTerms = {
+  rules?: string | null;
+  guarantorsRequired?: "buyer" | "seller" | "both" | null;
+  review?: unknown;
+  /** Split payment (แบ่งจ่าย): the parts the buyer pays before anything is locked (lib/bank/payment-plans). */
+  paymentPlan?: { amount: string; due: string }[] | null;
+};
+
+function termsOf(input: { kind?: string; shipTo?: string | null; title: string; summary: string; reviewHours: number; milestones: DraftMilestone[] } & ExtraTerms) {
   const base = { title: input.title, summary: input.summary, milestones: input.milestones, reviewHours: input.reviewHours };
-  return { ...base, kind: input.kind ?? "HIRE", ...(input.shipTo ? { shipTo: input.shipTo } : {}) };
+  // Only present when set, so the hash of older terms stays the same.
+  return {
+    ...base,
+    kind: input.kind ?? "HIRE",
+    ...(input.shipTo ? { shipTo: input.shipTo } : {}),
+    ...(input.rules ? { rules: input.rules } : {}),
+    ...(input.guarantorsRequired ? { guarantorsRequired: input.guarantorsRequired } : {}),
+    ...(input.paymentPlan?.length ? { paymentPlan: input.paymentPlan } : {}),
+  };
 }
+
+const extraData = (input: ExtraTerms) => ({
+  rules: input.rules?.trim().slice(0, 12_000) || null,
+  guarantorsRequired: input.guarantorsRequired ?? null,
+  review: input.review === undefined ? Prisma.JsonNull : (input.review as Prisma.InputJsonValue),
+  paymentPlan: input.paymentPlan?.length ? (input.paymentPlan as Prisma.InputJsonValue) : Prisma.JsonNull,
+});
 
 /** Saves the agent's draft as a PREVIEW (nothing exists until the user confirms it). Refuses sellers the wallet does not allowlist, so approval cannot fail on that. */
 export async function createDraft(
   userId: string,
   wallet: Address,
-  input: { seller: string; inviteName?: string | null; kind?: "HIRE" | "GOODS"; shipTo?: string | null; title: string; summary: string; reviewHours: number; milestones: DraftMilestone[] },
+  input: { seller: string; inviteName?: string | null; kind?: "HIRE" | "GOODS"; shipTo?: string | null; title: string; summary: string; reviewHours: number; milestones: DraftMilestone[] } & ExtraTerms,
 ): Promise<DealDraft> {
   const units = await walletUnits(wallet);
   if (!units.currency) throw new DraftError("This wallet is not paid from a bank account");
@@ -143,6 +183,7 @@ export async function createDraft(
       milestones: input.milestones as unknown as Prisma.InputJsonValue,
       reviewHours: input.reviewHours,
       termsHash,
+      ...extraData(input),
     },
   });
 }
@@ -154,7 +195,7 @@ export async function createDraft(
 export async function createSellDraft(
   userId: string,
   wallet: Address,
-  input: { buyer: string; inviteName?: string | null; kind?: "HIRE" | "GOODS"; shipTo?: string | null; title: string; summary: string; reviewHours: number; milestones: DraftMilestone[] },
+  input: { buyer: string; inviteName?: string | null; kind?: "HIRE" | "GOODS"; shipTo?: string | null; title: string; summary: string; reviewHours: number; milestones: DraftMilestone[] } & ExtraTerms,
 ): Promise<DealDraft> {
   const units = await walletUnits(wallet);
   if (!units.currency) throw new DraftError("This wallet is not paid from a bank account");
@@ -187,6 +228,7 @@ export async function createSellDraft(
       milestones: input.milestones as unknown as Prisma.InputJsonValue,
       reviewHours: input.reviewHours,
       termsHash,
+      ...extraData(input),
     },
   });
 }
@@ -200,7 +242,7 @@ export async function createAmendDraft(
   userId: string,
   wallet: Address,
   dealId: number,
-  changes: { kind?: "HIRE" | "GOODS"; shipTo?: string | null; title?: string; summary?: string; reviewHours?: number; milestones?: DraftMilestone[] },
+  changes: { kind?: "HIRE" | "GOODS"; shipTo?: string | null; title?: string; summary?: string; reviewHours?: number; milestones?: DraftMilestone[] } & ExtraTerms,
 ): Promise<DealDraft> {
   const { dealForWallet } = await import("./deals");
   const deal = await dealForWallet(wallet, dealId).catch(() => null);
@@ -221,6 +263,10 @@ export async function createAmendDraft(
     summary: changes.summary ?? old.summary,
     reviewHours: changes.reviewHours ?? old.reviewHours,
     milestones,
+    rules: changes.rules === undefined ? old.rules : changes.rules,
+    guarantorsRequired: changes.guarantorsRequired === undefined ? (old.guarantorsRequired as ExtraTerms["guarantorsRequired"]) : changes.guarantorsRequired,
+    paymentPlan: changes.paymentPlan === undefined ? (old.paymentPlan as ExtraTerms["paymentPlan"]) : changes.paymentPlan,
+    review: changes.review,
   };
   const termsHash = createHash("sha256").update(JSON.stringify(termsOf(input))).digest("hex");
   // Earlier amendment previews of the same deal are superseded.
@@ -243,6 +289,7 @@ export async function createAmendDraft(
       reviewHours: input.reviewHours,
       termsHash,
       replacesDealId: dealId,
+      ...extraData(input),
     },
   });
 }
@@ -265,11 +312,20 @@ export async function approveDraft(
   userId: string,
   wallet: Address,
   draftId: string,
-  opts: { viaGroup?: boolean } = {},
+  opts: { viaGroup?: boolean; fromPlan?: boolean } = {},
 ): Promise<{ draft: DealDraft; funding: FundingResult }> {
   const draft = await db.dealDraft.findFirst({ where: { id: draftId, userId, walletAddress: wallet } });
   if (!draft) throw new DraftError("Draft not found");
   if (draft.status === "CANCELLED") throw new DraftError("This draft was cancelled");
+  // A purchase paid in parts is locked only by its last part (lib/bank/payment-plans).
+  if (draft.side === "BUY" && draft.paymentPlan && !opts.fromPlan) {
+    const plan = await db.paymentPlan.findUnique({ where: { draftId: draft.id } });
+    if (!plan || plan.status !== "ACTIVE" || plan.paidParts < (draft.paymentPlan as unknown[]).length) {
+      throw new DraftError("This purchase is paid in parts: it is locked when the last part is paid");
+    }
+  }
+  // The terms review found the deal makes no sense or puts its owner at a clear disadvantage.
+  if ((draft.review as { blocking?: boolean } | null)?.blocking) throw new DraftError("The terms review stopped this deal: ask the AI to fix the points it listed, then confirm the new preview");
   // A draft put to a group's vote is locked by the vote, not by its proposer alone.
   if (!opts.viaGroup && (await db.groupProposal.findFirst({ where: { draftId, status: "OPEN" } }))) {
     throw new DraftError("This draft is waiting for its group's vote. It is locked when enough members approve.");
@@ -402,6 +458,8 @@ async function approveClaimed(userId: string, wallet: Address, draft: DealDraft)
       status,
       fundingId: funding.fundingId,
       dealId: funding.dealId ?? null,
+      // The 14 days to accept start now (lib/bank/deals OFFER_DAYS).
+      ...(funding.dealId != null && !draft.offeredAt ? { offeredAt: new Date() } : {}),
       result: JSON.parse(
         JSON.stringify({ ...keep, funding }, (_k, v) => (typeof v === "bigint" ? v.toString() : v)),
       ) as Prisma.InputJsonValue,
@@ -439,6 +497,7 @@ async function approveSellDraft(
     data: {
       status: funding.status === "FUNDED" ? "FUNDED" : funding.status === "PENDING" ? "DRAFT" : "FAILED",
       dealId: dealId ?? null,
+      ...(dealId != null && !draft.offeredAt ? { offeredAt: new Date() } : {}),
       result: JSON.parse(JSON.stringify({ funding }, (_k, v) => (typeof v === "bigint" ? v.toString() : v))) as Prisma.InputJsonValue,
     },
   });

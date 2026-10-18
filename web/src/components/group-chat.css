@@ -18,3 +18,8 @@
 .aw-gchat-form textarea{width:100%;padding:10px 12px;border:1px solid #333;border-radius:12px;background:#0c0c0c;color:#fff;font:inherit;font-size:15px;resize:vertical}
 .aw-gchat-form>div{display:flex;justify-content:space-between;align-items:center}
 .aw-gchat-ai{display:flex;align-items:center;gap:6px;color:#bbb;font-size:13px;cursor:pointer}
+.aw-gchat-form>div{gap:10px}
+.aw-gchat-attach{width:34px;height:34px;border:1px solid #333;border-radius:10px;background:#111;color:#ddd;font-size:18px;cursor:pointer;margin-right:auto}
+.aw-gchat-file{display:inline-block;margin-top:6px;padding:4px 10px;border:1px solid #333;border-radius:8px;background:#151515;color:#ddd!important;font-size:13px;text-decoration:none!important}
+.aw-gchat-file.image{padding:0;border:0;background:none}
+.aw-gchat-file.image img{display:block;max-width:240px;max-height:200px;border-radius:10px;border:1px solid #333}

@@ -14,9 +14,12 @@ import { FundCompany, setActing } from "./company";
 import { GroupChat } from "./group-chat";
 import { SendMoneyDialog } from "./send-money";
 import { BlockDialog, BlockedPanel, ReportDialog } from "./contact-safety";
-import { DealDocuments, SiteMockup, WitnessPanel } from "./deal-extras";
+import { DealDocuments, DealFiles, SiteMockup, WitnessPanel } from "./deal-extras";
+import { GuarantorForm } from "./guarantor-form";
+import { PlanCard, type PlanViewData } from "./plan-card";
 import { SaveTemplateDialog, type TemplatePayload } from "./deal-templates";
 import { SEND_LIMITS } from "@/lib/send-limits";
+import { acceptAttr, fileTypeOk, fileTypesLabel } from "@/lib/file-types";
 import { BalanceBar } from "./mockup-live";
 import { Button, Card, Loading, PageTitle } from "./mockup-ui";
 
@@ -67,10 +70,11 @@ function useAction() {
     setBusy(key);
     setMessage(null);
     try {
-      const r = (await fn()) as { outcome?: Outcome; status?: string; error?: string; groupVote?: { status: string; yes: number; threshold: number; group: string } } | undefined;
+      const r = (await fn()) as { outcome?: Outcome; status?: string; error?: string; groupVote?: { status: string; yes: number; threshold: number; group: string }; deviceRequest?: { device: string } } | undefined;
       const o = r?.outcome;
       const v = r?.groupVote;
-      if (v)
+      if (r?.deviceRequest) setMessage({ ok: true, text: `Waiting for your desktop app (${r.deviceRequest.device}): sign it there to carry it out.` });
+      else if (v)
         setMessage({
           ok: v.status !== "FAILED" && v.status !== "REJECTED",
           text:
@@ -1541,7 +1545,7 @@ type Summary = {
     topups: number;
     count: number;
   }[];
-  deals: { title: string; spent: number; refunded: number }[];
+  deals: { id: number; title: string; role: "buyer" | "seller"; status: string; total: number; paid: number; refunded: number; locked: number }[];
   tax: { kind: string; year: number; income: number; taxable: number; tax: number; vatWarning: string | null; notes: string[] } | null;
 };
 
@@ -1757,24 +1761,41 @@ export function LiveSummary() {
         <section className="aw-summary-activity">
           <header>
             <b>By deal</b>
+            <small>Every deal, live from the escrow</small>
           </header>
           <div className="aw-summary-table-wrap">
             <table>
               <thead>
                 <tr>
                   <th>Deal</th>
-                  <th>Spent</th>
+                  <th>Status</th>
+                  <th>Total</th>
+                  <th>Paid out</th>
                   <th>Refunded</th>
+                  <th>Still locked</th>
                 </tr>
               </thead>
               <tbody>
+                {data && data.deals.length === 0 && (
+                  <tr>
+                    <td colSpan={6}>No deals yet.</td>
+                  </tr>
+                )}
                 {(data?.deals ?? []).map((d) => (
-                  <tr key={d.title}>
+                  <tr key={d.id} className="aw-summary-deal" onClick={() => (window.location.href = `/deals/D-${d.id}`)}>
                     <td>
-                      <b>{d.title}</b>
+                      <b>
+                        D-{d.id} · {d.title}
+                      </b>
+                      <small> {d.role === "seller" ? "Selling" : "Buying"}</small>
                     </td>
-                    <td className="debit">{tokenMoney(d.spent, c)}</td>
-                    <td className="credit">{tokenMoney(d.refunded, c)}</td>
+                    <td>
+                      <span className={`aw-deal-status ${d.status === "Completed" ? "green" : d.status === "Dispute" ? "red" : d.status === "Cancelled" ? "gray" : d.status === "Waiting" ? "blue" : "violet"}`}>{d.status}</span>
+                    </td>
+                    <td>{tokenMoney(d.total, c)}</td>
+                    <td className={d.role === "seller" ? "credit" : "debit"}>{tokenMoney(d.paid, c)}</td>
+                    <td className={d.role === "buyer" ? "credit" : "debit"}>{tokenMoney(d.refunded, c)}</td>
+                    <td>{tokenMoney(d.locked, c)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1796,7 +1817,14 @@ type DealDetail = {
   /** Who made the offer: while it is Proposed, only the other side can accept it. */
   offeredBy: "me" | "them";
   /** The other side has no account and this user invited them: their private link. */
-  invite: { kind: "seller" | "buyer"; name: string; link: string | null; expiresAt: string; linked: boolean } | null;
+  invite: {
+    kind: "seller" | "buyer";
+    name: string;
+    link: string | null;
+    expiresAt: string;
+    linked: boolean;
+    access: { required: false } | { required: true; passwordSet: boolean; otp: string | null; otpExpiresAt: string | null };
+  } | null;
   witnesses?: { side: string; name: string; contact: string; mine: boolean }[];
   /** This offer was withdrawn and replaced by an amended one. */
   replacedBy?: number | null;
@@ -1812,6 +1840,11 @@ type DealDetail = {
   reviewHours: number;
   demoSeller: boolean;
   canCancel: boolean;
+  offerExpiresAt?: string | null;
+  rules?: string | null;
+  guarantorsRequired?: string | null;
+  paymentPlan?: (PlanViewData & { payer: boolean }) | null;
+  guarantors?: { side: string; name: string; contact: string; relation: string; amount: number | null; mine: boolean }[];
   canAccept: boolean;
   declined: "me" | "them" | null;
   escrow: string | null;
@@ -1829,6 +1862,10 @@ type DealDetail = {
     canPreview: boolean;
     canMockup?: boolean;
     deposit?: boolean;
+    /** The formats agreed for a file milestone ([] = any). */
+    fileTypes?: string[];
+    revisions?: number;
+    revisionsUsed?: number;
     delivery: {
       note: string;
       fileName: string | null;
@@ -1920,8 +1957,9 @@ function DisputeForm({ dealId, index, onDone, onCancel }: { dealId: number; inde
     setBusy(true);
     setMsg(null);
     try {
-      const r = await send<{ outcome: Outcome }>(`/api/deals/${dealId}/action`, "POST", { action: "dispute", index, reason });
-      if (r.outcome.status !== "success") setMsg(r.outcome.error ?? r.outcome.status);
+      const r = await send<{ outcome?: Outcome; deviceRequest?: { device: string } }>(`/api/deals/${dealId}/action`, "POST", { action: "dispute", index, reason });
+      if (r.deviceRequest) setMsg(`Waiting for your desktop app (${r.deviceRequest.device}): sign the dispute there.`);
+      else if (r.outcome && r.outcome.status !== "success") setMsg(r.outcome.error ?? r.outcome.status);
       else await onDone();
     } catch (err) {
       setMsg((err as Error).message);
@@ -1949,7 +1987,19 @@ function DisputeForm({ dealId, index, onDone, onCancel }: { dealId: number; inde
 }
 
 /** The seller's delivery form for one milestone: evidence note plus an optional file (max 4 MB). */
-function DeliverForm({ dealId, index, parcel, onDone }: { dealId: number; index: number; parcel: boolean; onDone: () => Promise<void> }) {
+function DeliverForm({
+  dealId,
+  index,
+  parcel,
+  fileTypes,
+  onDone,
+}: {
+  dealId: number;
+  index: number;
+  parcel: boolean;
+  fileTypes?: string[];
+  onDone: () => Promise<void>;
+}) {
   const [note, setNote] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [carrier, setCarrier] = useState("MOCK_POST");
@@ -2031,8 +2081,24 @@ function DeliverForm({ dealId, index, parcel, onDone }: { dealId: number; index:
         <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} maxLength={4000} required />
       </label>
       <label>
-        <span>File (optional, max 4 MB · encrypted, the buyer unlocks it after approving)</span>
-        <input type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+        <span>
+          File ({fileTypes?.length ? <b>{fileTypesLabel(fileTypes)} only, as agreed</b> : "optional"}, max 4 MB · encrypted, the buyer unlocks it after approving)
+        </span>
+        <input
+          type="file"
+          accept={acceptAttr(fileTypes)}
+          onChange={(e) => {
+            const f = e.target.files?.[0] ?? null;
+            if (f && !fileTypeOk(f.name, fileTypes)) {
+              setMsg({ ok: false, text: `Only ${fileTypesLabel(fileTypes)} files are accepted for this milestone.` });
+              e.target.value = "";
+              setFile(null);
+              return;
+            }
+            setMsg(null);
+            setFile(f);
+          }}
+        />
       </label>
       <Button type="submit" disabled={busy || !note.trim()}>
         {busy ? "Encrypting & anchoring…" : "Submit delivery"}
@@ -2257,7 +2323,78 @@ function InviteLinkCard({ dealId, invite, onDone }: { dealId: number; invite: No
         {busy ? "…" : shown ? "Make a new link (the old one stops working)" : "Make a new link"}
       </button>
       {err && <p className="aw-bank-error">{err}</p>}
+      <LinkAccessPanel dealId={dealId} invite={invite} onDone={onDone} />
     </section>
+  );
+}
+
+/**
+ * The person's access to the link: the one-time code to send them (until they set a password), a new
+ * code, and the reset code they send back when they lose their password.
+ */
+function LinkAccessPanel({ dealId, invite, onDone }: { dealId: number; invite: NonNullable<DealDetail["invite"]>; onDone: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [fresh, setFresh] = useState<{ otp: string; expiresAt: string } | null>(null);
+  const [code, setCode] = useState("");
+  const a = invite.access;
+  if (!a.required || invite.linked) return null;
+  const otp = fresh?.otp ?? (a.passwordSet ? null : a.otp);
+  async function call(body: object) {
+    setBusy(true);
+    setErr(null);
+    try {
+      setFresh(await send<{ otp: string; expiresAt: string }>(`/api/deals/${dealId}/invite-access`, "POST", body));
+      setCode("");
+      await onDone();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="aw-link-access">
+      <b>🔐 Access code</b>
+      {otp ? (
+        <>
+          <small>
+            The link opens only with this one-time code. Send it to {invite.name} <b>separately</b> from the link (e.g. by phone or another chat). They enter it once and set their own password.
+          </small>
+          <div className="aw-link-otp">
+            <code>{otp}</code>
+            <Button variant="outline" onClick={() => void navigator.clipboard.writeText(otp)}>
+              Copy code
+            </Button>
+          </div>
+          {(fresh?.expiresAt ?? (a.required ? a.otpExpiresAt : null)) && <small>Valid until {new Date(fresh?.expiresAt ?? (a.required ? a.otpExpiresAt! : "")).toLocaleDateString()}.</small>}
+        </>
+      ) : a.passwordSet ? (
+        <small>{invite.name} set a password: the link is protected. If they lose it, they press “Forgot password” on their link and send you the reset code; enter it below.</small>
+      ) : (
+        <small>The code expired before {invite.name} used it.</small>
+      )}
+      {!a.passwordSet && !fresh && (
+        <button type="button" className="aw-invite-link-new" disabled={busy} onClick={() => void call({ action: "otp" })}>
+          {busy ? "…" : "Make a new code"}
+        </button>
+      )}
+      {a.passwordSet && !fresh && (
+        <form
+          className="aw-link-reset"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void call({ action: "reset", code });
+          }}
+        >
+          <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" placeholder="Reset code from them" aria-label="Reset code" />
+          <Button type="submit" variant="outline" disabled={busy || code.length !== 6}>
+            {busy ? "Resetting…" : "Reset their access"}
+          </Button>
+        </form>
+      )}
+      {err && <p className="aw-bank-error">{err}</p>}
+    </div>
   );
 }
 
@@ -2370,6 +2507,30 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
               </div>
             );
           })()}
+        {data?.paymentPlan && (
+          <PlanCard
+            plan={data.paymentPlan}
+            currency={me?.bank.currency === "CNY" ? "CNY" : "THB"}
+            payer={data.paymentPlan.payer && data.role === "buyer"}
+            onStart={
+              data.status === "Proposed" && data.role === "buyer"
+                ? async () => {
+                    await api("/api/plans/start", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ dealId: id }) });
+                  }
+                : undefined
+            }
+            onChanged={async () => {
+              await reload();
+              await refresh();
+            }}
+          />
+        )}
+        {data?.offerExpiresAt && (
+          <p className="aw-dd-note">
+            ⏳ This offer must be signed (accepted) by <b>{new Date(data.offerExpiresAt).toLocaleDateString()}</b>. If it is not signed within 14 days it is withdrawn
+            {data.role === "buyer" && data.canCancel ? " and your locked money comes back" : ""}.
+          </p>
+        )}
         {data?.replacedBy != null && (
           <p className="aw-dd-note">
             ✎ This offer was changed: it was withdrawn and replaced by <a href={`/deals/D-${data.replacedBy}`}>D-{data.replacedBy}</a> (same person, same link).
@@ -2378,8 +2539,40 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
         {data?.summary && <p>{data.summary}</p>}
         {data && data.status !== "Cancelled" && (
           <div className="aw-deal-paper">
-            <DealDocuments dealId={id} milestones={data.milestones} />
+            <DealDocuments dealId={id} status={data.status} milestones={data.milestones} />
+            <DealFiles dealId={id} />
             <WitnessPanel dealId={id} role={data.role} witnesses={data.witnesses ?? []} onDone={reload} />
+            <GuarantorForm
+              key={`g-${(data.guarantors ?? []).find((g) => g.mine)?.name ?? ""}`}
+              current={(data.guarantors ?? []).find((g) => g.mine) ?? null}
+              required={data.guarantorsRequired === "both" || data.guarantorsRequired === data.role}
+              currency={me?.bank.currency === "CNY" ? "CNY" : "THB"}
+              save={async (g) => {
+                await api(`/api/deals/${id}/guarantor`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(g) });
+                await reload();
+              }}
+              remove={async () => {
+                await api(`/api/deals/${id}/guarantor`, { method: "DELETE" });
+                await reload();
+              }}
+            />
+            {(() => {
+              const theirs = (data.guarantors ?? []).find((g) => !g.mine);
+              const need = data.guarantorsRequired === "both" || (data.guarantorsRequired && data.guarantorsRequired !== data.role);
+              return theirs || need ? (
+                <p className="aw-dd-note">
+                  Their guarantor:{" "}
+                  {theirs ? (
+                    <b>
+                      {theirs.name} · {theirs.relation} · {theirs.contact}
+                      {theirs.amount ? ` · up to ${tokenMoney(theirs.amount, me?.bank.currency ?? "THB")}` : " · their whole obligation"}
+                    </b>
+                  ) : (
+                    "required, not named yet (they cannot sign before they name one)"
+                  )}
+                </p>
+              ) : null;
+            })()}
           </div>
         )}
         {data?.notes
@@ -2395,6 +2588,7 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
               <h2>
                 {m.index + 1}. {m.name}
                 {m.deposit && <span className="aw-deposit-tag">💰 Deposit · paid on signing</span>}
+                {m.delivers === "file" && (m.fileTypes?.length ?? 0) > 0 && <span className="aw-filetype-tag">📄 {fileTypesLabel(m.fileTypes)} only</span>}
               </h2>
               <div className="aw-d012-payout">
                 <span>
@@ -2418,7 +2612,7 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
                     </>
                   )}
                   {m.canPreview && !m.canDownload && (
-                    <div className="aw-preview">
+                    <div className="aw-preview aw-protect">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={`/api/deals/${id}/preview/${m.index}`} alt={`Watermarked preview of ${m.delivery.fileName ?? "the delivery"}`} loading="lazy" />
                       <small>Watermarked, reduced preview. The original unlocks once you approve and the key is released.</small>
@@ -2484,7 +2678,7 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
                   <small>There is no automatic confirmation from you: report a problem (dispute) if anything is missing or damaged.</small>
                 </fieldset>
               )}
-              {m.moves.includes("deliver") && <DeliverForm dealId={id} index={m.index} parcel={m.delivers === "parcel"} onDone={after} />}
+              {m.moves.includes("deliver") && <DeliverForm dealId={id} index={m.index} parcel={m.delivers === "parcel"} fileTypes={m.fileTypes} onDone={after} />}
               {disputing === m.index && m.moves.includes("dispute") && (
                 <DisputeForm
                   dealId={id}
@@ -2531,8 +2725,13 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
                     </Button>
                   )}
                   {data.role === "buyer" && m.status === "Delivered" && m.delivers !== "parcel" && asking !== m.index && (
-                    <Button variant="outline" disabled={!!busy} onClick={() => setAsking(m.index)}>
-                      Request changes
+                    <Button
+                      variant="outline"
+                      disabled={!!busy || (m.revisionsUsed ?? 0) >= (m.revisions ?? 10)}
+                      title={(m.revisionsUsed ?? 0) >= (m.revisions ?? 10) ? "All agreed rounds of changes are used: approve or dispute" : undefined}
+                      onClick={() => setAsking(m.index)}
+                    >
+                      Request changes ({m.revisionsUsed ?? 0}/{m.revisions ?? 10})
                     </Button>
                   )}
                   {m.moves.includes("dispute") && disputing !== m.index && (

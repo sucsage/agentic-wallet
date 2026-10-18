@@ -91,6 +91,36 @@ key (`ArbiterNotNeutral`), so the buyer's side can never judge its own dispute.
   at `/admin/disputes`. Deals on the first escrow keep the single ruling at **≥ 75% confidence**.
 - The resolve transaction is on-chain. Settlement to the bank then runs as for any payout or refund.
 
+## 4c. Desktop app and device chains
+
+What a user (or an attacker on their computer) can and cannot do with the chain they hold:
+
+| Attempt | Result |
+|---|---|
+| Edit an old block on disk (amount, status) | Its hash no longer matches: "Verify now" fails, and the server refuses any block built on it. "Put back my last backup" restores the encrypted backup. |
+| Rewrite history (a different block at an old height) | Refused: the server only accepts blocks that continue its countersigned head. |
+| Invent a deal event ("milestone released") | Refused: events must carry the server's signature and be a known `DealEvent` for that wallet. |
+| Sign a move with another key | Refused: every block and request is checked against the device key. |
+| Replay a captured request | Refused: each request signature is accepted once within its 5-minute window. |
+| Use a stolen `vault.json` | Needs the passphrase (scrypt + AES-GCM). Profile → Desktop app → Remove cuts the device off. |
+| The server quietly swaps a user's head | The device holds every block and the server's countersignature; heads are anchored on-chain hourly, so an earlier anchor would no longer match. |
+
+- Escrow money still moves only by FileEscrow's rules; the chain on the computer records and signs, it does not hold money. A move signed in the app runs through the same checks as the website (KYC limits, group votes, offer expiry, guarantors).
+- The app's local server is reachable only from 127.0.0.1 with the per-launch token, Host-checked, no CORS; other web pages cannot drive it. Its one page without the token, `/topup-done`, only confirms a Stripe session that belongs to the signed-in device's user (idempotent per session).
+- Sign-in from the app: the password is checked by Better Auth, the device must sign the email with its key, sign-in is rate-limited, and accounts with a second factor must link with a website code. Identity checks started in the app keep their OIDC state server-side (single use, 10 minutes).
+- AI cost abuse: tokens per user per day and per week on the team's key (TECHNICAL §3.21), checked before every agent turn, so a runaway loop or one heavy user cannot spend everyone's budget; admins can lower or raise one user's limit.
+- AI boundaries in the app: custom instructions are fenced data after the rules; outside agents (MCP) hold a token that can read and queue only; a user's own AI key is sealed on their computer and used per request; the agent's tools only read or make previews, so neither a prompt nor an instruction can pay.
+
+**Tests** (re-run before each release):
+
+| Suite | Command | What it checks | Last result |
+|---|---|---|---|
+| Chain format, sanitizer, vault (unit) | `cd desktop && bun test` | edited / re-hashed / foreign-key / gap / fork blocks, forged or altered deal events, genesis rules, canonical hashing, request signatures over method+path+time+body, Merkle proofs and swapped heads; 12 XSS payloads against the Markdown renderer (only allowlisted tags, `<a>` with http(s) href only); passphrase, tamper and per-purpose keys of the vault | 32/32 pass (2026-10-18) |
+| Live app + server | `AGENTIC_WALLET_DATA=… AW_PASS=… bun run security` | local server: token, Host (DNS rebinding), no CORS, agent token cannot sign, CSP; MCP: tools read, a move stays PENDING and the balance does not change; server: unsigned, foreign-signed, replayed and stale requests, forged events, history rewrite, foreign-key and edited blocks, a swapped delivery file, a refused BYOK key not echoed, a prompt-injection custom instruction that tries to make the AI pay | 17/17 pass (2026-10-18) |
+| Contracts | `cd contracts && npx hardhat test nodejs` | includes `ChainAnchor` (anchorer only, no empty root) | pass |
+
+- Known limits: the executables are not code-signed (Windows SmartScreen and macOS Gatekeeper warn once); a forgotten passphrase cannot be reset (link the computer again; deal history stays on the server and in the escrow); the anchor proves the head existed, not who was right in a deal.
+
 ## 5. Application security
 
 - **Sign-in.** Mock Bank login with a 6-digit demo PIN, hashed with scrypt. After **5 wrong PINs the
@@ -153,6 +183,32 @@ key (`ArbiterNotNeutral`), so the buyer's side can never judge its own dispute.
 - **Amendments cannot double-charge.** Confirming an amendment withdraws the old offer first and
   refuses if the other side accepted it in the meantime; the deposit flag is part of the hashed terms
   both sides saw.
+- **Deal files and chat files.** A file on a deal is readable only through a wallet that is a party
+  of that deal on-chain (the user's own, or an outsider's link wallet), and only the deal's creator
+  adds or removes them. Group chat files are readable by members only. Both are served with
+  `X-Content-Type-Options: nosniff` and a sandbox CSP; anything that is not an image or a PDF is a
+  download, so an uploaded HTML or SVG never runs in the app's origin.
+- **Agreed file formats are enforced on the server.** A file milestone's formats are part of the
+  hashed terms, and a delivery in any other format is refused before it is encrypted or anchored.
+- **Addresses are checked** against the official Thai province / district / sub-district list
+  before they are saved; the AI can change the saved address only through the same check.
+- **Private links are not bearer secrets any more.** Holding a link opens nothing: the person needs
+  the one-time code the inviter sends separately, then their own password (scrypt). Access cookies
+  are HMACs tied to an access version that a reset bumps; 5 wrong tries lock the link for 15 minutes.
+  A reset needs a code only the person sees, so the inviter (who also holds the link) cannot take
+  over the page once a password is set.
+- **Unfair or nonsensical terms cannot be confirmed.** The terms review blocks them before a preview
+  exists, and `approveDraft` re-checks the stored review.
+- **Screenshots and inspection.** Previews are heavily watermarked with the deal number and grain;
+  the browser guard only deters (blur on focus loss, blocked shortcuts). The original file stays
+  encrypted until approval, which is the protection that does not depend on the browser.
+- **Split payments cannot double-spend or strand money.** Parts sit in a per-plan holding account,
+  each part's transfer is idempotent, the deal locks only from the last part (a direct accept is
+  refused while a plan runs), and cancelling or lapsing returns the whole held amount.
+- **Public posts.** Anyone may apply, so the endpoint is rate-limited, has a honeypot, caps
+  applications, files and links (http/https only), and never fetches applicants' URLs (no SSRF).
+  Contacts and files are visible to the post's owner only; files are served with a sandbox CSP and
+  `nosniff`. The AI ranks applications as untrusted data.
 - **Chain access.** Besu runs **account permissioning**, so only the app's own keys can send
   transactions. Its RPC needs a signed JWT (RS256) that only the server holds. The public `/api/rpc`
   passes **read-only methods** only (no `eth_sendRawTransaction`), with bounded `eth_getLogs` ranges.

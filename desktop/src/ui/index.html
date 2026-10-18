@@ -1,0 +1,691 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Agentic Wallet Desktop</title>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --ink: #14171c; --muted: #5d6673; --line: #e3e6eb;
+  --accent: #2f6df6; --accent-ink: #ffffff; --ok: #12805c; --ok-bg: #e6f5ee; --bad: #c0392b; --bad-bg: #fbeceb;
+  --warn: #9a6400; --warn-bg: #fff4dc; --chip: #eef1f5; --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0f1216; --panel: #171b21; --ink: #e8ebef; --muted: #98a1ad; --line: #272d36; --accent: #5b8cff; --chip: #222831;
+    --ok: #4cc79a; --ok-bg: #12291f; --bad: #ff7a6b; --bad-bg: #2d1715; --warn: #f0b545; --warn-bg: #2b2210; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Thai", sans-serif; background: var(--bg); color: var(--ink); }
+button, input, textarea, select { font: inherit; color: inherit; }
+button { cursor: pointer; border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 7px 12px; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button.danger { color: var(--bad); }
+button:disabled { opacity: .55; cursor: default; }
+input, textarea, select { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--panel); }
+label { display: block; font-weight: 600; margin: 12px 0 4px; }
+.hint { color: var(--muted); font-size: 12.5px; }
+.mono { font-family: var(--mono); font-size: 12.5px; word-break: break-all; }
+.center { min-height: 100vh; display: grid; place-items: center; padding: 16px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
+.narrow { width: min(460px, 100%); }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px; }
+.logo { width: 30px; height: 30px; border-radius: 8px; background: linear-gradient(135deg, var(--accent), #8a5cf6); display: grid; place-items: center; color: #fff; font-weight: 800; }
+.tabs { display: flex; gap: 6px; margin: 14px 0 4px; }
+.tabs button.on { background: var(--chip); font-weight: 600; }
+.err { background: var(--bad-bg); color: var(--bad); border-radius: 8px; padding: 8px 10px; margin-top: 12px; display: none; }
+.ok-box { background: var(--ok-bg); color: var(--ok); border-radius: 8px; padding: 8px 10px; }
+.layout { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+nav { border-right: 1px solid var(--line); background: var(--panel); padding: 16px 12px; display: flex; flex-direction: column; gap: 4px; }
+nav .brand { margin: 0 6px 16px; }
+nav button { border: 0; text-align: left; background: transparent; padding: 9px 10px; }
+nav button.on { background: var(--chip); font-weight: 600; }
+nav .foot { margin-top: auto; padding: 8px; }
+main { padding: 22px; max-width: 1050px; width: 100%; }
+h1 { font-size: 20px; margin: 0 0 14px; }
+h2 { font-size: 15px; margin: 0 0 10px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.stat .v { font-size: 22px; font-weight: 700; }
+.chip { display: inline-block; padding: 2px 8px; border-radius: 999px; background: var(--chip); font-size: 12px; }
+.chip.ok { background: var(--ok-bg); color: var(--ok); } .chip.bad { background: var(--bad-bg); color: var(--bad); } .chip.warn { background: var(--warn-bg); color: var(--warn); }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.space { justify-content: space-between; }
+.deal { margin-bottom: 12px; }
+.ms { border-top: 1px solid var(--line); padding: 10px 0; display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; font-size: 12.5px; }
+.banner { background: var(--warn-bg); color: var(--warn); border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; }
+.banner .req { background: var(--panel); color: var(--ink); border-radius: 10px; padding: 10px; margin-top: 8px; }
+.check { display: grid; grid-template-columns: 22px 1fr; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+dialog { border: 1px solid var(--line); border-radius: 14px; background: var(--panel); color: var(--ink); width: min(440px, 92vw); }
+dialog::backdrop { background: rgba(0,0,0,.35); }
+.msgs { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.msg { max-width: 82%; padding: 10px 12px; border-radius: 12px; white-space: pre-wrap; word-break: break-word; }
+.msg.user { align-self: flex-end; background: var(--accent); color: var(--accent-ink); }
+.msg.assistant { align-self: flex-start; background: var(--panel); border: 1px solid var(--line); }
+.msg .tools { margin-top: 6px; display: flex; gap: 4px; flex-wrap: wrap; }
+.msg.assistant { white-space: normal; }
+.md > :first-child { margin-top: 0; } .md > :last-child { margin-bottom: 0; }
+.md p, .md ul, .md ol, .md pre, .md blockquote, .md table { margin: 6px 0; }
+.md ul, .md ol { padding-left: 20px; } .md h3, .md h4, .md h5, .md h6 { margin: 10px 0 4px; font-size: 14.5px; }
+.md code { font-family: var(--mono); font-size: 12.5px; background: var(--chip); padding: 1px 5px; border-radius: 5px; }
+.md pre { background: var(--chip); padding: 10px; border-radius: 8px; overflow-x: auto; } .md pre code { background: none; padding: 0; }
+.md blockquote { border-left: 3px solid var(--line); padding-left: 10px; color: var(--muted); }
+.md table { border-collapse: collapse; font-size: 13px; display: block; overflow-x: auto; } .md th, .md td { border: 1px solid var(--line); padding: 4px 8px; }
+.md a { color: var(--accent); } .md hr { border: 0; border-top: 1px solid var(--line); }
+.composer { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: end; position: sticky; bottom: 0; background: var(--bg); padding: 10px 0; }
+.composer textarea { resize: vertical; min-height: 44px; max-height: 200px; }
+.issue { font-size: 12.5px; padding: 4px 8px; border-radius: 8px; margin-top: 4px; }
+.issue.block { background: var(--bad-bg); color: var(--bad); } .issue.warn { background: var(--warn-bg); color: var(--warn); }
+.in { color: var(--ok); } .out { color: var(--bad); }
+.demo { font-size: 11.5px; color: var(--muted); margin-top: 12px; }
+@media (max-width: 760px) {
+  .layout { grid-template-columns: 1fr; }
+  nav { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 8px; }
+  nav button { white-space: nowrap; flex: none; }
+  nav .brand, nav .foot { display: none; }
+  main { padding: 16px; }
+}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<dialog id="dlg"><form method="dialog" id="dlg-form"></form></dialog>
+<script>/*MARKDOWN*/</script>
+<script>
+"use strict";
+// The token from the URL the app opened (#t=...): every call to the local app carries it.
+(function () {
+  const m = location.hash.match(/t=([\w-]+)/);
+  if (m) { try { sessionStorage.setItem("awt", m[1]); } catch {} history.replaceState(null, "", "/"); }
+})();
+const TOKEN = (() => { try { return sessionStorage.getItem("awt") || ""; } catch { return ""; } })();
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const short = (h) => (h ? `${h.slice(0, 10)}…${h.slice(-6)}` : "");
+const money = (n, cur) => `${Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 })} ${cur || ""}`.trim();
+const when = (t) => (t ? new Date(t).toLocaleString() : "");
+
+async function api(path, method = "GET", body) {
+  const r = await fetch(path, { method, headers: { "x-app-token": TOKEN, "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || `Error ${r.status}`);
+  return j;
+}
+
+const S = { lang: (() => { try { return localStorage.getItem("awlang") || "th"; } catch { return "th"; } })(), info: null, view: "overview", account: null, deals: null, chain: null, verify: null, busy: false };
+
+function showErr(el, e) { el.textContent = e.message || String(e); el.style.display = "block"; }
+
+async function boot() {
+  if (!TOKEN) { $("#root").innerHTML = `<div class="center"><div class="card narrow"><div class="brand"><div class="logo">A</div>Agentic Wallet</div><p>Open the app from the link it printed in its window (it carries a private token).</p></div></div>`; return; }
+  S.info = await api("/app/state");
+  render();
+}
+
+function render() {
+  const st = S.info.stage;
+  if (st === "setup") return renderSetup();
+  if (st === "locked") return renderUnlock();
+  if (st === "onboarding") return renderOnboarding();
+  renderApp();
+}
+
+// ---------------------------------------------------------------- setup / restore / unlock
+function renderSetup(tab = "login") {
+  const TABS = [["login", "Sign in"], ["signup", "Create account"], ["link", "Link with code"], ["restore", "Restore"]];
+  const serverField = `<label>Server</label><input name="server" value="${esc(S.info.defaultServer)}" />`;
+  const pass = `<label>App passphrase</label><input name="passphrase" type="password" minlength="8" required />
+        <div class="hint">Encrypts this computer's key. It never leaves the computer; nobody can reset it.</div>
+        <label>App passphrase again</label><input name="again" type="password" required />`;
+  const computer = `<label>Name of this computer</label><input name="deviceName" value="${esc(S.info.hostname)}" />`;
+  const body = {
+    login: `${serverField}<label>Email</label><input name="email" type="email" autocomplete="username" required /><label>Password</label><input name="password" type="password" autocomplete="current-password" required />${computer}${pass}`,
+    signup: `${serverField}<label>Your name</label><input name="name" autocomplete="name" required minlength="2" /><label>Email</label><input name="email" type="email" autocomplete="username" required /><label>Account password</label><input name="password" type="password" minlength="8" autocomplete="new-password" required /><div class="hint">For signing in to Agentic Wallet (at least 8 characters).</div>${computer}${pass}`,
+    link: `${serverField}<label>Link code</label><input name="code" placeholder="ABCD-EFGH" autocomplete="off" required /><div class="hint">On the website: Profile → Desktop app → Make a link code (for accounts with a second factor).</div>${computer}${pass}`,
+    restore: `<label>Key backup file</label><input name="file" type="file" accept=".json,application/json" required /><div class="hint">The file you saved from Settings → Save key backup.</div><label>App passphrase</label><input name="passphrase" type="password" required />`,
+  }[tab];
+  const label = { login: "Sign in and create my chain", signup: "Create account", link: "Link and create my chain", restore: "Restore" }[tab];
+  $("#root").innerHTML = `<div class="center"><div class="card narrow">
+    <div class="brand"><div class="logo">A</div>Agentic Wallet Desktop</div>
+    <p class="hint">Your deals as your own chain on this computer. The website keeps only its latest block, signed by both sides.</p>
+    <div class="tabs" style="flex-wrap:wrap">${TABS.map(([k, l]) => `<button data-t="${k}" class="${tab === k ? "on" : ""}">${l}</button>`).join("")}</div>
+    <form id="f">${body}<div class="err" id="e"></div><div class="row" style="margin-top:16px"><button class="primary" id="go">${label}</button></div></form>
+    <div class="demo">Test mode demo · Mock Bank money only</div>
+  </div></div>`;
+  document.querySelectorAll(".tabs button").forEach((b) => (b.onclick = () => renderSetup(b.dataset.t)));
+  $("#f").onsubmit = async (ev) => {
+    ev.preventDefault();
+    const f = new FormData(ev.target), e = $("#e"), go = $("#go");
+    e.style.display = "none";
+    try {
+      go.disabled = true; go.textContent = "Working…";
+      if (tab === "restore") {
+        await api("/app/restore", "POST", { keyBackup: await f.get("file").text(), passphrase: f.get("passphrase") });
+      } else {
+        if (f.get("passphrase") !== f.get("again")) throw new Error("The app passphrases differ");
+        await api("/app/setup", "POST", { mode: tab === "link" ? "code" : tab, server: f.get("server"), code: f.get("code"), email: f.get("email"), password: f.get("password"), name: f.get("name"), passphrase: f.get("passphrase"), deviceName: f.get("deviceName") });
+      }
+      S.info = await api("/app/state");
+      render(); load();
+    } catch (err) { showErr(e, err); go.disabled = false; go.textContent = label; }
+  };
+}
+
+let onboardTimer;
+async function renderOnboarding() {
+  const d = S.info.device;
+  let st = { identity: "NONE", lastCheck: null, account: null, wallet: null };
+  try { st = await api("/app/onboarding"); } catch (e) { toast(e.message); }
+  const verified = st.identity === "VERIFIED" || st.account;
+  $("#root").innerHTML = `<div class="center"><div class="card narrow">
+    <div class="brand"><div class="logo">A</div>Welcome, ${esc(d.user)}</div>
+    <p class="hint">Two steps open your wallet. Test mode: the digital ID is a demo.</p>
+    <div class="check"><div>${verified ? "✅" : "1"}</div><div><b>Verify your identity</b>
+      <div class="hint">${verified ? "Verified · your wallet account is open." : st.identity === "PENDING" ? "Waiting for a reviewer." : "With your national digital ID (mock ThaID for Thailand, mock 国家网络身份认证 for China). It opens in your browser."}</div>
+      ${st.lastCheck && !verified && st.lastCheck !== "ok" ? `<div class="issue block">${esc(st.lastCheck)}</div>` : ""}
+      ${verified ? "" : `<div class="row" style="margin-top:8px"><select id="country" style="width:auto"><option value="TH">Thailand · ThaID</option><option value="CN">China · 网号</option></select><button class="primary" id="kyc">Verify in my browser</button></div>`}</div></div>
+    <div class="check"><div>${st.wallet ? "✅" : "2"}</div><div><b>Create my wallet</b><div class="hint">Your agent wallet on the chain and your own deal chain on this computer (about 10 seconds).</div>
+      ${verified ? `<button class="primary" id="fin" style="margin-top:8px">Create my wallet</button>` : ""}</div></div>
+    <div class="err" id="e"></div>
+    <div class="row space" style="margin-top:12px"><span class="hint">This page checks every few seconds.</span><button id="lock">Lock</button></div>
+  </div></div>`;
+  $("#lock").onclick = async () => { clearInterval(onboardTimer); S.info = await api("/app/lock", "POST"); render(); };
+  const k = $("#kyc"); if (k) k.onclick = async () => { k.disabled = true; try { await api("/app/kyc-start", "POST", { country: $("#country").value }); k.textContent = "Finish in your browser…"; } catch (e) { showErr($("#e"), e); k.disabled = false; } };
+  const fin = $("#fin"); if (fin) fin.onclick = async () => { fin.disabled = true; fin.textContent = "Creating…"; try { await api("/app/setup-finish", "POST"); clearInterval(onboardTimer); S.info = await api("/app/state"); render(); load(); } catch (e) { showErr($("#e"), e); fin.disabled = false; fin.textContent = "Create my wallet"; } };
+  clearInterval(onboardTimer);
+  if (!verified) onboardTimer = setInterval(async () => { try { const n = await api("/app/onboarding"); if (n.identity === "VERIFIED" || n.account || n.lastCheck !== st.lastCheck) { clearInterval(onboardTimer); renderOnboarding(); } } catch {} }, 4000);
+}
+
+function renderUnlock() {
+  const d = S.info.device;
+  $("#root").innerHTML = `<div class="center"><div class="card narrow">
+    <div class="brand"><div class="logo">A</div>Agentic Wallet Desktop</div>
+    <p>${esc(d.user)} · <span class="hint">${esc(d.name)}</span></p>
+    <form id="f"><label>Passphrase</label><input name="p" type="password" autofocus required />
+    <div class="err" id="e"></div><div class="row" style="margin-top:14px"><button class="primary" id="go">Unlock</button></div></form>
+    <div class="demo">Test mode demo · Mock Bank money only</div></div></div>`;
+  $("#f").onsubmit = async (ev) => {
+    ev.preventDefault();
+    try { S.info = await api("/app/unlock", "POST", { passphrase: new FormData(ev.target).get("p") }); S.view = "overview"; render(); if (S.info.stage === "ready") load(); }
+    catch (err) { showErr($("#e"), err); }
+  };
+}
+
+// ---------------------------------------------------------------- app shell
+const VIEWS = [["overview", "Overview"], ["chat", "AI chat"], ["deals", "Deals"], ["activity", "Money"], ["contacts", "Friends"], ["links", "Private links"], ["groups", "Groups"], ["chain", "My chain"], ["settings", "Settings"]];
+function renderApp() {
+  const d = S.info.device;
+  $("#root").innerHTML = `<div class="layout"><nav>
+      <div class="brand"><div class="logo">A</div>Agentic Wallet</div>
+      ${VIEWS.map(([k, l]) => `<button data-v="${k}" class="${S.view === k ? "on" : ""}">${l}</button>`).join("")}
+      <div class="foot hint">${esc(d.user)}<br>${esc(d.name)}<br><button id="lock" style="margin-top:8px">Lock</button></div>
+    </nav><main id="main"></main></div>`;
+  document.querySelectorAll("nav [data-v]").forEach((b) => (b.onclick = () => { S.view = b.dataset.v; renderApp(); load(); }));
+  $("#lock").onclick = async () => { S.info = await api("/app/lock", "POST"); render(); };
+  renderView();
+}
+
+function agentBanner() {
+  const ar = S.info.agentRequests || [];
+  if (!ar.length) return "";
+  const what = (r) => r.kind === "move" ? `${esc(r.action)} · deal D-${esc(r.dealId)}${["accept", "cancel"].includes(r.action) ? "" : ` milestone ${Number(r.index) + 1}`}` : r.kind === "confirm_draft" ? `confirm preview ${esc(r.draftId)}` : `${r.allowed ? "make payee" : "stop paying"} (contact ${esc(r.friendshipId)})`;
+  return `<div class="banner"><b>Requests from AI agents</b> · they cannot sign; you decide
+    ${ar.map((r) => `<div class="req row space"><div><b>${what(r)}</b><div class="hint">from ${esc(r.client)} · ${when(r.createdAt)}</div>${r.why ? `<div class="hint">“${esc(r.why)}”</div>` : ""}${r.reason ? `<div class="hint">reason: ${esc(r.reason)}</div>` : ""}</div>
+      <div class="row"><button class="primary" data-asign="${esc(r.id)}">Sign</button><button data-areject="${esc(r.id)}">Reject</button></div></div>`).join("")}</div>`;
+}
+
+function requestsBanner() {
+  const reqs = S.info.requests || [];
+  if (!reqs.length) return agentBanner();
+  return agentBanner() + `<div class="banner"><b>Waiting for your signature</b> · moves started on the website
+    ${reqs.map((r) => `<div class="req row space"><div><b>${esc(r.action)}</b> · deal D-${esc(r.dealId)} · milestone ${Number(r.index) + 1}${r.reason ? `<div class="hint">${esc(r.reason)}</div>` : ""}<div class="hint">${when(r.createdAt)}</div></div>
+      <div class="row"><button class="primary" data-sign="${esc(r.id)}">Sign</button><button data-reject="${esc(r.id)}">Reject</button></div></div>`).join("")}</div>`;
+}
+
+function syncLine() {
+  const s = S.info.lastSync;
+  const h = S.info.height;
+  if (!s) return `<span class="chip">Not synced yet</span>`;
+  return s.ok ? `<span class="chip ok">Synced ${new Date(s.at).toLocaleTimeString()}</span> <span class="hint">height ${h ?? "-"}</span>` : `<span class="chip bad" title="${esc(s.error)}">Sync failed</span> <span class="hint" style="max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:bottom">${esc(s.error)}</span>`;
+}
+
+function renderView() {
+  const m = $("#main");
+  if (S.view === "overview") {
+    const a = S.account;
+    m.innerHTML = `${requestsBanner()}<div class="row space"><h1>Overview</h1><div class="row">${syncLine()}<button id="sync">Sync now</button></div></div>
+      <div class="grid">
+        <div class="card stat"><div class="hint">Balance (Mock Bank)</div><div class="v">${a ? money(a.balance, a.currency) : "…"}</div></div>
+        <div class="card stat"><div class="hint">Blocks on this computer</div><div class="v">${S.info.height === null ? "…" : S.info.height + 1}</div></div>
+        <div class="card stat"><div class="hint">Deals</div><div class="v">${S.deals ? S.deals.length : "…"}</div></div>
+      </div>
+      <div class="card"><h2>How this works</h2>
+        <p class="hint" style="margin:0">Every deal event (offer, payment locked, delivery, approval, dispute, ruling) is signed by the server and added as a block to your chain here. Each block names the hash of the one before it and is signed by your device key, so changing any old block breaks every hash after it. The website keeps only your latest block, countersigned. When the other side of a deal also uses the app, the same event sits in both chains: that links them. Everything you do here (new deals with the AI, delivering, approving, disputing) is a block you sign; the server carries it out, and the money itself stays locked in the escrow contract on the blockchain.</p>
+      </div>
+      <div class="card" style="margin-top:12px"><div class="row space"><h2 style="margin:0">Integrity check</h2><button id="verify">Verify now</button></div><div id="vres">${verifyHtml()}</div></div>`;
+    $("#sync").onclick = () => doSync();
+    $("#verify").onclick = () => doVerify();
+  } else if (S.view === "chat") {
+    const h = S.chatHistory || [];
+    m.innerHTML = `${requestsBanner()}<div class="row space"><h1>AI chat</h1><div class="row"><select id="lang" style="width:auto"><option value="th">ไทย</option><option value="en">English</option></select><button id="clear">New chat</button></div></div>
+      <p class="hint">Same agent as the website: describe the deal ("hire Seller One for a logo, 5,000 baht, 2 milestones"). Previews appear below; you confirm them here with your device key.</p>
+      <div class="msgs" id="msgs">${h.length ? h.map(msgHtml).join("") : `<div class="card hint">No messages yet.</div>`}${S.chatBusy ? `<div class="msg assistant hint">Thinking… (tools run on the server)</div>` : ""}</div>
+      <div id="drafts">${draftsHtml()}</div>
+      <form class="composer" id="cf"><textarea name="m" rows="2" placeholder="Message the agent…" ${S.chatBusy ? "disabled" : ""}></textarea>
+        <label class="hint" style="margin:0;cursor:pointer" title="Attach a PDF, image or text file (up to 3 MB)">📎<input type="file" name="f" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.txt,.md,.csv,.json" style="display:none"></label>
+        <button class="primary" ${S.chatBusy ? "disabled" : ""}>Send</button></form><div class="hint" id="att"></div>`;
+    $("#lang").value = S.lang || "th";
+    $("#lang").onchange = (e) => { S.lang = e.target.value; try { localStorage.setItem("awlang", S.lang); } catch {} };
+    $("#clear").onclick = async () => { await api("/app/chat/clear", "POST"); S.chatHistory = []; renderView(); };
+    const fi = $("#cf [name=f]"); fi.onchange = () => { $("#att").textContent = fi.files[0] ? `📎 ${fi.files[0].name}` : ""; };
+    $("#cf").onsubmit = (ev) => { ev.preventDefault(); sendChat(new FormData(ev.target)); };
+    $("#cf textarea").onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#cf").requestSubmit(); } };
+    wireDrafts();
+    const box = $("#msgs"); box.lastElementChild?.scrollIntoView({ block: "end" });
+  } else if (S.view === "activity") {
+    const a = S.activity, t = S.topup;
+    m.innerHTML = `<div class="row space"><h1>Money</h1><button id="sync">Refresh</button></div>
+      <div class="grid"><div class="card"><div class="hint">Balance (Mock Bank, test money)</div><div class="stat"><div class="v">${a ? money(a.balance, a.currency) : "…"}</div></div></div>
+      <div class="card"><h2>Top up</h2>${t ? `<form id="tf"><div class="row"><input name="amount" type="number" min="1" step="1" placeholder="Amount (${esc(t.currency)})" required style="flex:1"></div>
+        <div class="row" style="margin-top:8px">${t.currency === "THB" ? `<button data-m="promptpay" class="primary">PromptPay QR</button>` : ""}<button data-m="card">Card</button>${t.card ? `<button data-m="linked">${esc(t.card.brand)} ··${esc(t.card.last4)}</button>` : ""}${t.counter ? `<button data-m="counter">Counter slip</button>` : ""}</div>
+        <div class="hint" style="margin-top:6px">Up to ${money(t.limit, t.currency)}. PromptPay and card open Stripe (test mode) in your browser, then come back here. Test card 4242 4242 4242 4242.</div></form><div id="tres"></div>` : `<p class="hint">Loading…</p>`}</div></div>
+      ${a ? `<div class="card"><table><thead><tr><th>When</th><th>What</th><th>With</th><th style="text-align:right">Amount</th></tr></thead><tbody>
+      ${a.rows.length ? a.rows.map((r) => `<tr><td class="hint">${when(r.at)}</td><td>${esc(r.label)}${r.txHash ? `<div class="mono hint">${short(r.txHash)}</div>` : ""}</td><td>${esc(r.counterparty)}</td><td style="text-align:right" class="${r.direction}"><b>${r.direction === "in" ? "+" : "−"}${money(r.amount, a.currency)}</b></td></tr>`).join("") : `<tr><td colspan="4" class="hint">Nothing yet.</td></tr>`}
+      </tbody></table></div>` : `<div class="card hint">Loading…</div>`}`;
+    $("#sync").onclick = () => load();
+    const tf = $("#tf");
+    if (tf) tf.onsubmit = (ev) => ev.preventDefault();
+    document.querySelectorAll("#tf [data-m]").forEach((b) => (b.onclick = async (ev) => {
+      ev.preventDefault();
+      const amount = Number(new FormData(tf).get("amount"));
+      if (!(amount > 0)) return toast("Enter an amount");
+      b.disabled = true;
+      try {
+        const r = await api("/app/topup", "POST", { amount, method: b.dataset.m });
+        if (r.url) $("#tres").innerHTML = `<div class="ok-box" style="margin-top:8px">Finish the payment in your browser; your balance updates when you come back.</div>`;
+        else if (r.slip) {
+          $("#tres").innerHTML = `<div class="card" style="margin-top:8px"><b>Counter-service slip (demo)</b><div class="mono">${esc(r.slip.ref)}</div><div class="hint">${money(r.slip.amount, r.slip.currency)} · valid 24 h</div><button id="cash" style="margin-top:8px">Demo cashier: pay this slip</button></div>`;
+          $("#cash").onclick = async () => { try { await api("/app/counter-pay", "POST", { slip: r.slip.slip }); toast("Paid at the counter"); await load(); } catch (e) { toast(e.message); } };
+        } else { toast("Topped up from your linked card"); await load(); }
+      } catch (e) { toast(e.message); }
+      b.disabled = false;
+    }));
+  } else if (S.view === "contacts") {
+    const fs = S.friends;
+    const acc = (fs || []).filter((f) => f.status === "ACCEPTED"), inc = (fs || []).filter((f) => f.direction === "incoming"), out = (fs || []).filter((f) => f.direction === "outgoing");
+    m.innerHTML = `<div class="row space"><h1>Friends</h1><button id="sync">Refresh</button></div>
+      <div class="card" style="margin-bottom:12px"><form id="ff" class="row"><input name="u" placeholder="Their username, e.g. seller_t1" required style="flex:1"><button class="primary">Add friend</button></form>
+        <div class="hint" style="margin-top:6px">Your wallet only pays friends you made a payee. Making or removing a payee is a block you sign; the server sets it on your wallet contract.</div></div>
+      ${inc.length ? `<div class="banner"><b>Friend requests</b>${inc.map((f) => `<div class="req row space"><div><b>${esc(f.name)}</b> <span class="hint">@${esc(f.username)}</span></div><div class="row"><button class="primary" data-acc="${esc(f.friendshipId)}">Accept</button><button data-rm="${esc(f.friendshipId)}">Decline</button></div></div>`).join("")}</div>` : ""}
+      <div class="card">${fs ? (acc.length ? `<table><thead><tr><th>Name</th><th>Payee</th><th></th></tr></thead><tbody>${acc.map((c) => `<tr><td><b>${esc(c.name)}</b><div class="hint">@${esc(c.username)}</div></td>
+        <td>${c.payee ? `<span class="chip ok">can be paid</span>` : `<span class="chip">not a payee</span>`}</td>
+        <td style="text-align:right"><div class="row" style="justify-content:flex-end">${c.hasWallet ? `<button data-payee="${esc(c.friendshipId)}" data-on="${c.payee ? "0" : "1"}" class="${c.payee ? "danger" : "primary"}">${c.payee ? "Stop paying" : "Make payee"}</button>` : `<span class="hint">no wallet yet</span>`}<button data-rm="${esc(c.friendshipId)}" title="Remove friend">✕</button></div></td></tr>`).join("")}</tbody></table>` : `<p class="hint">No friends yet.</p>`) : `<p class="hint">Loading…</p>`}
+      ${out.length ? `<p class="hint">Waiting for: ${out.map((f) => esc(f.name || f.username)).join(", ")}</p>` : ""}</div>`;
+    $("#sync").onclick = () => load();
+    $("#ff").onsubmit = async (ev) => { ev.preventDefault(); try { S.friends = (await api("/app/friends", "POST", { op: "request", username: new FormData(ev.target).get("u") })).friends; toast("Request sent"); renderView(); } catch (e) { toast(e.message); } };
+    document.querySelectorAll("[data-acc]").forEach((b) => (b.onclick = async () => { try { S.friends = (await api("/app/friends", "POST", { op: "accept", friendshipId: b.dataset.acc })).friends; renderView(); } catch (e) { toast(e.message); } }));
+    document.querySelectorAll("[data-rm]").forEach((b) => (b.onclick = async () => { if (!confirm("Remove (or decline)? A payee stays until you stop paying them.")) return; try { S.friends = (await api("/app/friends", "POST", { op: "remove", friendshipId: b.dataset.rm })).friends; renderView(); } catch (e) { toast(e.message); } }));
+    document.querySelectorAll("[data-payee]").forEach((b) => (b.onclick = async () => {
+      const on = b.dataset.on === "1";
+      const c = S.friends.find((x) => x.friendshipId === b.dataset.payee);
+      if (!confirm(`${on ? "Let your wallet pay" : "Stop paying"} ${c.name}? This adds a block signed by your device key.`)) return;
+      b.disabled = true; b.textContent = "Signing…";
+      try { const r = await api("/app/payee", "POST", { friendshipId: c.friendshipId, allowed: on }); if (!r.ok) throw new Error(r.error || "Not done"); toast("Signed and done"); } catch (e) { toast(e.message); }
+      await load();
+    }));
+  } else if (S.view === "links") {
+    const ls = S.links;
+    m.innerHTML = `<div class="row space"><h1>Private links</h1><button id="sync">Refresh</button></div>
+      <p class="hint">Links you made for people without an account (they open them on any phone or browser). Send the one-time code separately from the link.</p>
+      ${ls ? (ls.length ? ls.map((l) => `<div class="card deal"><div class="row space"><div><b>${esc(l.name)}</b> <span class="hint">${l.kind === "seller" ? "works for you" : "buys from you"} · D-${esc(l.dealId)} ${esc(l.title)}</div>
+          <div class="mono hint" style="margin-top:4px">${l.link ? esc(l.link) : "(link hidden: make a new one)"}</div></div><span class="chip ${l.linked ? "ok" : ""}">${l.linked ? "joined" : esc(l.status)}</span></div>
+        <div class="hint" style="margin-top:6px">${!l.access.required ? "Open link (made before one-time codes)" : l.access.passwordSet ? "They set a password." : l.access.otp ? `One-time code: <b class="mono">${esc(l.access.otp)}</b> (until ${when(l.access.otpExpiresAt)})` : "No live code: make a new one."}</div>
+        <div class="row" style="margin-top:8px">${l.link ? `<button data-copy="${esc(l.link)}">Copy link</button>` : ""}${l.access.required && !l.access.passwordSet ? `<button data-otp="${l.dealId}">New one-time code</button>` : ""}${l.access.passwordSet ? `<button data-reset="${l.dealId}">They lost the password…</button>` : ""}<button data-rot="${l.dealId}" class="danger">New link (old stops)</button></div></div>`).join("") : `<div class="card hint">No private links yet. Ask the AI to hire or sell to someone without an account.</div>`) : `<div class="card hint">Loading…</div>`}`;
+    $("#sync").onclick = () => load();
+    const act = async (dealId, action, code) => { try { const r = await api("/app/invite-links", "POST", { dealId: Number(dealId), action, code }); if (r.link) toast("New link made"); else if (r.otp) toast(`New code: ${r.otp}`); else toast("Done"); await load(); } catch (e) { toast(e.message); } };
+    document.querySelectorAll("[data-copy]").forEach((b) => (b.onclick = () => navigator.clipboard.writeText(b.dataset.copy).then(() => toast("Copied"), () => toast("Copy failed"))));
+    document.querySelectorAll("[data-otp]").forEach((b) => (b.onclick = () => act(b.dataset.otp, "otp")));
+    document.querySelectorAll("[data-rot]").forEach((b) => (b.onclick = () => confirm("Make a new link? The old one stops working.") && act(b.dataset.rot, "rotate")));
+    document.querySelectorAll("[data-reset]").forEach((b) => (b.onclick = () => { const code = prompt("The reset code they sent you (from “Forgot password” on their link):"); if (code) act(b.dataset.reset, "reset", code.trim()); }));
+  } else if (S.view === "groups") {
+    const g = S.groups;
+    const friends = (S.friends || []).filter((f) => f.status === "ACCEPTED");
+    m.innerHTML = `<div class="row space"><h1>Groups</h1><button id="sync">Refresh</button></div>
+      ${g && g.votes.length ? `<div class="banner"><b>Payments waiting for your vote</b>${g.votes.map((v) => `<div class="req row space"><div><b>${esc(v.title)}</b><div class="hint">${esc(v.group.name)} · ${v.yes} of ${v.group.threshold} yes so far</div></div><div class="row"><button class="primary" data-vote="${esc(v.proposalId)}" data-yes="1">Approve</button><button data-vote="${esc(v.proposalId)}" data-yes="0">Reject</button></div></div>`).join("")}</div>` : ""}
+      ${g && g.invites.length ? `<div class="banner"><b>Invitations</b>${g.invites.map((i) => `<div class="req row space"><div><b>${esc(i.group?.name || i.name || "A group")}</b><div class="hint">${i.canSign ? "as a signer" : "as a member"}</div></div><div class="row"><button class="primary" data-inv="${esc(i.id)}" data-yes="1">Join</button><button data-inv="${esc(i.id)}" data-yes="0">Decline</button></div></div>`).join("")}</div>` : ""}
+      <div id="glist">${g ? (g.groups.length ? g.groups.map((x) => `<div class="card deal"><div class="row space"><b>${esc(x.name)}</b><span class="chip">${x.threshold} of ${x.members.filter((mm) => mm.canSign).length} signers</span></div>
+        <div class="hint">${x.members.map((mm) => `${esc(mm.name)}${mm.role === "ADMIN" ? " (admin)" : ""}${mm.canSign ? " ✍" : ""}`).join(" · ")}${x.invited ? ` · ${x.invited} invited` : ""}</div>${x.openProposals ? `<div class="hint">${x.openProposals} open proposal(s)</div>` : ""}</div>`).join("") : `<div class="card hint">No groups yet.</div>`) : `<div class="card hint">Loading…</div>`}</div>
+      <div class="card" style="margin-top:12px"><h2>New group</h2><form id="gf"><label>Name</label><input name="name" required minlength="2" maxlength="60" placeholder="e.g. Coffee shop partners">
+        <label>Members (friends)</label>${friends.length ? friends.map((f) => `<div class="row" style="margin:4px 0"><label style="margin:0;font-weight:400;display:flex;gap:6px;align-items:center"><input type="checkbox" name="mem" value="${esc(f.userId)}" style="width:auto"> ${esc(f.name)}</label><label style="margin:0;font-weight:400;display:flex;gap:6px;align-items:center" class="hint"><input type="checkbox" name="sign" value="${esc(f.userId)}" checked style="width:auto"> can sign</label></div>`).join("") : `<p class="hint">Add friends first.</p>`}
+        <label>Votes needed to pay (at least 2)</label><input name="threshold" type="number" min="2" value="2" required style="width:120px">
+        <div class="row" style="margin-top:10px"><button class="primary" ${friends.length ? "" : "disabled"}>Create group</button></div><p class="hint">Group chat and payouts to members: on the website for now.</p></form></div>`;
+    $("#sync").onclick = () => load();
+    document.querySelectorAll("[data-vote]").forEach((b) => (b.onclick = async () => {
+      const yes = b.dataset.yes === "1";
+      if (!confirm(`${yes ? "Approve" : "Reject"} this payment? Your vote is a block signed by your device key.`)) return;
+      b.disabled = true;
+      try { const r = await api("/app/vote", "POST", { proposalId: b.dataset.vote, approve: yes }); if (!r.ok) throw new Error(r.error || "Not done"); toast("Vote signed"); } catch (e) { toast(e.message); }
+      await load();
+    }));
+    document.querySelectorAll("[data-inv]").forEach((b) => (b.onclick = async () => { try { S.groups = await api("/app/groups", "POST", { op: "invite", inviteId: b.dataset.inv, accept: b.dataset.yes === "1" }); renderView(); } catch (e) { toast(e.message); } }));
+    $("#gf").onsubmit = async (ev) => {
+      ev.preventDefault();
+      const fd = new FormData(ev.target), signers = new Set(fd.getAll("sign"));
+      const members = fd.getAll("mem").map((id) => ({ userId: id, canSign: signers.has(id) }));
+      try { S.groups = await api("/app/groups", "POST", { op: "create", name: fd.get("name"), members, threshold: Number(fd.get("threshold")) }); toast("Group created: invitations sent"); renderView(); } catch (e) { toast(e.message); }
+    };
+  } else if (S.view === "deals") {
+    m.innerHTML = `${requestsBanner()}<div class="row space"><h1>Deals</h1><button id="sync">Refresh</button></div>
+      <p class="hint">Every move here (deliver, approve, dispute, accept, refund) is a block signed by your device key. New deals: AI chat.</p>
+      <div id="deals">${S.deals ? (S.deals.length ? S.deals.map(dealHtml).join("") : `<div class="card hint">No deals yet.</div>`) : `<div class="card hint">Loading…</div>`}</div>`;
+    $("#sync").onclick = () => doSync();
+  } else if (S.view === "chain") {
+    const c = S.chain;
+    const linked = new Map((c?.links || []).map((l) => [l.event, l]));
+    m.innerHTML = `<div class="row space"><h1>My chain</h1><button id="sync">Sync now</button></div>
+      ${c ? `<div class="card" style="margin-bottom:12px"><div class="row space"><div><div class="hint">Server's countersigned head</div><div class="mono">${c.serverHead ? `#${c.serverHead.height} ${esc(c.serverHead.hash)}` : "none yet"}</div></div><span class="chip">${c.total} blocks</span></div></div>
+      <div class="card"><table><thead><tr><th>#</th><th>Block</th><th>Hash</th><th>Linked</th></tr></thead><tbody>
+      ${c.blocks.map((b) => `<tr><td>${b.height}</td><td>${blockText(b)}<div class="hint">${when(b.time)}</div></td><td class="mono">${short(b.hash)}<div class="hint">prev ${short(b.prev)}</div></td>
+        <td>${b.kind === "event" ? (linked.has(b.body.event.id) ? `<span class="chip ok" title="${esc(linked.get(b.body.event.id).block)}">✓ other party #${linked.get(b.body.event.id).height}</span>` : `<span class="chip">only mine</span>`) : ""}</td></tr>`).join("")}
+      </tbody></table>${c.total > c.blocks.length ? `<p class="hint">Showing the latest ${c.blocks.length}.</p>` : ""}</div>` : `<div class="card hint">Loading…</div>`}`;
+    $("#sync").onclick = () => doSync();
+  } else {
+    const d = S.info.device;
+    m.innerHTML = `<h1>Settings</h1>
+      <div class="card"><h2>This computer</h2>
+        <table><tr><th>Account</th><td>${esc(d.user)}</td></tr><tr><th>Computer</th><td>${esc(d.name)}</td></tr>
+        <tr><th>Device key</th><td class="mono">${esc(d.address)}</td></tr><tr><th>Wallet</th><td class="mono">${esc(d.wallet)}</td></tr>
+        <tr><th>Server</th><td>${esc(d.server)}</td></tr><tr><th>Linked</th><td>${when(d.linkedAt)}</td></tr></table></div>
+      <div class="card" style="margin-top:12px"><h2>AI</h2>${aiHtml()}</div>
+      <div class="card" style="margin-top:12px"><h2>Connect other AI agents (MCP)</h2>${mcpHtml()}</div>
+      <div class="card" style="margin-top:12px"><h2>Backups</h2>
+        <p class="hint">Your chain is backed up to the server after every sync, encrypted with a key only your device key can make: the server cannot read it. To move to a new computer you need the <b>key backup file</b> and your passphrase.</p>
+        <a href="/app/key-backup?t=${encodeURIComponent(TOKEN)}" download><button class="primary">Save key backup</button></a>
+        <p class="hint">Keep the file somewhere safe (it is encrypted with your passphrase). Lost computer? Remove it on the website (Profile → Desktop app).</p></div>`;
+  }
+  wireDealButtons();
+  wireRequestButtons();
+  if (S.view === "settings") wireSettings();
+}
+
+function aiHtml() {
+  const a = S.ai;
+  if (!a) return `<p class="hint">Loading…</p>`;
+  const u = a.usage;
+  const bar = (label, used, limit, resets) => { const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 100; return `<div style="margin:6px 0"><div class="row space hint"><span>${label}</span><span>${used.toLocaleString()} / ${limit.toLocaleString()} tokens · resets ${new Date(resets).toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" })}</span></div><div style="height:6px;border-radius:99px;background:var(--chip);overflow:hidden"><i style="display:block;height:100%;width:${pct}%;background:${pct >= 100 ? "var(--bad)" : pct >= 80 ? "var(--warn)" : "var(--accent)"}"></i></div></div>`; };
+  const usage = u ? `<label>AI allowance (Agentic Wallet's AI)</label>${bar("Today", u.today, u.perDay, u.resetsDay)}${bar("This week", u.week, u.perWeek, u.resetsWeek)}<div class="hint">${a.own ? "You use your own key now: it is not counted." : "Use your own key below when the allowance runs out."}${u.ownKeyToday ? ` Your own key today: ${u.ownKeyToday.toLocaleString()} tokens.` : ""}</div>` : "";
+  return `${usage}<label>Your instructions for the AI</label><textarea id="ins" rows="3" maxlength="1000" placeholder="e.g. Always answer in Thai. Suggest 2 milestones by default.">${esc(a.aiInstructions || "")}</textarea>
+    <div class="hint">Shapes tone, language and defaults, here and on the website. They never override the rules: payees, limits, terms review and your signature always apply.</div>
+    <div class="row" style="margin-top:6px"><button id="ins-save">Save instructions</button></div>
+    <label style="margin-top:16px">Model</label>
+    ${a.own ? `<div class="row space"><div>Your own key · <b>${esc(a.own.provider)}</b> · ${esc(a.own.model)} <span class="mono hint">${esc(a.own.key)}</span></div><button id="key-rm" class="danger">Use Agentic Wallet's AI</button></div>`
+      : `<p class="hint" style="margin:0 0 6px">Now: Agentic Wallet's AI. Or bring your own key: it is sealed on this computer with your device key and sent only with your chat messages, for that request (never stored by the server).</p>
+      <form id="kf"><div class="row"><select name="provider" style="width:auto"><option value="openrouter">OpenRouter (OpenAI, Google, Anthropic…)</option><option value="anthropic">Anthropic</option></select>
+      <input name="model" placeholder="model, e.g. openai/gpt-5.5 or claude-sonnet-5-5" required style="flex:1;min-width:200px"></div>
+      <input name="apiKey" type="password" placeholder="API key" autocomplete="off" required style="margin-top:6px">
+      <div class="row" style="margin-top:6px"><button class="primary">Use my key</button></div></form>`}`;
+}
+
+function mcpHtml() {
+  const m = S.mcp;
+  if (!m) return `<p class="hint">Loading…</p>`;
+  const cfg = JSON.stringify({ mcpServers: { "agentic-wallet": { command: m.command, args: m.args } } }, null, 2);
+  return `<p class="hint" style="margin-top:0">Let Claude Desktop, Cursor or another MCP client read your wallet and ask for moves. They can look (balance, deals, money, friends) and draft; anything that moves money or signs waits here for you to <b>Sign</b> with your device key. Keep this app open and unlocked while they use it.</p>
+    <label>Add to the client's MCP config</label><pre class="mono" style="white-space:pre-wrap;background:var(--chip);padding:10px;border-radius:8px">${esc(cfg)}</pre>
+    <div class="row"><button id="mcp-copy">Copy config</button><span class="hint">${m.calls ? `${m.calls} tool call(s) this session` : "No agent connected yet"}</span></div>`;
+}
+
+function wireSettings() {
+  const save = $("#ins-save"); if (save) save.onclick = async () => { try { S.ai = { ...S.ai, ...(await api("/app/ai/instructions", "POST", { text: $("#ins").value })) }; toast("Saved"); } catch (e) { toast(e.message); } };
+  const kf = $("#kf"); if (kf) kf.onsubmit = async (ev) => { ev.preventDefault(); const f = new FormData(kf); try { S.ai = { ...S.ai, ...(await api("/app/ai/key", "POST", { provider: f.get("provider"), model: f.get("model"), apiKey: f.get("apiKey") })) }; toast("Your key is set (sealed on this computer)"); renderView(); } catch (e) { toast(e.message); } };
+  const rm = $("#key-rm"); if (rm) rm.onclick = async () => { S.ai = { ...S.ai, ...(await api("/app/ai/key/remove", "POST")) }; toast("Your key is removed"); renderView(); };
+  const cp = $("#mcp-copy"); if (cp) cp.onclick = () => navigator.clipboard.writeText(JSON.stringify({ mcpServers: { "agentic-wallet": { command: S.mcp.command, args: S.mcp.args } } }, null, 2)).then(() => toast("Copied"), () => toast("Copy failed"));
+}
+
+function verifyHtml() {
+  const v = S.verify;
+  if (!v) return `<p class="hint">Checks every block's hash, link and signature here, your head against the server's countersigned head, and the latest public anchor.</p>`;
+  const line = (ok, title, detail, extra = "") => `<div class="check"><div>${ok ? "✅" : "⚠️"}</div><div><b>${title}</b><div class="hint">${esc(detail)}</div>${extra}</div></div>`;
+  const repair = v.local.ok ? "" : `<button id="repair" style="margin-top:6px">Put back my last backup</button>`;
+  return line(v.local.ok, "Chain on this computer", v.local.detail, repair) + line(v.server.ok, "Matches the server", v.server.detail) +
+    line(v.anchor.ok, "Public anchor", v.anchor.detail, v.anchor.txHash ? `<div class="mono hint">tx ${esc(v.anchor.txHash)}</div>` : "");
+}
+
+function blockText(b) {
+  if (b.kind === "genesis") return `<b>Genesis</b> · wallet <span class="mono">${short(b.body.wallet)}</span>`;
+  if (b.kind === "intent" && b.body.action === "vote") return `<b>You signed: ${b.body.approve ? "approve" : "reject"} a group payment</b> <span class="hint">proposal ${esc(b.body.proposalId)}</span>`;
+  if (b.kind === "intent" && b.body.action === "payee") return `<b>You signed: ${b.body.allowed ? "make payee" : "stop paying"}</b> <span class="hint">contact ${esc(b.body.friendshipId)}</span>`;
+  if (b.kind === "intent" && b.body.action === "confirm_draft") return `<b>You signed: confirm deal</b> <span class="hint">preview ${esc(b.body.draftId)}</span>`;
+  if (b.kind === "intent" && b.body.action === "deliver") return `<b>You signed: deliver</b> · D-${esc(b.body.dealId)} milestone ${Number(b.body.index) + 1}${b.body.fileName ? `<div class="hint">${esc(b.body.fileName)} · sha256 ${esc(String(b.body.fileSha256 || "").slice(0, 12))}…</div>` : ""}${b.body.carrier ? `<div class="hint">${esc(b.body.carrier)} ${esc(b.body.tracking || "")}</div>` : ""}`;
+  if (b.kind === "intent") return `<b>You signed: ${esc(b.body.action)}</b> · D-${esc(b.body.dealId)}${["cancel", "accept"].includes(b.body.action) ? "" : ` milestone ${Number(b.body.index) + 1}`}${b.body.requestId ? ` <span class="chip">from website</span>` : ""}${b.body.reason ? `<div class="hint">${esc(b.body.reason)}</div>` : ""}`;
+  const e = b.body.event;
+  return e.type === "deal" ? `<b>Deal D-${esc(e.dealId)}</b> → ${esc(e.status)} <span class="hint">total ${esc(e.data.total)}</span>` : `<b>D-${esc(e.dealId)} milestone ${Number(e.index) + 1}</b> → ${esc(e.status)} <span class="hint">${esc(e.data.amount)}</span>`;
+}
+
+function msgHtml(x) {
+  const tools = (x.steps || []).map((st) => st && (st.tool || st.name)).filter(Boolean);
+  const body = x.role === "assistant" ? `<div class="md">${window.renderMarkdown(x.text)}</div>${x.model ? `<div class="hint" style="margin-top:4px">your key · ${esc(x.model)}</div>` : ""}` : esc(x.text);
+  return `<div class="msg ${x.role}">${body}${tools.length ? `<div class="tools">${tools.map((t) => `<span class="chip">${esc(t)}</span>`).join("")}</div>` : ""}</div>`;
+}
+
+function draftsHtml() {
+  const ds = (S.drafts || []).filter((d) => d.status !== "FUNDED");
+  if (!ds.length) return "";
+  return `<h2 style="margin-top:6px">Previews waiting for you</h2>` + ds.map((d) => {
+    const blocking = d.review && d.review.blocking;
+    return `<div class="card deal"><div class="row space"><div><b>${esc(d.title)}</b> <span class="hint">${esc(d.id)}</span>
+      <div class="hint">${d.side === "BUY" ? "You pay" : "You sell to"} ${esc(d.sellerLabel || d.counterparty)} · review ${esc(d.reviewHours)} h${d.paymentPlan ? " · split payment" : ""}</div></div>
+      <div class="row"><span class="chip">${esc(d.status)}</span><b>${esc(d.total)} ${esc(d.symbol)}</b></div></div>
+      ${(d.milestones || []).map((m, i) => `<div class="ms"><div>${i + 1}. ${esc(m.name)} · <b>${esc(m.amount)}</b>${m.deposit ? ` <span class="chip warn">deposit on signing</span>` : ""}<div class="hint">${esc(m.acceptance)}</div></div><div class="hint">${esc(m.delivery || (m.hasFile ? "file" : "note"))}</div></div>`).join("")}
+      ${d.review ? d.review.issues.map((i) => `<div class="issue ${i.level}">${esc(i.text)}</div>`).join("") : ""}
+      <div class="row" style="margin-top:10px">${["PREVIEW", "DRAFT", "FAILED"].includes(d.status) ? `<button class="primary" data-confirm="${esc(d.id)}" ${blocking ? "disabled title=\"Fix the blocking points with the AI first\"" : ""}>Confirm and sign</button>` : `<span class="hint">The AI still needs details: answer it in the chat.</span>`}</div></div>`;
+  }).join("");
+}
+
+function wireDrafts() {
+  document.querySelectorAll("[data-confirm]").forEach((b) => (b.onclick = () => {
+    const d = (S.drafts || []).find((x) => x.id === b.dataset.confirm);
+    const dlg = $("#dlg"), form = $("#dlg-form");
+    form.innerHTML = `<h2>Confirm: ${esc(d.title)}</h2><p>${d.side === "BUY" ? `The full ${esc(d.total)} ${esc(d.symbol)} is locked in escrow from your Mock Bank balance${d.paymentPlan ? " (split payment: part 1 now)" : ""}.` : "Your offer goes to the buyer; nothing is locked from you."}</p>
+      <p class="hint">This adds a block signed by your device key; the server carries it out.</p><div class="err" id="de"></div><div id="dres"></div>
+      <div class="row" style="justify-content:flex-end;margin-top:12px"><button value="cancel" formnovalidate>Close</button><button class="primary" id="dok" value="ok">Sign</button></div>`;
+    dlg.showModal();
+    form.onsubmit = async (ev) => {
+      if (ev.submitter?.value !== "ok") return;
+      ev.preventDefault();
+      const ok = $("#dok"); ok.disabled = true; ok.textContent = "Signing…";
+      try {
+        const r = await api("/app/confirm-draft", "POST", { draftId: d.id });
+        if (!r.ok) throw new Error(r.error || "Not done (the signed block stays on your chain)");
+        const inv = r.result && r.result.invite;
+        $("#dres").innerHTML = `<div class="ok-box">Signed and done${r.result.companyVote ? " · sent to the signers' vote" : ""}${r.result.plan ? ` · part ${r.result.plan.paidParts} paid` : ""}.</div>` +
+          (inv && inv.link ? `<p>Send this private link to ${esc(inv.name)}:</p><div class="mono">${esc(inv.link)}</div>${inv.access && inv.access.otp ? `<p>One-time code (send it separately): <b class="mono">${esc(inv.access.otp)}</b></p>` : ""}` : "");
+        ok.style.display = "none";
+        S.drafts = (await api("/app/drafts")).drafts;
+      } catch (err) { showErr($("#de"), err); ok.disabled = false; ok.textContent = "Sign"; }
+    };
+    dlg.addEventListener("close", () => renderView(), { once: true });
+  }));
+}
+
+async function fileToAttachment(f) {
+  if (f.size > 3 * 1024 * 1024) throw new Error("Attach up to 3 MB");
+  const b64 = async () => { const buf = new Uint8Array(await f.arrayBuffer()); let s = ""; for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000)); return btoa(s); };
+  if (f.type === "application/pdf" || /\.pdf$/i.test(f.name)) return { kind: "pdf", name: f.name, base64: await b64() };
+  if (/^image\/(png|jpeg|webp|gif)$/.test(f.type)) return { kind: "image", name: f.name, mediaType: f.type, base64: await b64() };
+  return { kind: "text", name: f.name, text: (await f.text()).slice(0, 60000) };
+}
+
+async function sendChat(fd) {
+  const message = String(fd.get("m") || "").trim();
+  const f = fd.get("f");
+  if (!message && !(f && f.size)) return;
+  let attachment;
+  try { attachment = f && f.size ? await fileToAttachment(f) : undefined; } catch (e) { toast(e.message); return; }
+  S.chatHistory = [...(S.chatHistory || []), { role: "user", text: message || `📎 ${f.name}`, at: Date.now() }];
+  S.chatBusy = true; renderView();
+  try {
+    await api("/app/chat", "POST", { message: message || `Read the attached ${f.name}`, lang: S.lang || "th", attachment });
+  } catch (e) { toast(e.message); }
+  S.chatBusy = false;
+  const [h, d] = await Promise.all([api("/app/chat"), api("/app/drafts").catch(() => ({ drafts: S.drafts || [] }))]);
+  S.chatHistory = h.history; S.drafts = d.drafts;
+  if (S.view === "chat") renderView();
+}
+
+function deliverDialog(dealId, index) {
+  const d = (S.deals || []).find((x) => x.id === Number(dealId));
+  const m = d.milestones[Number(index)];
+  const dlg = $("#dlg"), form = $("#dlg-form");
+  const types = (m.fileTypes || []).join(",");
+  form.innerHTML = `<h2>Deliver: ${esc(m.name)}</h2><p class="hint">Accepted when: ${esc(m.acceptance || "-")}</p>
+    ${m.delivery === "parcel" ? `<label>Carrier</label><select name="carrier"><option value="MOCK_POST">Mock Post (books a demo parcel)</option><option value="THAILAND_POST">Thailand Post</option><option value="KERRY">Kerry</option><option value="FLASH">Flash</option><option value="OTHER">Other</option></select>
+      <label>Tracking number</label><input name="tracking" maxlength="40" placeholder="(Mock Post makes one)">` : ""}
+    ${m.delivery === "file" ? `<label>File (up to 4 MB${types ? `; ${esc(types)}` : ""})</label><input type="file" name="file" ${types ? `accept="${esc(types)}"` : ""} required>` : ""}
+    <label>Note for the buyer</label><textarea name="note" rows="3" maxlength="4000" placeholder="What you delivered and how it meets the criteria"></textarea>
+    <p class="hint">Your device key signs the note${m.delivery === "file" ? " and the file's SHA-256" : ""}; the file is encrypted on the server and the buyer sees a watermarked preview until they approve.</p>
+    <div class="err" id="de"></div><div class="row" style="justify-content:flex-end;margin-top:12px"><button value="cancel" formnovalidate>Back</button><button class="primary" id="dok" value="ok">Sign and deliver</button></div>`;
+  dlg.showModal();
+  form.onsubmit = async (ev) => {
+    if (ev.submitter?.value !== "ok") return;
+    ev.preventDefault();
+    const ok = $("#dok"); ok.disabled = true; ok.textContent = "Delivering…";
+    try {
+      const fd = new FormData(form);
+      fd.set("dealId", dealId); fd.set("index", index);
+      const r = await fetch("/app/deliver", { method: "POST", headers: { "x-app-token": TOKEN }, body: fd }).then(async (x) => { const j = await x.json().catch(() => ({})); if (!x.ok) throw new Error(j.error || `Error ${x.status}`); return j; });
+      if (!r.ok) throw new Error(r.error || "Not delivered (the signed block stays on your chain)");
+      dlg.close(); toast("Delivered"); await load();
+    } catch (err) { showErr($("#de"), err); ok.disabled = false; ok.textContent = "Sign and deliver"; }
+  };
+}
+
+const STATUS_CHIP = { Released: "ok", Approved: "ok", KeyReleased: "ok", Active: "ok", Disputed: "bad", Refunded: "warn", Cancelled: "warn", Delivered: "warn", Split: "warn" };
+function dealHtml(d) {
+  const now = Date.now() / 1000;
+  const btn = (action, index, label, cls = "") => `<button class="${cls}" data-act="${action}" data-deal="${d.id}" data-i="${index}">${label}</button>`;
+  const head = [];
+  if (d.status === "Proposed") {
+    if (d.offeredBy === "them") head.push(btn("accept", 0, d.role === "buyer" ? "Accept and pay" : "Accept the offer", "primary"));
+    else head.push(btn("cancel", 0, "Cancel my offer", "danger"));
+  }
+  return `<div class="card deal"><div class="row space"><div><b>${esc(d.title)}</b> <span class="hint">D-${d.id}</span>
+      <div class="hint">${d.role === "buyer" ? "You buy from" : "You sell to"} ${esc(d.counterpartyLabel)} ${d.counterpartyHasApp ? `<span class="chip ok">their app links to your chain</span>` : ""}</div></div>
+      <div class="row"><span class="chip ${STATUS_CHIP[d.status] || ""}">${esc(d.status)}</span><b>${esc(d.total)}</b>${head.join("")}</div></div>
+    ${d.milestones.map((m) => {
+      const acts = [];
+      if (d.status === "Active") {
+        if (d.role === "buyer" && (m.status === "Delivered" || m.status === "KeyReleased")) { acts.push(btn("approve", m.index, "Approve and pay", "primary")); acts.push(btn("dispute", m.index, "Dispute", "danger")); }
+        if (d.role === "buyer" && m.status === "Pending" && m.deadline && m.deadline < now) acts.push(btn("reclaim", m.index, "Reclaim (late)"));
+        if (d.role === "seller" && m.status === "Delivered" && m.deadline && m.deadline < now) acts.push(btn("claim", m.index, "Claim payment", "primary"));
+        if (d.role === "seller" && m.status === "Pending" && m.delivery !== "deposit") acts.push(`<button class="primary" data-deliver="${d.id}" data-i="${m.index}">Deliver</button>`);
+        if (d.role === "seller" && ["Pending", "Delivered", "Disputed"].includes(m.status)) acts.push(btn("refund", m.index, "Refund buyer", "danger"));
+      }
+      return `<div class="ms"><div>${esc(m.name)} · <b>${esc(m.amount)}</b> <span class="chip ${STATUS_CHIP[m.status] || ""}">${esc(m.status)}</span> <span class="hint">${esc(m.delivery || "")}</span>${m.split ? `<span class="hint"> seller ${esc(m.split.toSeller)} / buyer ${esc(m.split.toBuyer)}</span>` : ""}</div><div class="row">${acts.join("")}</div></div>`;
+    }).join("")}
+  </div>`;
+}
+
+const ACTION_TEXT = { approve: "Approve this delivery and release its payment to the seller?", accept: "Accept this offer? As the buyer, the full amount is locked in escrow from your Mock Bank balance.", cancel: "Cancel your offer?", reclaim: "Take back this milestone's money (the seller missed the deadline)?", claim: "Claim this milestone's payment (the review window passed with no dispute)?", refund: "Refund this milestone to the buyer?", dispute: "Open a dispute: a neutral arbiter decides from the evidence." };
+
+function confirmMove(action, dealId, index, requestId) {
+  const dlg = $("#dlg"), form = $("#dlg-form");
+  form.innerHTML = `<h2>Sign: ${esc(action)} · D-${esc(dealId)}${["cancel", "accept"].includes(action) ? "" : ` milestone ${Number(index) + 1}`}</h2><p>${esc(ACTION_TEXT[action] || "Sign this move?")}</p>
+    ${action === "dispute" && !requestId ? `<label>What is wrong?</label><textarea name="reason" rows="4" minlength="10" required></textarea>` : ""}
+    <p class="hint">This adds a block signed by your device key to your chain; the server carries it out.</p>
+    <div class="err" id="de"></div><div class="row" style="justify-content:flex-end;margin-top:12px"><button value="cancel" formnovalidate>Back</button><button class="primary" id="dok" value="ok">Sign</button></div>`;
+  dlg.showModal();
+  form.onsubmit = async (ev) => {
+    if (ev.submitter?.value !== "ok") return;
+    ev.preventDefault();
+    const ok = $("#dok"); ok.disabled = true; ok.textContent = "Signing…";
+    try {
+      const reason = new FormData(form).get("reason") || undefined;
+      const r = await api("/app/move", "POST", { dealId: Number(dealId), action, index: Number(index), reason, requestId });
+      if (!r.ok) throw new Error(r.error || "The server could not carry it out (the signed block stays on your chain)");
+      dlg.close();
+      toast(r.result && r.result.groupVote ? "Sent to your group's vote" : "Signed and done");
+      await load();
+    } catch (err) { showErr($("#de"), err); ok.disabled = false; ok.textContent = "Sign"; }
+  };
+}
+
+function wireDealButtons() {
+  document.querySelectorAll("[data-act]").forEach((b) => (b.onclick = () => confirmMove(b.dataset.act, b.dataset.deal, b.dataset.i)));
+  document.querySelectorAll("[data-deliver]").forEach((b) => (b.onclick = () => deliverDialog(b.dataset.deliver, b.dataset.i)));
+}
+function wireAgentButtons() {
+  document.querySelectorAll("[data-asign]").forEach((b) => (b.onclick = async () => {
+    const r = (S.info.agentRequests || []).find((x) => x.id === b.dataset.asign);
+    if (!confirm(`Sign this request from ${r.client}? It adds a block signed by your device key and the server carries it out.`)) return;
+    b.disabled = true; b.textContent = "Signing…";
+    try { const out = await api("/app/agent-requests", "POST", { id: r.id, sign: true }); toast(out.status === "SIGNED" ? "Signed and done" : `Not done: ${out.error || out.status}`); } catch (e) { toast(e.message); }
+    await load();
+  }));
+  document.querySelectorAll("[data-areject]").forEach((b) => (b.onclick = async () => { try { await api("/app/agent-requests", "POST", { id: b.dataset.areject, sign: false }); toast("Rejected"); } catch (e) { toast(e.message); } await load(); }));
+}
+
+function wireRequestButtons() {
+  wireAgentButtons();
+  const reqs = S.info.requests || [];
+  document.querySelectorAll("[data-sign]").forEach((b) => (b.onclick = () => { const r = reqs.find((x) => x.id === b.dataset.sign); confirmMove(r.action, r.dealId, r.index, r.id); }));
+  document.querySelectorAll("[data-reject]").forEach((b) => (b.onclick = async () => {
+    const r = reqs.find((x) => x.id === b.dataset.reject);
+    b.disabled = true;
+    try { await api("/app/move", "POST", { dealId: r.dealId, action: "reject", index: r.index, requestId: r.id }); toast("Rejected"); await load(); } catch (e) { toast(e.message); b.disabled = false; }
+  }));
+}
+
+let toastTimer;
+function toast(text) {
+  let t = $("#toast");
+  if (!t) { t = document.createElement("div"); t.id = "toast"; t.style.cssText = "position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 14px;border-radius:10px;z-index:9;max-width:90vw"; document.body.appendChild(t); }
+  t.textContent = text; t.style.display = "block";
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.style.display = "none"), 3500);
+}
+
+async function doSync() {
+  try { const r = await api("/app/sync", "POST"); toast(r.added ? `Added ${r.added} block(s)` : "Up to date"); } catch (e) { toast(e.message); }
+  await load();
+}
+async function doVerify() {
+  $("#vres").innerHTML = `<p class="hint">Checking…</p>`;
+  try { S.verify = await api("/app/verify", "POST"); } catch (e) { S.verify = null; toast(e.message); }
+  if (S.view === "overview") { $("#vres").innerHTML = verifyHtml(); wireRepair(); }
+}
+function wireRepair() {
+  const b = $("#repair");
+  if (b) b.onclick = async () => { b.disabled = true; try { const r = await api("/app/repair", "POST"); toast(`Chain restored up to block ${r.height}`); await doVerify(); } catch (e) { toast(e.message); b.disabled = false; } };
+}
+
+async function load() {
+  if (S.info.stage !== "ready") return;
+  try {
+    S.info = await api("/app/state");
+    if (S.view === "overview") { const [a, d] = await Promise.all([api("/app/account"), api("/app/deals")]); S.account = a; S.deals = d.deals; }
+    if (S.view === "deals") S.deals = (await api("/app/deals")).deals;
+    if (S.view === "chain") S.chain = await api("/app/chain");
+    if (S.view === "chat") { const [h, d] = await Promise.all([api("/app/chat"), api("/app/drafts")]); S.chatHistory = h.history; S.drafts = d.drafts; }
+    if (S.view === "activity") { const [a, t] = await Promise.all([api("/app/activity"), api("/app/topup").catch(() => null)]); S.activity = a; S.topup = t; }
+    if (S.view === "contacts" || S.view === "groups") S.friends = (await api("/app/friends")).friends;
+    if (S.view === "links") S.links = (await api("/app/invite-links")).links;
+    if (S.view === "settings") { const [ai, mcp] = await Promise.all([api("/app/ai").catch(() => null), api("/app/mcp").catch(() => null)]); S.ai = ai; S.mcp = mcp; }
+    if (S.view === "groups") S.groups = await api("/app/groups");
+  } catch (e) { toast(e.message); }
+  if (S.info.stage === "ready") renderApp(); else render();
+}
+// The money view refreshes when the browser comes back from a Stripe payment.
+window.addEventListener("focus", () => { if (S.info && S.info.stage === "ready" && S.view === "activity") load(); });
+
+setInterval(async () => {
+  if (!S.info || S.info.stage !== "ready" || S.chatBusy || document.querySelector("dialog[open]") || document.querySelector("#cf textarea")?.value) return;
+  const before = JSON.stringify([S.info.height, (S.info.requests || []).length, (S.info.agentRequests || []).length]);
+  try { S.info = await api("/app/state"); } catch { return; }
+  if (JSON.stringify([S.info.height, (S.info.requests || []).length, (S.info.agentRequests || []).length]) !== before) load();
+}, 10_000);
+
+boot().then(load).catch((e) => { $("#root").innerHTML = `<div class="center"><div class="card narrow err" style="display:block">${esc(e.message)}</div></div>`; });
+</script>
+</body>
+</html>

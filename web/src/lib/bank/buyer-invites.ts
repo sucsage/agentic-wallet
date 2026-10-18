@@ -9,11 +9,13 @@ import type { BuyerInvite } from "@/generated/prisma/client";
 import { createWorkspace } from "../actions";
 import { agentWalletAbi } from "../abis";
 import { type TxOutcome, send } from "../chain";
+import { config } from "../config";
 import { db } from "../db";
+import { issueOtp, requireLinkAccess } from "../link-access";
 import { sealToken } from "../link-seal";
 import { readFileDeals } from "../state";
 import { accountOf, openAccount, transfer } from "./ledger";
-import { acceptAndPay, buyerAction, dealTerms, deliveryInfo, syncDeal } from "./deals";
+import { OFFER_DAYS, acceptAndPay, buyerAction, dealTerms, deliveryInfo, syncDealLater } from "./deals";
 import { stripe } from "./topup";
 
 /**
@@ -46,9 +48,12 @@ export async function createBuyerInvite(userId: string, sellerWallet: Address, n
   // The buyer's wallet may pay this seller (accepting the offer locks money for them).
   const payee = await send("owner", { address: buyerWallet, abi: agentWalletAbi, functionName: "setRecipient", args: [sellerWallet, true] });
   const token = randomBytes(24).toString("base64url");
-  const invite = await db.buyerInvite.create({
+  let invite = await db.buyerInvite.create({
     data: { tokenHash: hashToken(token), tokenEnc: sealToken(token), userId, sellerWallet, buyerWallet, name: clean, currency, expiresAt: new Date(Date.now() + LINK_DAYS * 86_400_000) },
   });
+  // The link opens only with a one-time code the seller sends separately, then the buyer's password.
+  await issueOtp("buyer", invite);
+  invite = await db.buyerInvite.findUniqueOrThrow({ where: { id: invite.id } });
   return { invite, token, payee };
 }
 
@@ -61,6 +66,13 @@ export async function rotateBuyerInviteLink(userId: string, inviteId: string): P
   });
   if (updated.count !== 1) throw new BuyerInviteError("Invite not found");
   return token;
+}
+
+/** The invite a request is about, after checking this browser may open it (its OTP or password). */
+export async function buyerInviteForRequest(token: string): Promise<BuyerInvite> {
+  const invite = await buyerInviteByToken(token);
+  await requireLinkAccess("buyer", invite);
+  return invite;
 }
 
 export async function buyerInviteByToken(token: string): Promise<BuyerInvite> {
@@ -99,6 +111,13 @@ export async function buyerInviteView(invite: BuyerInvite) {
           summary: terms?.summary ?? null,
           shipTo: terms?.shipTo ?? null,
           canPay: d.status === "Proposed" && d.offeredBy === "them",
+          guarantorRequired: terms?.guarantorsRequired === "both" || terms?.guarantorsRequired === "buyer",
+          guarantor: await db.dealGuarantor
+            .findUnique({ where: { escrow_dealId_side: { escrow: config.fileEscrowOf(d.id), dealId: d.id, side: "buyer" } }, select: { name: true, contact: true, relation: true, amount: true } })
+            .then((g) => (g ? { ...g, amount: g.amount === null ? null : Number(g.amount) } : null)),
+          offerExpiresAt: d.status === "Proposed" && terms ? new Date(+(terms.offeredAt ?? terms.updatedAt) + OFFER_DAYS * 86_400_000) : null,
+          // What the seller attached for the buyer (a spec, a catalogue, a sample).
+          files: terms ? await db.dealFile.findMany({ where: { draftId: terms.id }, orderBy: { createdAt: "asc" }, select: { id: true, name: true, mime: true, size: true } }) : [],
           milestones: await Promise.all(
             d.milestones.map(async (m, i) => ({
               index: m.index,
@@ -172,7 +191,8 @@ export async function payOffer(invite: BuyerInvite, dealId: number) {
   await ownDeal(invite, dealId);
   const wallet = getAddress(invite.buyerWallet);
   const r = await acceptAndPay(wallet, dealId);
-  void syncDeal(wallet, dealId).catch(() => null);
+  // A deposit due on signing is paid by this sync.
+  syncDealLater(wallet, dealId);
   return r;
 }
 
@@ -181,6 +201,6 @@ export async function approveAsInvitedBuyer(invite: BuyerInvite, dealId: number,
   await ownDeal(invite, dealId);
   const wallet = getAddress(invite.buyerWallet);
   const r = await buyerAction(wallet, dealId, "approve", index);
-  void syncDeal(wallet, dealId).catch(() => null);
+  syncDealLater(wallet, dealId);
   return r;
 }

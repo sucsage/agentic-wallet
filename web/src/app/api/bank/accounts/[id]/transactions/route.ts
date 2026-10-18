@@ -11,6 +11,7 @@ const KIND_LABEL = {
   WITHDRAW: "Payment from a deal (invited seller)",
   TOPUP: "Card top-up (Stripe test)",
   TRANSFER: "Moved between your accounts",
+  PLAN: "Split payment (held until the last part)",
 } as const;
 
 /**

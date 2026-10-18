@@ -569,7 +569,7 @@ export async function executeProposal(proposalId: string, yes = 0, no = 0, retry
         act.action === "accept" ? await deals.acceptAndPay(wallet, act.dealId) : await deals.buyerAction(wallet, act.dealId, "approve", act.index);
       const ok = "outcome" in r ? r.outcome.status === "success" : r.status === "FUNDED";
       if (!ok) await db.groupProposal.update({ where: { id: p.id }, data: { status: "FAILED" } });
-      void deals.syncDeal(wallet, act.dealId).catch(() => null);
+      deals.syncDealLater(wallet, act.dealId);
       return { status: ok ? "EXECUTED" : "FAILED", yes, no };
     } catch (err) {
       await db.groupProposal.update({ where: { id: p.id }, data: { status: "FAILED" } });

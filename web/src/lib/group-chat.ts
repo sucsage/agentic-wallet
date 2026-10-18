@@ -4,7 +4,8 @@ import { type Address, getAddress } from "viem";
 
 import { Prisma } from "@/generated/prisma/client";
 
-import { type ChatTurn, runAgent } from "./agent";
+import { type Attachment, type ChatTurn, runAgent } from "./agent";
+import { attachmentFile, attachmentText } from "./attachments";
 import { type StoredStep, publicStep } from "./chats";
 import { db } from "./db";
 import { SocialError } from "./social";
@@ -35,7 +36,12 @@ async function membership(userId: string, groupId: string) {
 
 export async function groupMessages(userId: string, groupId: string) {
   const g = await membership(userId, groupId);
-  const rows = await db.groupMessage.findMany({ where: { groupId }, orderBy: { createdAt: "desc" }, take: 80 });
+  const rows = await db.groupMessage.findMany({
+    where: { groupId },
+    orderBy: { createdAt: "desc" },
+    take: 80,
+    omit: { fileData: true },
+  });
   const names = new Map(g.members.map((m) => [m.userId, m.user.name]));
   const missing = rows.map((r) => r.userId).filter((id): id is string => !!id && !names.has(id));
   if (missing.length) for (const u of await db.user.findMany({ where: { id: { in: missing } }, select: { id: true, name: true } })) names.set(u.id, u.name);
@@ -50,6 +56,7 @@ export async function groupMessages(userId: string, groupId: string) {
     mine: r.userId === userId,
     author: r.userId ? (names.get(r.userId) ?? "a former member") : "AI agent",
     text: r.text,
+    file: r.fileName ? { name: r.fileName, mime: r.fileMime ?? "application/octet-stream", url: `/api/groups/${groupId}/chat/${r.id}/file` } : null,
     steps: stepsOf(r).map((st) => {
       const d = st.draft && now.get(st.draft.id);
       return d ? { ...st, draft: { ...st.draft!, status: d.status, dealId: d.dealId }, inVote: voting.has(d.id), mine: st.ownerId === userId } : { ...st, mine: st.ownerId === userId };
@@ -73,12 +80,29 @@ function turnsOf(rows: { userId: string | null; text: string }[], nameOf: (id: s
   return turns;
 }
 
-export async function postGroupMessage(userId: string, groupId: string, text: string, askAi: boolean, lang: "en" | "th" = "en") {
+/** A member's file in the chat: only members can open it. */
+export async function groupMessageFile(userId: string, groupId: string, messageId: string) {
+  await membership(userId, groupId);
+  const m = await db.groupMessage.findFirst({ where: { id: messageId, groupId }, select: { fileName: true, fileMime: true, fileData: true } });
+  if (!m?.fileData || !m.fileName) throw new SocialError("File not found");
+  return { name: m.fileName, mime: m.fileMime ?? "application/octet-stream", bytes: Buffer.from(m.fileData) };
+}
+
+export async function postGroupMessage(userId: string, groupId: string, text: string, askAi: boolean, lang: "en" | "th" = "en", attachment?: Attachment) {
   const g = await membership(userId, groupId);
   const clean = text.trim().slice(0, 2000);
-  if (!clean) throw new SocialError("Write a message");
-  const earlier = await db.groupMessage.findMany({ where: { groupId }, orderBy: { createdAt: "desc" }, take: CONTEXT });
-  await db.groupMessage.create({ data: { groupId, userId, text: clean } });
+  if (!clean && !attachment) throw new SocialError("Write a message");
+  const earlier = await db.groupMessage.findMany({ where: { groupId }, orderBy: { createdAt: "desc" }, take: CONTEXT, omit: { fileData: true } });
+  const file = attachment ? attachmentFile(attachment) : null;
+  await db.groupMessage.create({
+    data: {
+      groupId,
+      userId,
+      // The model sees the file's name in later turns; its content only when it is asked now.
+      text: [clean, file ? `📎 ${file.name}` : ""].filter(Boolean).join("\n"),
+      ...(file ? { fileName: file.name.slice(0, 200), fileMime: file.mime, fileData: new Uint8Array(file.bytes) } : {}),
+    },
+  });
   // Keep the chat bounded.
   const old = await db.groupMessage.findMany({ where: { groupId }, orderBy: { createdAt: "desc" }, skip: KEEP, select: { id: true } });
   if (old.length) await db.groupMessage.deleteMany({ where: { id: { in: old.map((o) => o.id) } } });
@@ -98,7 +122,8 @@ export async function postGroupMessage(userId: string, groupId: string, text: st
     "Keep answers short; the whole group reads them.",
   ].join("\n");
   try {
-    const { reply, steps } = await runAgent(wallet, turnsOf(earlier.reverse(), nameOf), `${me}: ${clean}`, undefined, undefined, lang, userId, undefined, context);
+    const fileText = attachment ? await attachmentText(attachment) : undefined;
+    const { reply, steps } = await runAgent(wallet, turnsOf(earlier.reverse(), nameOf), `${me}: ${clean || `(sent the file ${attachment?.name})`}`, attachment, fileText, lang, userId, undefined, context);
     const stored: GroupChatStep[] = steps.map((s) => ({ ...publicStep(s), wallet, ownerId: userId }));
     const ai = await db.groupMessage.create({
       data: { groupId, userId: null, text: reply || "(no answer)", steps: stored.length ? (stored as unknown as Prisma.InputJsonValue) : Prisma.JsonNull },

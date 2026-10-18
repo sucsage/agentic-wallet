@@ -42,6 +42,7 @@ model User {
   reportsMade     UserReport[]     @relation("reporter")
   reportsAbout    UserReport[]     @relation("reported")
   security        UserSecurity?
+  address       UserAddress?
 }
 
 model Session {
@@ -289,6 +290,9 @@ enum BankTransferKind {
   WITHDRAW
   /// Money paid in by card through Stripe (test mode), credited once per Checkout Session.
   TOPUP
+  /// Split payment (แบ่งจ่าย): a part moved from the buyer's account into the plan's holding
+  /// account, or the whole held amount moved back when the plan completes, lapses or is cancelled.
+  PLAN
 }
 
 model BankAccount {
@@ -401,6 +405,20 @@ model DealDraft {
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
+  /// When the offer went on-chain: an offer nobody accepted within 14 days is withdrawn.
+  offeredAt      DateTime?
+  /// The contract's rules and conditions (duties, prohibitions, termination...), part of the hashed terms.
+  rules          String?
+  /// Whose guarantor the deal requires before it can be signed: "buyer", "seller", "both" or null.
+  guarantorsRequired String?
+  /// Split payment (แบ่งจ่าย), part of the terms: [{ amount, due }] adding up to the total. The buyer
+  /// pays every part before anything is locked in escrow and before the seller delivers.
+  paymentPlan    Json?
+  plan           PaymentPlan?
+  /// The AI's review of the terms for the user: { ok, blocking, issues: [{ level, text }] }.
+  review         Json?
+  files          DealFile[]
+
   @@index([userId, walletAddress])
 }
 
@@ -464,6 +482,132 @@ model UserBlock {
 }
 
 /// Optional witnesses named on a deal's contract, one per side (buyer / seller).
+/// A file the deal's creator attached for the other side to see (a spec, a catalogue, a sample,
+/// a quotation). Kept with the draft, so it follows the deal; both parties (and an invited outsider
+/// through their link) can open it. At most 5 per deal, 4 MB each.
+model DealFile {
+  id        String    @id @default(cuid())
+  draftId   String
+  draft     DealDraft @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  userId    String
+  name      String
+  mime      String
+  size      Int
+  data      Bytes
+  createdAt DateTime  @default(now())
+
+  @@index([draftId])
+}
+
+/// A guarantor (ผู้ค้ำประกัน) named by one side of a deal: the person who answers for that side if it
+/// does not perform, up to an amount. One per side; printed on the contract with a guarantee clause and
+/// listed on a complaint. Demo: no identity check and no money is held from them.
+enum PublicPostStatus {
+  OPEN
+  CLOSED
+  /// Someone was chosen: a deal (with its private link) was drafted for them.
+  AWARDED
+}
+
+/// A public link (an open call): anyone with the link can apply with a message, portfolio links and
+/// files; the owner sees the applications, the AI recommends who fits, and choosing one drafts the
+/// deal with them (they then get a private link with its one-time code, like any outsider).
+model PublicPost {
+  id           String            @id @default(cuid())
+  /// The public part of the URL (/apply/<slug>): random, not a secret, can be revoked by closing.
+  slug         String            @unique
+  userId       String
+  walletAddress String
+  kind         DealKind          @default(HIRE)
+  title        String
+  summary      String
+  /// What applicants must send (e.g. "3 logo samples, a portfolio link").
+  requirements String
+  /// The deal offered to the one chosen: { reviewHours, milestones, rules?, budget? } in the draft's format.
+  terms        Json
+  status       PublicPostStatus  @default(OPEN)
+  closesAt     DateTime
+  awardedTo    String?
+  createdAt    DateTime          @default(now())
+  applications PostApplication[]
+
+  @@index([userId])
+}
+
+/// One application to a public post. Untrusted data: shown to the owner, read by the AI only as data.
+model PostApplication {
+  id        String            @id @default(cuid())
+  postId    String
+  post      PublicPost        @relation(fields: [postId], references: [id], onDelete: Cascade)
+  name      String
+  contact   String
+  message   String
+  links     String[]
+  price     Decimal?          @db.Decimal(18, 2)
+  /// The AI's read: { score 0-100, reason } (null until asked).
+  ai        Json?
+  createdAt DateTime          @default(now())
+  files     ApplicationFile[]
+
+  @@index([postId])
+}
+
+model ApplicationFile {
+  id            String          @id @default(cuid())
+  applicationId String
+  application   PostApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  name          String
+  mime          String
+  size          Int
+  data          Bytes
+}
+
+enum PaymentPlanStatus {
+  ACTIVE
+  /// Every part paid: the whole amount went into escrow (or is about to).
+  COMPLETE
+  CANCELLED
+  /// A part was more than 7 days late: what was paid went back to the buyer.
+  LAPSED
+}
+
+/// The running state of a split payment (แบ่งจ่าย): which parts the buyer paid into the plan's
+/// holding account. Nothing is in escrow and nothing is delivered until every part is paid; then the
+/// whole amount is locked like any deal. Cancelling or lapsing returns what was paid.
+model PaymentPlan {
+  id          String            @id @default(cuid())
+  draftId     String            @unique
+  draft       DealDraft         @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  /// The wallet that pays the parts (the buyer's).
+  payerWallet String
+  payerUserId String
+  /// The Mock Bank account holding the parts paid so far (owner "plan:<id>").
+  heldAccountId String?
+  paidParts   Int               @default(0)
+  status      PaymentPlanStatus @default(ACTIVE)
+  completedAt DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+}
+
+model DealGuarantor {
+  id        String   @id @default(cuid())
+  escrow    String
+  dealId    Int
+  /// "buyer" or "seller": whose obligations they guarantee.
+  side      String
+  name      String
+  contact   String
+  relation  String
+  /// The most they answer for, in the deal's currency (major units); null: the side's whole obligation.
+  amount    Decimal? @db.Decimal(18, 2)
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([escrow, dealId, side])
+}
+
 model DealWitness {
   id        String   @id @default(cuid())
   escrow    String
@@ -553,6 +697,10 @@ model GroupMessage {
   userId    String?
   text      String
   steps     Json?
+  /// A file a member attached (image, PDF or text, at most about 3 MB); members can open it.
+  fileName  String?
+  fileMime  String?
+  fileData  Bytes?
   createdAt DateTime @default(now())
 
   @@index([groupId, createdAt])
@@ -774,6 +922,20 @@ model SellerInvite {
   /// (earnings to their own wallet account, the deals listed in their app).
   claimedByUserId String?
   claimedAt       DateTime?
+  /// Link access for someone without an account: a one-time code (sealed so the inviter can see and
+  /// send it) to set a password, then the password; a reset code the outsider sends to the inviter
+  /// when they lose it. Links made before this have accessRequired false and stay open.
+  accessRequired   Boolean   @default(false)
+  accessOtpEnc     String?
+  accessOtpHash    String?
+  accessOtpExpires DateTime?
+  accessPassword   String?
+  /// Bumped on every reset: access cookies of the old password stop working.
+  accessVersion    Int       @default(0)
+  accessTries      Int       @default(0)
+  accessLockedTill DateTime?
+  accessResetHash  String?
+  accessResetUntil DateTime?
   expiresAt       DateTime
   createdAt       DateTime      @default(now())
 
@@ -1008,6 +1170,23 @@ model DealNote {
 }
 
 /// What the user chose on Profile & Privacy.
+/// The user's saved delivery address (Thai style: province, district, sub-district picked from the
+/// official list, postcode from the sub-district). Offered for parcel deals; the AI can read and
+/// change it when the user asks.
+model UserAddress {
+  userId      String   @id
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recipient   String
+  phone       String
+  /// House number, village / building, soi, road.
+  line        String
+  subdistrict String
+  district    String
+  province    String
+  postcode    String
+  updatedAt   DateTime @updatedAt
+}
+
 model UserPreference {
   userId       String   @id
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1020,6 +1199,10 @@ model UserPreference {
   emailNotify  Boolean  @default(false)
   /// A linked card covers a short balance when a deal is approved.
   cardCover    Boolean  @default(true)
+  /// The user's own instructions for the AI (tone, language, defaults); appended after the rules, never above them.
+  aiInstructions String?
+  /// On: deal moves started on the website wait for the desktop app to sign them (DeviceRequest).
+  deviceSigns  Boolean  @default(false)
   updatedAt    DateTime @updatedAt
 }
 
@@ -1037,8 +1220,193 @@ model BuyerInvite {
   buyerWallet  String   @unique
   name         String
   currency     Currency
+  /// Link access for someone without an account: a one-time code (sealed so the inviter can see and
+  /// send it) to set a password, then the password; a reset code the outsider sends to the inviter
+  /// when they lose it. Links made before this have accessRequired false and stay open.
+  accessRequired   Boolean   @default(false)
+  accessOtpEnc     String?
+  accessOtpHash    String?
+  accessOtpExpires DateTime?
+  accessPassword   String?
+  /// Bumped on every reset: access cookies of the old password stop working.
+  accessVersion    Int       @default(0)
+  accessTries      Int       @default(0)
+  accessLockedTill DateTime?
+  accessResetHash  String?
+  accessResetUntil DateTime?
   expiresAt    DateTime
   createdAt    DateTime @default(now())
 
   @@index([userId])
+}
+
+/// A desktop app linked to a user (lib/device-chain). Its address is the device key, made and kept on
+/// the user's computer (encrypted with their passphrase); the server never sees the private key. The
+/// device keeps its own hash-linked chain of deal blocks; the server keeps only its head: the latest
+/// block, signed by the device and countersigned by the server.
+model Device {
+  address       String         @id
+  userId        String
+  /// The wallet whose deals this device records (the user's own wallet when it was linked). Empty
+  /// while an account made in the app is still being set up (identity check, then the wallet).
+  walletAddress String
+  name          String
+  os            String
+  linkedAt      DateTime       @default(now())
+  revokedAt     DateTime?
+  lastSeenAt    DateTime?
+  /// Unused (an earlier replay guard; DeviceRequestSeen replaced it). Kept so the shared database loses nothing.
+  lastRequestAt BigInt         @default(0)
+  headHeight    Int?
+  headHash      String?
+  headBlock     Json?
+  headServerSig String?
+  headAt        DateTime?
+  /// The device's chain, encrypted on the device with a key derived from its private key (opaque here).
+  backup        Bytes?
+  backupHeight  Int?
+  backupAt      DateTime?
+  acks          DealEventAck[]
+
+  @@index([userId])
+}
+
+/// Signatures of recent device requests (5-minute window): the same signed request is refused twice.
+model DeviceRequestSeen {
+  sigHash String   @id
+  at      DateTime @default(now())
+
+  @@index([at])
+}
+
+/// Identity verification started from the desktop app (OIDC code + PKCE): kept here instead of a
+/// browser cookie, since the app (not a signed-in browser) started it. Single use, 10 minutes.
+model DeviceKycFlow {
+  state         String    @id
+  deviceAddress String
+  userId        String
+  provider      String
+  nonce         String
+  verifier      String
+  expiresAt     DateTime
+  result        String?
+  doneAt        DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([deviceAddress])
+}
+
+/// A one-time code from Profile -> Desktop app that links a new device to the signed-in user.
+model DeviceLinkCode {
+  codeHash  String    @id
+  userId    String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+/// A fact about a deal as the escrow shows it (a deal or milestone reaching a status), signed by the
+/// server. Each party's device appends it to its own chain: the same event hash in two chains links them.
+model DealEvent {
+  id        String         @id
+  dealId    Int
+  type      String
+  index     Int?
+  data      Json
+  /// The deal's buyer and seller wallets, lowercase.
+  parties   String[]
+  serverSig String
+  createdAt DateTime       @default(now())
+  acks      DealEventAck[]
+
+  @@index([dealId])
+}
+
+/// A device appended a deal event at this height and block.
+model DealEventAck {
+  eventId       String
+  deviceAddress String
+  height        Int
+  blockHash     String
+  createdAt     DateTime  @default(now())
+  event         DealEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  device        Device    @relation(fields: [deviceAddress], references: [address], onDelete: Cascade)
+
+  @@id([eventId, deviceAddress])
+  @@index([deviceAddress])
+}
+
+/// A deal move the user signed in the desktop app (an intent block) and what came of it.
+model DeviceIntent {
+  blockHash     String   @id
+  deviceAddress String
+  userId        String
+  height        Int
+  dealId        Int
+  action        String
+  index         Int      @default(0)
+  requestId     String?
+  status        String
+  result        Json?
+  createdAt     DateTime @default(now())
+
+  @@index([deviceAddress])
+}
+
+/// A deal move started on the website that waits for the desktop app's signature (Profile: "My
+/// desktop app signs deal moves").
+model DeviceRequest {
+  id        String    @id @default(cuid())
+  userId    String
+  dealId    Int
+  action    String
+  index     Int       @default(0)
+  reason    String?
+  /// PENDING | SIGNED | REJECTED | EXPIRED
+  status    String    @default("PENDING")
+  createdAt DateTime  @default(now())
+  doneAt    DateTime?
+
+  @@index([userId, status])
+}
+
+/// One Merkle root over every device head, sent to the ChainAnchor contract (public timestamp).
+model ChainAnchorRecord {
+  id        String   @id @default(cuid())
+  root      String
+  /// The leaves, sorted: [{ address, height, hash }].
+  heads     Json
+  count     Int
+  txHash    String?
+  seq       Int?
+  /// SENT | LOCAL (no contract configured yet) | FAILED
+  status    String
+  createdAt DateTime @default(now())
+}
+
+/// AI tokens a user spent on the team's AI key, per Bangkok day (lib/ai-usage.ts). Calls on the
+/// user's own key (desktop app, bring your own key) are counted apart and never limited.
+model AiUsage {
+  userId       String
+  /// YYYY-MM-DD, Asia/Bangkok
+  day          String
+  tokens       Int      @default(0)
+  ownKeyTokens Int      @default(0)
+  calls        Int      @default(0)
+  updatedAt    DateTime @updatedAt
+
+  @@id([userId, day])
+  @@index([day])
+}
+
+/// A user's own AI allowance, set by an admin (null: the default from AI_TOKENS_PER_DAY / _PER_WEEK).
+model AiAllowance {
+  userId    String   @id
+  perDay    Int?
+  perWeek   Int?
+  note      String?
+  setBy     String?
+  updatedAt DateTime @updatedAt
 }

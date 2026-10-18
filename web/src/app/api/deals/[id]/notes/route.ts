@@ -1,6 +1,10 @@
 import { z } from "zod";
 
-import { DealError, dealForWallet } from "@/lib/bank/deals";
+import { getAddress } from "viem";
+
+import { DealError, dealForWallet, dealTerms } from "@/lib/bank/deals";
+import type { DraftMilestone } from "@/lib/bank/drafts";
+import { revisionsAllowed } from "@/lib/file-types";
 import { config } from "@/lib/config";
 import { db } from "@/lib/db";
 import { HttpError, errorResponse, rateLimit, requireBankWallet } from "@/lib/guard";
@@ -31,6 +35,13 @@ export async function POST(req: Request, ctx: RouteContext<"/api/deals/[id]/note
     if (kind === "CHANGES") {
       const m = deal.milestones[index ?? -1];
       if (!m || m.status !== "Delivered") throw new HttpError(400, "Changes can be asked for while a delivery is under review");
+      // At most the rounds agreed for the milestone (10 at the most): then approve or dispute.
+      const terms = await dealTerms(id, wallet, getAddress(deal.counterparty));
+      const allowed = revisionsAllowed((terms?.milestones as DraftMilestone[] | undefined)?.[m.index]?.revisions);
+      const used = await db.dealNote.count({ where: { escrow: config.fileEscrowOf(id), dealId: id, index: m.index, kind: "CHANGES" } });
+      if (used >= allowed) {
+        throw new HttpError(400, `All ${allowed} rounds of changes agreed for this milestone are used. Approve the delivery, or open a dispute if it does not meet the criteria.`);
+      }
     } else if (deal.status !== "Proposed" || deal.offeredBy !== "them") {
       throw new HttpError(400, "A revision can be asked for only on an offer from the seller that is still open");
     }

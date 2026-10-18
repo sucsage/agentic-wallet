@@ -1,9 +1,8 @@
 import { prefsOf } from "@/lib/prefs";
-import { extractText, getDocumentProxy } from "unpdf";
 import { z } from "zod";
 
-import { type Attachment, llmConfigured, readsImagesNatively, runAgent } from "@/lib/agent";
-import { describeImage } from "@/lib/vision";
+import { llmConfigured, runAgent } from "@/lib/agent";
+import { AttachmentInput, attachmentText } from "@/lib/attachments";
 import { ChatLimitError, appendToChat, createChat, getChat, historyOf, publicStep } from "@/lib/chats";
 import { HttpError, errorResponse, rateLimit, requireUser, userWallet } from "@/lib/guard";
 import { scanForInjection } from "@/lib/policy";
@@ -20,34 +19,8 @@ const Body = z.object({
   lang: z.enum(["en", "th"]).default("en"),
   /** A saved chat to continue, or "new" to start one (max 5). Without it nothing is saved. */
   chatId: z.string().max(40).optional(),
-  attachment: z
-    .discriminatedUnion("kind", [
-      z.object({ kind: z.literal("pdf"), name: z.string().max(200), base64: z.string().max(4_000_000) }),
-      z.object({ kind: z.literal("text"), name: z.string().max(200), text: z.string().max(60_000) }),
-      // Images are downscaled in the browser (about 1600 px) so they stay well under the request limit.
-      z.object({ kind: z.literal("image"), name: z.string().max(200), mediaType: z.enum(["image/png", "image/jpeg", "image/webp", "image/gif"]), base64: z.string().max(4_000_000) }),
-    ])
-    .optional(),
+  attachment: AttachmentInput.optional(),
 });
-
-async function attachmentText(a: Attachment): Promise<string | undefined> {
-  if (a.kind === "text") return a.text;
-  if (a.kind === "image") {
-    // Claude looks at the image itself; other models get it as text from one vision call.
-    if (readsImagesNatively()) return undefined;
-    return describeImage(a).catch((e) => {
-      console.error("vision", e);
-      throw new HttpError(502, "The AI could not read that image right now. Try again, or describe it in words.");
-    });
-  }
-  try {
-    const pdf = await getDocumentProxy(new Uint8Array(Buffer.from(a.base64, "base64")));
-    const { text } = await extractText(pdf, { mergePages: true });
-    return text;
-  } catch {
-    return "";
-  }
-}
 
 export async function POST(req: Request, ctx: RouteContext<"/api/workspace/[address]/agent">) {
   try {

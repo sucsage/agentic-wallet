@@ -3,7 +3,7 @@ import { z } from "zod";
 import {
   BuyerInviteError,
   approveAsInvitedBuyer,
-  buyerInviteByToken,
+  buyerInviteForRequest,
   buyerInviteView,
   confirmBuyerPayment,
   payOffer,
@@ -25,7 +25,7 @@ const json = (body: unknown) =>
 export async function GET(req: Request, ctx: RouteContext<"/api/pay/[token]">) {
   try {
     rateLimit(req, "pay-view", 120, 60 * 60 * 1000);
-    const invite = await buyerInviteByToken((await ctx.params).token).catch(asHttp(404));
+    const invite = await buyerInviteForRequest((await ctx.params).token).catch(asHttp(404));
     return json(await buyerInviteView(invite));
   } catch (err) {
     return errorResponse(err);
@@ -46,7 +46,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/pay/[token]">) 
   try {
     rateLimit(req, "pay-action", 30, 60 * 60 * 1000);
     const { token } = await ctx.params;
-    const invite = await buyerInviteByToken(token).catch(asHttp(404));
+    const invite = await buyerInviteForRequest(token).catch(asHttp(404));
     const body = Body.safeParse(await req.json().catch(() => null));
     if (!body.success) throw new HttpError(400, "Invalid request");
     const b = body.data;

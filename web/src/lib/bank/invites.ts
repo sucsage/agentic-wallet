@@ -10,6 +10,7 @@ import { createWorkspace } from "../actions";
 import { agentWalletAbi } from "../abis";
 import { type TxOutcome, send } from "../chain";
 import { db } from "../db";
+import { accessForInviter, issueOtp, requireLinkAccess } from "../link-access";
 import { openToken, sealToken } from "../link-seal";
 import { readFileDeals } from "../state";
 import { accountOf, openAccount, transfer } from "./ledger";
@@ -65,7 +66,7 @@ export async function createInvite(
   const payee = await send("owner", { address: buyerWallet, abi: agentWalletAbi, functionName: "setRecipient", args: [sellerWallet, true] });
 
   const token = randomBytes(24).toString("base64url");
-  const invite = await db.sellerInvite.create({
+  let invite = await db.sellerInvite.create({
     data: {
       tokenHash: hashToken(token),
       tokenEnc: sealToken(token),
@@ -77,6 +78,9 @@ export async function createInvite(
       expiresAt: new Date(Date.now() + LINK_DAYS * 86_400_000),
     },
   });
+  // The link opens only with a one-time code the buyer sends separately, then the seller's password.
+  await issueOtp("seller", invite);
+  invite = await db.sellerInvite.findUniqueOrThrow({ where: { id: invite.id } });
   return { invite, token, payee };
 }
 
@@ -95,13 +99,16 @@ export async function rotateInviteLink(userId: string, inviteId: string): Promis
  * The invite a request is about: by the link's secret, or "id.<inviteId>" for the signed-in seller
  * the invite was linked to (they reach it from their own Deals page, without the link).
  */
-export async function inviteForRequest(token: string, sessionUserId: string | null): Promise<SellerInvite> {
+export async function inviteForRequest(token: string, sessionUserId: string | null, opts: { skipAccess?: boolean } = {}): Promise<SellerInvite> {
   if (token.startsWith("id.")) {
     const invite = sessionUserId ? await db.sellerInvite.findFirst({ where: { id: token.slice(3), claimedByUserId: sessionUserId } }) : null;
     if (!invite) throw new InviteError("This deal is not linked to your account");
     return invite;
   }
-  return inviteByToken(token);
+  const invite = await inviteByToken(token);
+  // Holding the link is not enough: its one-time code or password too (lib/link-access).
+  if (!opts.skipAccess) await requireLinkAccess("seller", invite, sessionUserId);
+  return invite;
 }
 
 /**
@@ -163,12 +170,20 @@ export async function inviteLinkFor(userId: string, counterparty: string, origin
   const seller = await db.sellerInvite.findFirst({ where: { userId, sellerWallet: wallet } });
   if (seller) {
     const token = openToken(seller.tokenEnc);
-    return { kind: "seller" as const, id: seller.id, name: seller.name, link: token ? `${origin}/invite/${token}` : null, expiresAt: seller.expiresAt, linked: !!seller.claimedByUserId };
+    return {
+      kind: "seller" as const,
+      id: seller.id,
+      name: seller.name,
+      link: token ? `${origin}/invite/${token}` : null,
+      expiresAt: seller.expiresAt,
+      linked: !!seller.claimedByUserId,
+      access: accessForInviter(seller),
+    };
   }
   const buyer = await db.buyerInvite.findFirst({ where: { userId, buyerWallet: wallet } });
   if (buyer) {
     const token = openToken(buyer.tokenEnc);
-    return { kind: "buyer" as const, id: buyer.id, name: buyer.name, link: token ? `${origin}/pay/${token}` : null, expiresAt: buyer.expiresAt, linked: false };
+    return { kind: "buyer" as const, id: buyer.id, name: buyer.name, link: token ? `${origin}/pay/${token}` : null, expiresAt: buyer.expiresAt, linked: false, access: accessForInviter(buyer) };
   }
   return null;
 }

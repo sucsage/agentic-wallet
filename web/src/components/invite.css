@@ -64,3 +64,19 @@
 .inv-linkbtn.ghost{background:transparent;color:#f2f2f2!important;border-color:#444}
 .inv-linkbtn.ghost:hover{border-color:#888}
 .inv-app p{margin:0}
+.inv-files{display:grid;gap:6px;margin:10px 0;padding:10px 12px;border:1px solid #2c2c2c;border-radius:10px}
+.inv-files a{color:#cfe1ff;text-decoration:none;font-size:14px}.inv-files a small{color:#888}
+.inv-gate{display:grid;gap:10px}
+.inv-gate-code{font-size:30px;font-weight:800;letter-spacing:8px;margin:4px 0}
+.inv-linkish{background:none;border:0;color:#8fb4ff;text-decoration:underline;cursor:pointer;padding:4px 0;font:inherit;justify-self:start}
+.aw-guarantor{display:grid;gap:8px;margin:10px 0;padding:10px 12px;border:1px solid #2c2c2c;border-radius:10px;font-size:13px}
+.aw-guarantor-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.aw-guarantor-req{padding:2px 8px;border-radius:999px;background:#3a2600;color:#ffb000;font-size:11px;font-weight:600}
+.aw-guarantor-value{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.aw-guarantor button{padding:4px 10px;border:1px solid #555;border-radius:8px;background:none;color:inherit;font-size:12px;cursor:pointer}
+.aw-guarantor-form{display:grid;gap:8px}
+.aw-guarantor-form input{height:36px;padding:0 10px;border:1px solid #444;border-radius:8px;background:transparent;color:inherit}
+.aw-guarantor-form>div{display:flex;gap:8px}
+.aw-guarantor-form small{opacity:.7}
+.aw-guarantor-err{color:#ff6b6b;margin:0}
+.inv-hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
