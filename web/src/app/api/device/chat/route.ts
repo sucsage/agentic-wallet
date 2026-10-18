@@ -2,6 +2,7 @@ import { getAddress } from "viem";
 import { z } from "zod";
 
 import { llmConfigured, runAgent, runWithUserLlm, userLlmOf } from "@/lib/agent";
+import { withTokenTally } from "@/lib/ai-usage";
 import { AttachmentInput, attachmentText } from "@/lib/attachments";
 import { publicStep } from "@/lib/chats";
 import { deviceRoute } from "@/lib/device-chain/route";
@@ -48,8 +49,10 @@ export const POST = deviceRoute(async (device, body) => {
     "The user is in the Agentic Wallet desktop app: previews you make appear under the chat there, and the user confirms them with their device key. The app shows no forms or buttons inside your messages: when you need details, also ask for them in plain text, one short list. Format replies in Markdown (short paragraphs, lists, tables when they help).";
   const run = () => runAgent(wallet, history, message, attachment, text, lang, device.userId, undefined, note);
   try {
-    const { reply, steps } = byok ? await runWithUserLlm(userLlmOf(byok), run) : await run();
-    return { reply, steps: steps.map(publicStep), flags, model: byok ? `${byok.provider}:${byok.model}` : null };
+    const { value, tokens, calls } = await withTokenTally(() => (byok ? runWithUserLlm(userLlmOf(byok), run) : run()));
+    const { reply, steps } = value;
+    // usage: what this reply cost (tokens over all its model calls), shown under the message in the app.
+    return { reply, steps: steps.map(publicStep), flags, model: byok ? `${byok.provider}:${byok.model}` : null, usage: { tokens, calls } };
   } catch (e) {
     // A provider's refusal of the user's own key: say so without echoing anything about the key.
     const status = (e as { status?: number }).status;

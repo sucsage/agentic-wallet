@@ -16,12 +16,12 @@ export async function GET() {
   }
 }
 
-/** Sends a friend request by bank username (same bank only). Asking someone who asked you accepts. */
+/** Sends a friend request by username, exact name or email (same bank only). Asking someone who asked you accepts. */
 export async function POST(req: Request) {
   try {
     const { user, customer } = await requireCustomer();
-    const body = z.object({ username: z.string().trim().min(3).max(32) }).safeParse(await req.json().catch(() => null));
-    if (!body.success) throw new HttpError(400, "Give the friend's bank username");
+    const body = z.object({ username: z.string().trim().min(2).max(80) }).safeParse(await req.json().catch(() => null));
+    if (!body.success) throw new HttpError(400, "Give their username, name or email");
     const f = await requestFriend(user.id, customer.currency, body.data.username).catch((e) => {
       throw e instanceof SocialError ? new HttpError(400, e.message) : e;
     });

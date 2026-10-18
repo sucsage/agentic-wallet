@@ -537,6 +537,7 @@ export function LiveFriends() {
   const [found, setFound] = useState<{ username: string; name: string }[]>([]);
   const [tab, setTab] = useState<"all" | "group" | "allow">("all");
   const [myQr, setMyQr] = useState<{ image: string; url: string } | null>(null);
+  const [newName, setNewName] = useState("");
   const [sending, setSending] = useState(false);
   const [sendId, setSendId] = useState(() => crypto.randomUUID());
   const [reporting, setReporting] = useState<{ userId: string; name: string } | null>(null);
@@ -671,7 +672,24 @@ export function LiveFriends() {
           </section>
           <section className="aw-friends-panel aw-my-code">
             <h2>My code</h2>
-            <p>Contacts scan this QR to add you{me?.user.username ? ` (@${me.user.username})` : ""}.</p>
+            <p>Contacts scan this QR to add you{me?.user.username ? ` (@${me.user.username})` : ""}, or find you by name or email.</p>
+            {me?.user.username?.startsWith("w_") && <small>Your username was made automatically: choose one people can type.</small>}
+            <form
+              style={{ display: "flex", gap: 6, margin: "6px 0 10px" }}
+              onSubmit={(e) => {
+                e.preventDefault();
+                void run("uname", () => send("/api/friends/username", "POST", { username: newName }), async () => {
+                  setNewName("");
+                  setMyQr(null);
+                  await refresh();
+                });
+              }}
+            >
+              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="new username" aria-label="New username" style={{ flex: 1, minWidth: 0, height: 36, padding: "0 12px", border: "1px solid #333", borderRadius: 10, background: "#0c0c0c", color: "inherit", fontSize: 13 }} />
+              <Button type="submit" variant="outline" disabled={newName.trim().length < 3 || busy === "uname"}>
+                {busy === "uname" ? "…" : me?.user.username?.startsWith("w_") ? "Choose" : "Change"}
+              </Button>
+            </form>
             {myQr ? (
               <>
                 {/* eslint-disable-next-line @next/next/no-img-element */}

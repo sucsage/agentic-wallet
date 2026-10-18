@@ -1533,6 +1533,24 @@ type LinkedInvite = {
   deals: { id: number; title: string; kind: "HIRE" | "GOODS" | null; total: string; status: string; offeredBy: string; milestones: { status: string; hasFile: boolean }[]; createdAt: string | null }[];
 };
 
+/** What a deal asks in files, for the Files filter: documents asked for, a file I still owe, a file to review. */
+type FileFlags = { asks: boolean; pdf: boolean; todo: boolean; review: boolean };
+function fileFlags(
+  ms: { status?: string; hasFile: boolean }[],
+  terms: { delivery?: "file" | "parcel" | "note"; hasFile: boolean; fileTypes?: string[] }[] | undefined,
+  role: "Buying" | "Selling",
+  live: boolean,
+): FileFlags {
+  const isFile = (i: number) => (terms?.[i] ? (terms[i].delivery ?? (terms[i].hasFile ? "file" : "note")) === "file" : ms[i]?.hasFile);
+  const idx = ms.map((_, i) => i).filter(isFile);
+  return {
+    asks: idx.length > 0,
+    pdf: idx.some((i) => (terms?.[i]?.fileTypes ?? []).some((t) => /pdf/i.test(t))),
+    todo: live && role === "Selling" && idx.some((i) => ms[i].status === "Pending"),
+    review: live && role === "Buying" && idx.some((i) => ms[i].status === "Delivered"),
+  };
+}
+
 /** Where a deal on the chain stands, for the status filter. */
 function dealStage(status: string, milestones: { status: string }[]): DealStage {
   if (status === "Cancelled") return "cancelled";
@@ -1624,6 +1642,7 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
   const [query, setQuery] = useState("");
   const [stage, setStage] = useState<DealStage | "all">("all");
   const [typeFilter, setTypeFilter] = useState<"all" | "hire" | "buy" | "digital" | "physical">("all");
+  const [fileFilter, setFileFilter] = useState<"all" | "asks" | "pdf" | "todo" | "review">("all");
   const [sort, setSort] = useState<"new" | "old" | "high" | "low">("new");
   const currency = me?.bank.currency ?? "THB";
   const explorer = wallet?.explorer?.replace(/\/address\/.*/, "") ?? null;
@@ -1640,6 +1659,7 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
         title: d.title,
         kind: d.kind,
         type: deliveryType(d),
+        files: fileFlags(d.milestones.map((m) => ({ hasFile: m.hasFile })), d.milestones, d.side === "SELL" ? "Selling" : "Buying", false),
         person: d.sellerLabel || d.counterparty,
         role: d.side === "SELL" ? ("Selling" as const) : ("Buying" as const),
         milestones: `0 / ${d.milestones.length}`,
@@ -1673,6 +1693,7 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
         title: draft?.title ?? `File deal #${d.id}`,
         kind: draft?.kind ?? null,
         type: draft ? deliveryType(draft) : d.milestones.some((m) => m.hasFile) ? ("Digital" as const) : null,
+        files: fileFlags(d.milestones, draft?.milestones, d.role === "buyer" ? "Buying" : "Selling", d.status === "Active"),
         person: d.counterpartyLabel || d.counterparty,
         role: d.role === "buyer" ? ("Buying" as const) : ("Selling" as const),
         milestones: `${done} / ${d.milestones.length}`,
@@ -1708,6 +1729,7 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
           title: d.title,
           kind: d.kind,
           type: d.milestones.some((m) => m.hasFile) ? ("Digital" as const) : null,
+          files: fileFlags(d.milestones, undefined, "Selling", d.status === "Active"),
           person: `${i.buyer} · via link`,
           role: "Selling" as const,
           milestones: `${done} / ${d.milestones.length}`,
@@ -1746,11 +1768,12 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
               ? r.type === "Physical"
               : r.type === "Digital",
     )
+    .filter((r) => fileFilter === "all" || r.files[fileFilter])
     .filter((r) => !q || [r.id, r.title, r.person, r.status].some((x) => x?.toLowerCase().includes(q)))
     .sort((a, b) =>
       sort === "high" ? b.amountNum - a.amountNum : sort === "low" ? a.amountNum - b.amountNum : sort === "old" ? a.order - b.order : b.order - a.order,
     );
-  const filtered = Boolean(q) || stage !== "all" || typeFilter !== "all";
+  const filtered = Boolean(q) || stage !== "all" || typeFilter !== "all" || fileFilter !== "all";
   const counts = {
     All: rows.length,
     Buying: rows.filter((r) => r.role === "Buying").length,
@@ -1805,6 +1828,13 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
               <option value="digital">Digital file</option>
               <option value="physical">Physical parcel</option>
             </select>
+            <select value={fileFilter} onChange={(e) => setFileFilter(e.target.value as typeof fileFilter)} aria-label="Files">
+              <option value="all">Any files</option>
+              <option value="asks">Asks for documents / files</option>
+              <option value="pdf">Asks for a PDF</option>
+              <option value="todo">I still have to send a file</option>
+              <option value="review">Files delivered to me to review</option>
+            </select>
             <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} aria-label="Sort">
               <option value="new">Newest first</option>
               <option value="old">Oldest first</option>
@@ -1818,6 +1848,7 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
                   setQuery("");
                   setStage("all");
                   setTypeFilter("all");
+                  setFileFilter("all");
                 }}
               >
                 Clear

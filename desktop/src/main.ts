@@ -3,7 +3,8 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
 import { ApiError } from "./api";
 import { wallet } from "./core";
-import { runMcp } from "./mcp";
+import { MCP_TOOLS, runMcp } from "./mcp";
+import { clientStatus, setClient } from "./mcp-clients";
 import { dataDir, sessionPath } from "./paths";
 import indexHtml from "./ui/index.html" with { type: "text" };
 import markdownJs from "./ui/markdown.js" with { type: "text" };
@@ -108,11 +109,14 @@ async function route(req: Request, path: string, port: number): Promise<Response
     );
   }
   if (m === "POST" && path === "/app/confirm-draft") return json(await wallet.confirmDraft(String((await body<{ draftId: string }>(req)).draftId ?? "")));
-  if (m === "GET" && path === "/app/mcp") {
-    // How to start the MCP server: this executable with --mcp (from source: bun run main.ts --mcp).
-    const compiled = !/\bbun(\.exe)?$/i.test(process.execPath);
-    return json({ command: process.execPath, args: compiled ? ["--mcp"] : ["run", process.argv[1], "--mcp"], calls: agentCalls });
+  if (m === "GET" && path === "/app/mcp") return json(mcpView());
+  if (m === "POST" && path === "/app/mcp/settings") return (wallet.setMcpSettings(await body(req)), json(mcpView()));
+  if (m === "POST" && path === "/app/mcp/client") {
+    const b = await body<{ id: string; on: boolean }>(req);
+    setClient(String(b.id ?? ""), b.on === true, mcpEntry());
+    return json(mcpView());
   }
+  if (m === "POST" && path === "/app/mcp/log/clear") return (wallet.clearMcpLog(), json(mcpView()));
   if (m === "POST" && path === "/app/agent-requests") {
     const b = await body<{ id: string; sign: boolean }>(req);
     return json(await wallet.decideAgentRequest(String(b.id ?? ""), b.sign === true));
@@ -154,9 +158,10 @@ async function route(req: Request, path: string, port: number): Promise<Response
   }
   if (m === "GET" && path === "/app/drafts") return json(await wallet.drafts());
   if (m === "GET" && path === "/app/activity") return json(await wallet.activity());
-  if (m === "GET" && path === "/app/chat") return json({ history: wallet.chatHistory() });
+  if (m === "GET" && path === "/app/chats") return json(wallet.chatList());
+  if (m === "GET" && path === "/app/chat") return json({ history: wallet.chatHistory(new URL(req.url).searchParams.get("id")) });
   if (m === "POST" && path === "/app/chat") return json(await wallet.chat(await body(req)));
-  if (m === "POST" && path === "/app/chat/clear") return (wallet.clearChat(), json({ ok: true }));
+  if (m === "POST" && path === "/app/chat/delete") return json(wallet.deleteChat(String((await body<{ id: string }>(req)).id ?? "")));
   if (m === "GET" && path === "/app/key-backup")
     return new Response(wallet.keyBackup(), {
       headers: { "content-type": "application/json", "content-disposition": 'attachment; filename="agentic-wallet-key-backup.json"', "cache-control": "no-store" },
@@ -166,15 +171,58 @@ async function route(req: Request, path: string, port: number): Promise<Response
 
 let agentCalls = 0;
 
+/** How to start the MCP server: this executable with --mcp (from source: bun run main.ts --mcp). */
+function mcpEntry() {
+  const compiled = !/\bbun(\.exe)?$/i.test(process.execPath);
+  return { command: process.execPath, args: compiled ? ["--mcp"] : ["run", process.argv[1], "--mcp"] };
+}
+
+/** The MCP server page: switches, the clients it can set up, the tools and the latest calls. */
+function mcpView() {
+  const entry = mcpEntry();
+  return { ...entry, calls: agentCalls, settings: wallet.mcpSettings(), clients: clientStatus(entry), tools: MCP_TOOLS, log: wallet.mcpLog().slice(-100).reverse() };
+}
+
 /**
  * What outside AI agents (the MCP server, `--mcp`) may do, with the agent token: read, ask the
  * wallet's AI, and queue requests. Nothing here signs or moves money: the user does that in the app.
  */
+/** Which MCP tool an agent path is, and which of the user's switches (MCP server page) allows it. */
+function agentTool(m: string, path: string): { tool: string; group: "read" | "ask" | "request" } {
+  if (m === "GET" && path === "/agent/status") return { tool: "wallet_status", group: "read" };
+  if (m === "GET" && path === "/agent/deals") return { tool: "list_deals", group: "read" };
+  if (m === "GET" && path === "/agent/activity") return { tool: "list_activity", group: "read" };
+  if (m === "GET" && path === "/agent/friends") return { tool: "list_friends", group: "read" };
+  if (m === "GET" && path === "/agent/drafts") return { tool: "list_drafts", group: "read" };
+  if (m === "POST" && path === "/agent/ask") return { tool: "ask_wallet_ai", group: "ask" };
+  if (m === "GET" && path.startsWith("/agent/request/")) return { tool: "request_status", group: "request" };
+  return { tool: "request", group: "request" };
+}
+
+/** Every agent call is checked against the user's switches and written to the log they see. */
 async function agentRoute(req: Request, path: string): Promise<Response> {
   agentCalls++;
   const client = (req.headers.get("x-agent-client") ?? "an AI agent").slice(0, 60);
-  const m = req.method;
   if (wallet.stage() !== "ready") return json({ error: "The Agentic Wallet app is locked: ask the user to open and unlock it" }, 423);
+  const { tool, group } = agentTool(req.method, path);
+  const named = req.method === "POST" && path === "/agent/request" ? `request_${String((await req.clone().json().catch(() => ({})) as { kind?: unknown }).kind ?? "?").slice(0, 20)}` : tool;
+  const settings = wallet.mcpSettings();
+  const started = Date.now();
+  let res: Response;
+  if (!settings.enabled) res = json({ error: "The user turned the MCP server off in the Agentic Wallet app" }, 403);
+  else if (!settings[group]) res = json({ error: `The user does not allow ${group === "read" ? "reading the wallet" : group === "ask" ? "asking the wallet's AI" : "requests for their signature"} (MCP server page in the app)` }, 403);
+  else res = await agentAnswer(req, path, client).catch(fail);
+  const out = (await res.clone().json().catch(() => ({}))) as { error?: string; tokens?: number };
+  try {
+    wallet.logMcpCall({ at: started, client, tool: named, ok: res.ok, ms: Date.now() - started, tokens: out.tokens || undefined, error: res.ok ? undefined : String(out.error ?? res.status).slice(0, 160) });
+  } catch {
+    // locked meanwhile: no log
+  }
+  return res;
+}
+
+async function agentAnswer(req: Request, path: string, client: string): Promise<Response> {
+  const m = req.method;
   if (m === "GET" && path === "/agent/status") {
     const a = await wallet.account_();
     const info = wallet.info();

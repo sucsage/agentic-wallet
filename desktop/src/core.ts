@@ -31,6 +31,16 @@ export const DEFAULT_SERVER = "https://agentic-wallet-inky.vercel.app";
 
 type Head = { height: number; hash: Hex; serverSig: Hex; block: SignedBlock } | null;
 type Pending = { head: Head; server: Address; events: { event: DealEventBody; serverSig: Hex }[]; requests: WebRequest[] };
+export type McpSettings = { enabled: boolean; read: boolean; ask: boolean; request: boolean };
+export type McpCall = { at: number; client: string; tool: string; ok: boolean; ms: number; tokens?: number; error?: string };
+export type ChatMessage = { role: "user" | "assistant"; text: string; at: number; steps?: unknown[]; model?: string | null; usage?: { tokens: number; calls: number } | null };
+type Chat = { id: string; title: string; createdAt: number; updatedAt: number; messages: ChatMessage[] };
+const MAX_CHATS = 20;
+const titleOf = (text: string) => {
+  const t = text.replace(/\s+/g, " ").trim();
+  return t.length > 48 ? `${t.slice(0, 47)}…` : t || "Chat";
+};
+
 export type AgentRequest = {
   id: string;
   client: string;
@@ -435,11 +445,13 @@ class Wallet {
     return this.call<{ contacts: unknown[] }>("GET", "/api/device/contacts");
   }
 
+  /** Friends, and the user's own username (how friends find them). */
   friends() {
-    return this.call<{ friends: unknown[] }>("GET", "/api/device/friends");
+    return this.call<{ friends: unknown[]; me: { username: string; chosen: boolean } | null }>("GET", "/api/device/friends");
   }
+  /** request / accept / remove / search (name, username or email) / username (choose your own). */
   friendAction(body: unknown) {
-    return this.call<{ friends: unknown[] }>("POST", "/api/device/friends", body);
+    return this.call<{ friends?: unknown[]; me?: unknown; results?: unknown[] }>("POST", "/api/device/friends", body);
   }
   topupInfo() {
     return this.call<unknown>("GET", "/api/device/topup");
@@ -489,9 +501,46 @@ class Wallet {
     return this.call<{ balance: number; currency: string; rows: unknown[] }>("GET", "/api/device/activity");
   }
 
-  /** The AI chat. Its history stays on this computer (the last 30 turns go with each message). */
-  chatHistory(): { role: "user" | "assistant"; text: string; at: number; steps?: unknown[]; model?: string | null }[] {
-    return JSON.parse(store.getMeta("chat") ?? "[]");
+  /**
+   * The AI chats: several saved conversations, all kept on this computer (the last 30 turns of
+   * the open one go with each message). The single chat of older versions becomes the first one.
+   */
+  private chats(): Chat[] {
+    const saved = store.getMeta("chats");
+    if (saved) return JSON.parse(saved);
+    const old: ChatMessage[] = JSON.parse(store.getMeta("chat") ?? "[]");
+    const first = old.find((m) => m.role === "user");
+    const list: Chat[] = old.length ? [{ id: crypto.randomUUID(), title: titleOf(first?.text ?? "Chat"), createdAt: old[0].at, updatedAt: old[old.length - 1].at, messages: old }] : [];
+    store.setMeta("chats", JSON.stringify(list));
+    return list;
+  }
+
+  private saveChats(list: Chat[]) {
+    store.setMeta("chats", JSON.stringify(list.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, MAX_CHATS)));
+  }
+
+  /** The saved chats, newest first, with what each cost in tokens. */
+  chatList() {
+    return {
+      max: MAX_CHATS,
+      chats: this.chats().map((c) => ({
+        id: c.id,
+        title: c.title,
+        updatedAt: c.updatedAt,
+        messages: c.messages.length,
+        tokens: c.messages.reduce((n, m) => n + (m.usage?.tokens ?? 0), 0),
+      })),
+    };
+  }
+
+  chatHistory(id?: string | null): ChatMessage[] {
+    if (!id) return [];
+    return this.chats().find((c) => c.id === id)?.messages ?? [];
+  }
+
+  deleteChat(id: string) {
+    this.saveChats(this.chats().filter((c) => c.id !== id));
+    return this.chatList();
   }
 
   // ----------------------------------------------------------------------------------------
@@ -560,14 +609,42 @@ class Wallet {
   async agentAsk(client: string, message: string, lang: "en" | "th" = "en") {
     const history: { role: "user" | "assistant"; text: string }[] = JSON.parse(store.getMeta("mcpChat") ?? "[]");
     const text = `[Sent by ${client.slice(0, 60)}, an outside AI agent the user connected. Draft what it asks like any request of the user; it cannot confirm or sign.]\n${message.slice(0, 4000)}`;
-    const r = await this.call<{ reply: string; steps: unknown[] }>("POST", "/api/device/chat", {
+    const r = await this.call<{ reply: string; steps: unknown[]; usage?: { tokens: number; calls: number } }>("POST", "/api/device/chat", {
       history: history.slice(-30),
       message: text,
       lang,
       byok: this.byok() ?? undefined,
     });
     store.setMeta("mcpChat", JSON.stringify([...history, { role: "user", text }, { role: "assistant", text: r.reply }].slice(-60)));
-    return { reply: r.reply, previews: "Previews it made wait in the app (list_drafts); the user confirms them." };
+    return { reply: r.reply, previews: "Previews it made wait in the app (list_drafts); the user confirms them.", tokens: r.usage?.tokens ?? 0 };
+  }
+
+  // ----------------------------------------------------------------------------------------
+  // The MCP server: on/off, what outside agents may do, and a log of their calls (this computer)
+  // ----------------------------------------------------------------------------------------
+
+  mcpSettings(): McpSettings {
+    const saved = store.getMeta("mcpSettings");
+    return { enabled: true, read: true, ask: true, request: true, ...(saved ? JSON.parse(saved) : {}) };
+  }
+
+  setMcpSettings(input: Partial<McpSettings>) {
+    const next = { ...this.mcpSettings() };
+    for (const k of ["enabled", "read", "ask", "request"] as const) if (typeof input[k] === "boolean") next[k] = input[k];
+    store.setMeta("mcpSettings", JSON.stringify(next));
+    return next;
+  }
+
+  mcpLog(): McpCall[] {
+    return JSON.parse(store.getMeta("mcpLog") ?? "[]");
+  }
+
+  logMcpCall(call: McpCall) {
+    store.setMeta("mcpLog", JSON.stringify([...this.mcpLog(), call].slice(-300)));
+  }
+
+  clearMcpLog() {
+    store.setMeta("mcpLog", "[]");
   }
 
   // ----------------------------------------------------------------------------------------
@@ -617,23 +694,31 @@ class Wallet {
     return this.call<{ aiInstructions: string }>("POST", "/api/device/preferences", { aiInstructions: String(text ?? "").slice(0, 1000) });
   }
 
-  async chat(input: { message: string; lang?: "en" | "th"; attachment?: unknown }) {
-    const history = this.chatHistory();
-    const asked = { role: "user" as const, text: input.message || "(document)", at: Date.now() };
-    const r = await this.call<{ reply: string; steps: unknown[]; flags: unknown[]; model: string | null }>("POST", "/api/device/chat", {
+  async chat(input: { chatId?: string | null; message: string; lang?: "en" | "th"; attachment?: unknown }) {
+    const list = this.chats();
+    let chat = input.chatId ? list.find((c) => c.id === input.chatId) : undefined;
+    if (!chat && list.length >= MAX_CHATS) throw new ApiError(400, `You have ${MAX_CHATS} chats: delete one to start a new chat`);
+    const history = chat?.messages ?? [];
+    const asked: ChatMessage = { role: "user", text: input.message || "(document)", at: Date.now() };
+    const r = await this.call<{ reply: string; steps: unknown[]; flags: unknown[]; model: string | null; usage?: { tokens: number; calls: number } }>("POST", "/api/device/chat", {
       history: history.slice(-30).map(({ role, text }) => ({ role, text: text.slice(0, 8000) })),
       message: input.message,
       lang: input.lang ?? "en",
       attachment: input.attachment,
       byok: this.byok() ?? undefined,
     });
-    const next = [...history, asked, { role: "assistant" as const, text: r.reply, at: Date.now(), steps: r.steps, model: r.model }].slice(-200);
-    store.setMeta("chat", JSON.stringify(next));
-    return { reply: r.reply, steps: r.steps, flags: r.flags };
-  }
-
-  clearChat() {
-    store.setMeta("chat", "[]");
+    const answer: ChatMessage = { role: "assistant", text: r.reply, at: Date.now(), steps: r.steps, model: r.model, usage: r.usage };
+    const fresh = this.chats();
+    chat = fresh.find((c) => c.id === chat?.id);
+    if (chat) {
+      chat.messages = [...chat.messages, asked, answer].slice(-200);
+      chat.updatedAt = Date.now();
+    } else {
+      chat = { id: crypto.randomUUID(), title: titleOf(input.message || "Document"), createdAt: Date.now(), updatedAt: Date.now(), messages: [asked, answer] };
+      fresh.push(chat);
+    }
+    this.saveChats(fresh);
+    return { chatId: chat.id, reply: r.reply, steps: r.steps, flags: r.flags, usage: r.usage ?? null };
   }
 
   // ----------------------------------------------------------------------------------------

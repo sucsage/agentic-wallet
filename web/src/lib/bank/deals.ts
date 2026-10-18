@@ -455,35 +455,29 @@ const wordPath = (word: string) =>
   [...word].map((ch, i) => (GLYPH[ch] ? `<path transform="translate(${i * 14} 0)" d="${GLYPH[ch]}"/>` : "")).join("");
 
 /**
- * The marks over a preview: good enough to judge the work, useless as the work. Two layers of
- * "PREVIEW D-<deal>" text at crossing angles, a mesh of scribbled lines and coloured blotches, all
- * seeded by the deal, so a screenshot of the preview carries them and names the deal it leaked from.
+ * The marks over a preview: light enough to read the work, still useless as the work. A sparse
+ * diagonal "PREVIEW D-<deal>" text, a fainter crossing layer and a few thin lines, seeded by the
+ * deal, so a screenshot of the preview carries them and names the deal it leaked from.
  */
 function watermarkSvg(width: number, height: number, label: string, seed: number): string {
   const rnd = prng(seed);
-  const scale = Math.max(1.1, Math.min(width, height) / 190);
+  const scale = Math.max(0.9, Math.min(width, height) / 330);
   const word = wordPath(`PREVIEW ${label}`.replace(/ /g, "  "));
   const wordW = (`PREVIEW ${label}`.length + 1) * 14;
-  const tile = (id: string, angle: number, k: number, dark: number, light: number) => `
-<pattern id="${id}" width="${(wordW + 30) * scale * k}" height="${46 * scale * k}" patternUnits="userSpaceOnUse" patternTransform="rotate(${angle})">
+  const tile = (id: string, angle: number, k: number, gapY: number, dark: number, light: number) => `
+<pattern id="${id}" width="${(wordW + 90) * scale * k}" height="${gapY * scale * k}" patternUnits="userSpaceOnUse" patternTransform="rotate(${angle})">
 <g transform="translate(${6 * scale} ${16 * scale * k}) scale(${scale * k})" fill="none" stroke-linecap="round" stroke-linejoin="round">
-<g stroke="#000" stroke-opacity="${dark}" stroke-width="3.6">${word}</g>
-<g stroke="#fff" stroke-opacity="${light}" stroke-width="1.8">${word}</g>
+<g stroke="#000" stroke-opacity="${dark}" stroke-width="3">${word}</g>
+<g stroke="#fff" stroke-opacity="${light}" stroke-width="1.5">${word}</g>
 </g></pattern>`;
-  const scribbles = Array.from({ length: 14 }, (_, i) => {
+  const lines = Array.from({ length: 3 }, () => {
     const y0 = rnd() * height;
-    const pts = Array.from({ length: 6 }, (_, j) => `${((j + 1) / 6) * width + (rnd() - 0.5) * 40},${y0 + (rnd() - 0.5) * height * 0.6}`);
-    return `<path d="M0,${y0} C${pts.slice(0, 3).join(" ")} S${pts.slice(3, 5).join(" ")} ${width},${rnd() * height}" stroke="${i % 2 ? "#fff" : "#000"}" stroke-opacity="${0.28 + rnd() * 0.2}" stroke-width="${(1.5 + rnd() * 2.5) * scale}" fill="none"/>`;
+    const y1 = rnd() * height;
+    return `<path d="M0,${y0} C${width * 0.33},${y0 + (rnd() - 0.5) * height * 0.5} ${width * 0.66},${y1 + (rnd() - 0.5) * height * 0.5} ${width},${y1}" stroke="#7a5cff" stroke-opacity="0.18" stroke-width="${1.2 * scale}" fill="none"/>`;
   }).join("");
-  const blotches = Array.from({ length: 36 }, () => {
-    const w = (0.08 + rnd() * 0.22) * width;
-    const h = (0.06 + rnd() * 0.18) * height;
-    return `<rect x="${rnd() * width - w / 2}" y="${rnd() * height - h / 2}" width="${w}" height="${h}" rx="${rnd() * 20}" fill="hsl(${Math.floor(rnd() * 360)} 70% ${35 + rnd() * 30}%)" fill-opacity="${0.1 + rnd() * 0.14}" transform="rotate(${(rnd() - 0.5) * 50} ${rnd() * width} ${rnd() * height})"/>`;
-  }).join("");
-  const grid = Array.from({ length: Math.ceil(width / (36 * scale)) }, (_, i) => `<line x1="${i * 36 * scale}" y1="0" x2="${i * 36 * scale + height * 0.4}" y2="${height}" stroke="#fff" stroke-opacity="0.12" stroke-width="${scale}"/>`).join("");
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
-<defs>${tile("a", -28, 1, 0.45, 0.8)}${tile("b", 33, 0.7, 0.3, 0.55)}</defs>
-${blotches}${grid}${scribbles}
+<defs>${tile("a", -28, 1, 110, 0.24, 0.42)}${tile("b", 33, 0.8, 150, 0.1, 0.18)}</defs>
+${lines}
 <rect width="100%" height="100%" fill="url(#b)"/><rect width="100%" height="100%" fill="url(#a)"/></svg>`;
 }
 
@@ -524,10 +518,10 @@ export async function watermarkPreview(bytes: Buffer, label: string, seed: numbe
   const sharp = (await import("sharp")).default;
   const { data, info } = await sharp(bytes)
     .rotate()
-    .resize({ width: 640, height: 640, fit: "inside", withoutEnlargement: true })
+    .resize({ width: 820, height: 820, fit: "inside", withoutEnlargement: true })
     .toBuffer({ resolveWithObject: true });
   // Film grain over everything: clean pixels cannot be recovered by cropping the marks away.
-  const grain = await sharp({ create: { width: info.width, height: info.height, channels: 3, background: "#808080", noise: { type: "gaussian", mean: 128, sigma: 46 } } })
+  const grain = await sharp({ create: { width: info.width, height: info.height, channels: 3, background: "#808080", noise: { type: "gaussian", mean: 128, sigma: 20 } } })
     .png()
     .toBuffer();
   return sharp(data)
@@ -535,7 +529,7 @@ export async function watermarkPreview(bytes: Buffer, label: string, seed: numbe
       { input: grain, blend: "soft-light" },
       { input: Buffer.from(watermarkSvg(info.width, info.height, label, seed)) },
     ])
-    .jpeg({ quality: 50 })
+    .jpeg({ quality: 62 })
     .toBuffer();
 }
 

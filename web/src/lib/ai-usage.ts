@@ -30,6 +30,14 @@ const ctx = new AsyncLocalStorage<Ctx>();
 export const withAiUser = <T>(userId: string, fn: () => Promise<T>, ownKey = false) => ctx.run({ userId, ownKey }, fn);
 export const aiUser = () => ctx.getStore();
 
+/** Counts the tokens of the model calls made inside fn (e.g. one chat reply), whoever pays for them. */
+const tallyCtx = new AsyncLocalStorage<{ tokens: number; calls: number }>();
+export async function withTokenTally<T>(fn: () => Promise<T>): Promise<{ value: T; tokens: number; calls: number }> {
+  const tally = { tokens: 0, calls: 0 };
+  const value = await tallyCtx.run(tally, fn);
+  return { value, ...tally };
+}
+
 const DAY_MS = 86_400_000;
 const bangkok = (t = Date.now()) => new Date(t + 7 * 3_600_000);
 export const dayKey = (t = Date.now()) => bangkok(t).toISOString().slice(0, 10);
@@ -102,9 +110,15 @@ type Usage = { input_tokens?: number | null; output_tokens?: number | null; cach
 /** Adds one model response's tokens to the current user's day (no user in context: the platform's own call). */
 export async function recordUsage(usage: Usage) {
   const c = ctx.getStore();
-  if (!c || !usage) return;
+  if (!usage) return;
   const tokens = (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0);
   if (tokens <= 0) return;
+  const tally = tallyCtx.getStore();
+  if (tally) {
+    tally.tokens += tokens;
+    tally.calls += 1;
+  }
+  if (!c) return;
   const day = dayKey();
   const add = c.ownKey ? { ownKeyTokens: { increment: tokens }, calls: { increment: 1 } } : { tokens: { increment: tokens }, calls: { increment: 1 } };
   await db.aiUsage

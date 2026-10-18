@@ -12,7 +12,7 @@ import { type Recipient, SendError, cleanRecipients, payMany } from "./bank/send
 import { type TxOutcome, publicClient, send } from "./chain";
 import { db } from "./db";
 import { KycRequired, requireKycFor } from "./kyc";
-import { blockedBetween } from "./safety";
+import { blockedBetween, blockedIds } from "./safety";
 import { primaryWalletAddress } from "./user-wallets";
 
 /**
@@ -77,15 +77,67 @@ export async function listFriends(userId: string, onWallet?: Address): Promise<F
   );
 }
 
-/** Sends a friend request to a customer of the same bank, found by username. */
+/**
+ * Finds customers of the same bank (same currency) to add as friends: part of a username or a
+ * display name (at least 2 characters, at most 6 results), or an exact email (never a partial
+ * email: emails are not browsable). Blocked people and the user themselves are left out.
+ */
+export async function searchCustomers(userId: string, currency: Currency, q: string): Promise<{ username: string; name: string }[]> {
+  q = q.trim().replace(/^@(?=[^@]*$)/, "");
+  if (q.length < 2 || q.length > 80) throw new SocialError("Type at least 2 characters");
+  const hidden = [userId, ...(await blockedIds(userId))];
+  if (q.includes("@")) {
+    const u = await db.user.findFirst({ where: { email: q.toLowerCase(), id: { notIn: hidden } }, select: { bankCustomer: { select: { username: true, displayName: true, currency: true } } } });
+    const c = u?.bankCustomer;
+    return c && c.currency === currency ? [{ username: c.username, name: c.displayName }] : [];
+  }
+  const rows = await db.bankCustomer.findMany({
+    where: { currency, userId: { not: null, notIn: hidden }, OR: [{ username: { contains: q.toLowerCase() } }, { displayName: { contains: q, mode: "insensitive" } }] },
+    select: { username: true, displayName: true },
+    orderBy: { username: "asc" },
+    take: 6,
+  });
+  return rows.map((r) => ({ username: r.username, name: r.displayName }));
+}
+
+/** Usernames people choose: 3–20 lowercase letters, digits or _, not starting with "w_" (the automatic ones). */
+export const USERNAME = /^(?!w_)[a-z][a-z0-9_]{2,19}$/;
+
+/**
+ * Lets a user replace their username (wallet accounts start with an automatic one, w_…, that nobody
+ * can guess). Unique within the bank; friendships are kept (they point at the user, not the name).
+ */
+export async function setUsername(userId: string, username: string) {
+  const name = username.trim().replace(/^@/, "").toLowerCase();
+  if (!USERNAME.test(name)) throw new SocialError("A username is 3–20 letters, digits or _, starting with a letter");
+  const me = await db.bankCustomer.findUnique({ where: { userId } });
+  if (!me) throw new SocialError("Open your wallet account first");
+  if (me.username === name) return { username: name };
+  const taken = await db.bankCustomer.findUnique({ where: { currency_username: { currency: me.currency, username: name } } });
+  if (taken) throw new SocialError(`@${name} is taken: try another`);
+  await db.bankCustomer.update({ where: { id: me.id }, data: { username: name } }).catch((e) => {
+    throw e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002" ? new SocialError(`@${name} is taken: try another`) : e;
+  });
+  return { username: name };
+}
+
+/**
+ * Sends a friend request to a customer of the same bank, found by username. An exact email, or a
+ * name that matches exactly one person, works too (people rarely know each other's username).
+ */
 export async function requestFriend(userId: string, currency: Currency, username: string) {
-  const target = await db.bankCustomer.findUnique({ where: { currency_username: { currency, username: username.toLowerCase() } } });
+  let target = await db.bankCustomer.findUnique({ where: { currency_username: { currency, username: username.trim().replace(/^@/, "").toLowerCase() } } });
+  if (!target?.userId && username.trim().length >= 2) {
+    const found = await searchCustomers(userId, currency, username).catch(() => []);
+    const exact = found.filter((f) => username.includes("@") || f.name.toLowerCase() === username.trim().toLowerCase());
+    if (exact.length === 1) target = await db.bankCustomer.findUnique({ where: { currency_username: { currency, username: exact[0].username } } });
+  }
   // Same answer for "no such customer" and "customer without an app account": no user enumeration
   // beyond what the bank's own username lookup already implies.
-  if (!target?.userId) throw new SocialError("No app user with that username at your bank");
+  if (!target?.userId) throw new SocialError("No one at your bank with that username, name or email. Search by name, or ask them for their username (Friends → My username)");
   if (target.userId === userId) throw new SocialError("You cannot add yourself");
   // A block either way: the same answer as an unknown user, so a blocked person learns nothing.
-  if (await blockedBetween(userId, target.userId)) throw new SocialError("No app user with that username at your bank");
+  if (await blockedBetween(userId, target.userId)) throw new SocialError("No one at your bank with that username, name or email. Search by name, or ask them for their username (Friends → My username)");
   const existing = await db.friendship.findFirst({
     where: {
       OR: [

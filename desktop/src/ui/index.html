@@ -113,6 +113,62 @@ button .spin { width: 13px; height: 13px; border-width: 2px; border-color: #bbb;
 .issue { font-size: 12px; padding: 5px 9px; border-radius: 9px; margin-top: 5px; }
 .issue.block { background: var(--bad-bg); color: var(--bad); } .issue.warn { background: var(--warn-bg); color: var(--warn); }
 .in { color: var(--ok); } .out { color: var(--bad); }
+/* AI chat: the website's layout (saved chats · conversation · agent rail). */
+main.wide { max-width: none; padding: 20px 22px 24px; }
+.chat-layout { display: grid; grid-template-columns: 230px minmax(0,1fr) 290px; gap: 14px; align-items: start; }
+.chats-panel, .convo, .rail { border: 1px solid #333; border-radius: 16px; background: #111; }
+.chats-panel { padding: 14px; position: sticky; top: 20px; }
+.chats-panel header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.chats-panel header b { font-size: 15px; } .chats-panel header span { padding: 2px 10px; background: #252525; border-radius: 16px; font-size: 11px; color: #999; }
+.chats-panel > button { width: 100%; margin-bottom: 8px; }
+.chat-list > div { display: flex; align-items: center; gap: 4px; padding: 8px 9px; border-radius: 10px; }
+.chat-list > div.on { background: #222; }
+.chat-list button { border: 0; background: transparent; padding: 0; text-align: left; color: #aaa; font-weight: 500; white-space: normal; }
+.chat-list button:first-child { flex: 1; min-width: 0; } .chat-list button:hover { background: transparent; color: #fff; }
+.chat-list b { display: block; font-size: 13px; font-weight: 500; overflow-wrap: anywhere; line-height: 1.4; } .chat-list small { display: block; font-size: 11px; color: #777; }
+.chat-list button.del { flex: none; width: 22px; color: #777; } .chat-list button.del:hover { color: var(--bad); }
+.chats-panel > p { font-size: 11px; color: #777; margin: 12px 0 0; }
+.convo { display: flex; flex-direction: column; gap: 12px; padding: 20px; height: calc(100vh - 44px); min-height: 460px; overflow: hidden; }
+.convo-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; flex-wrap: wrap; padding-bottom: 12px; border-bottom: 1px solid #303030; flex: none; }
+.convo-head > div { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.convo-head h1 { font-size: 16px; margin: 0; }
+.online { display: flex; align-items: center; gap: 7px; color: #999; font-size: 12px; } .online i { width: 7px; height: 7px; border-radius: 50%; background: #17c96b; }
+.pill { padding: 3px 10px; border-radius: 20px; background: #211d3d; color: #9a7cff; font-size: 11px; }
+.convo-msgs { flex: 1 1 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 8px; scrollbar-width: thin; scrollbar-color: #454545 transparent; }
+.convo-msgs > * { flex-shrink: 0; }
+.a-meta, .u-msg > small { color: #777; font-size: 11px; }
+.a-msg { width: min(100%, 680px); padding: 14px 16px; border: 1px solid #303030; border-radius: 16px; background: #191919; color: #e4e4e4; font-size: 14px; line-height: 1.6; }
+.a-msg.wide { width: 100%; }
+.a-msg > p { margin: 0 0 10px; }
+.sugg { display: flex; flex-wrap: wrap; gap: 8px; }
+.sugg button { border: 1px solid #333; border-radius: 18px; color: #aaa; font-size: 12px; font-weight: 500; padding: 6px 12px; white-space: normal; text-align: left; }
+.sugg button:hover { color: #fff; border-color: #666; background: transparent; }
+.u-msg { width: min(84%, 560px); align-self: flex-end; display: flex; flex-direction: column; gap: 6px; margin: 8px 0; text-align: right; }
+.u-msg p { margin: 0; padding: 13px 16px; border-radius: 16px; background: #222; text-align: left; color: #eee; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.badges { display: flex; flex-wrap: wrap; gap: 6px; }
+.badges span { padding: 3px 9px; border-radius: 18px; background: #0c2a1d; color: #16d777; font-size: 11px; font-weight: 600; }
+.badges span:nth-child(2n) { background: #30240b; color: #f1a900; }
+.steps-live { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #9fc2ff; animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .45; } }
+.usage-line { margin-top: 10px; padding-top: 8px; border-top: 1px solid #2a2a2a; color: #888; font-size: 11px; display: flex; gap: 10px; flex-wrap: wrap; }
+.a-msg .card.deal { background: #121212; margin: 10px 0 0; }
+.composer2 { position: relative; display: flex; align-items: flex-end; gap: 10px; padding: 10px 12px 26px; border: 1px solid #333; border-radius: 14px; background: #0b0b0b; flex: none; }
+.composer2 > button, .composer2 > label { width: 32px; height: 32px; flex: none; border: 0; border-radius: 8px; background: #1b1b1b; color: #eee; font-size: 18px; padding: 0; display: grid; place-items: center; margin: 0; cursor: pointer; }
+.composer2 > button[type=submit] { background: #3984f7; font-weight: 700; }
+.composer2 textarea { flex: 1; min-width: 0; border: 0; background: transparent; box-shadow: none; resize: none; padding: 6px 2px; font-size: 14px; max-height: 160px; }
+.composer2 textarea:focus { box-shadow: none; }
+.composer2 > small { position: absolute; left: 56px; bottom: 7px; color: #666; font-size: 10px; }
+.attached { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #ccc; flex: none; }
+.rail { padding: 16px; position: sticky; top: 20px; max-height: calc(100vh - 44px); overflow-y: auto; }
+.rail h3 { font-size: 13px; margin: 0 0 8px; } .rail section + section { margin-top: 14px; padding-top: 14px; border-top: 1px solid #2a2a2a; }
+.rail .kv { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; padding: 3px 0; } .rail .kv span:first-child { color: #aaa; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tier { display: grid; grid-template-columns: 52px 1fr; gap: 8px; font-size: 12px; padding: 3px 0; color: #ccc; }
+.tier b { font-size: 11px; color: #9a7cff; }
+.bar { height: 6px; border-radius: 99px; background: var(--chip); overflow: hidden; margin: 3px 0 6px; } .bar i { display: block; height: 100%; }
+.switch { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line-2); margin: 0; font-size: 13px; color: var(--ink); cursor: pointer; }
+.switch input { width: 16px; height: 16px; margin-top: 2px; flex: none; }
+@media (max-width: 1180px) { .chat-layout { grid-template-columns: 210px minmax(0,1fr); } .rail { grid-column: 1 / -1; position: static; max-height: none; } }
+@media (max-width: 760px) { .chat-layout { grid-template-columns: 1fr; } .chats-panel { position: static; } .convo { height: 75vh; } }
 @media (max-width: 760px) {
   .layout { grid-template-columns: 1fr; }
   nav { flex-direction: row; overflow-x: auto; height: auto; position: static; padding: 8px; gap: 4px; }
@@ -281,10 +337,10 @@ function renderUnlock() {
 }
 
 // ---------------------------------------------------------------- app shell
-const VIEWS = [["overview", "Overview"], ["chat", "AI chat"], ["deals", "Deals"], ["activity", "Money"], ["contacts", "Friends"], ["links", "Private links"], ["groups", "Groups"], ["chain", "My chain"], ["settings", "Settings"]];
+const VIEWS = [["overview", "Overview"], ["chat", "AI chat"], ["deals", "Deals"], ["activity", "Money"], ["contacts", "Friends"], ["links", "Private links"], ["groups", "Groups"], ["ai", "AI settings"], ["mcp", "MCP server"], ["chain", "My chain"], ["settings", "Settings"]];
 function renderApp() {
   const d = S.info.device;
-  const groups = [["Wallet", ["overview", "chat", "deals", "activity"]], ["People", ["contacts", "links", "groups"]], ["Security", ["chain", "settings"]]];
+  const groups = [["Wallet", ["overview", "chat", "deals", "activity"]], ["People", ["contacts", "links", "groups"]], ["AI", ["ai", "mcp"]], ["Security", ["chain", "settings"]]];
   const label = Object.fromEntries(VIEWS);
   const initials = (d.user || "?").split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
   $("#root").innerHTML = `<div class="layout"><nav>
@@ -323,6 +379,7 @@ function syncLine() {
 
 function renderView() {
   const m = $("#main");
+  m.classList.remove("wide");
   if (S.view === "overview") {
     const a = S.account;
     m.innerHTML = `${requestsBanner()}<div class="row space"><h1>Overview</h1><div class="row">${syncLine()}<button id="sync">Sync now</button></div></div>
@@ -338,22 +395,9 @@ function renderView() {
     $("#sync").onclick = () => doSync();
     $("#verify").onclick = () => doVerify();
   } else if (S.view === "chat") {
-    const h = S.chatHistory || [];
-    m.innerHTML = `${requestsBanner()}<div class="row space"><h1>AI chat</h1><div class="row"><select id="lang" style="width:auto"><option value="th">ไทย</option><option value="en">English</option></select><button id="clear">New chat</button></div></div>
-      <p class="hint">Same agent as the website: describe the deal ("hire Seller One for a logo, 5,000 baht, 2 milestones"). Previews appear below; you confirm them here with your device key.</p>
-      <div class="msgs" id="msgs">${h.length ? h.map(msgHtml).join("") : `<div class="card hint">No messages yet.</div>`}${S.chatBusy ? `<div class="msg assistant hint">Thinking… (tools run on the server)</div>` : ""}</div>
-      <div id="drafts">${draftsHtml()}</div>
-      <form class="composer" id="cf"><textarea name="m" rows="2" placeholder="Message the agent…" ${S.chatBusy ? "disabled" : ""}></textarea>
-        <label class="hint" style="margin:0;cursor:pointer" title="Attach a PDF, image or text file (up to 3 MB)">📎<input type="file" name="f" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.txt,.md,.csv,.json" style="display:none"></label>
-        <button class="primary" ${S.chatBusy ? "disabled" : ""}>Send</button></form><div class="hint" id="att"></div>`;
-    $("#lang").value = S.lang || "th";
-    $("#lang").onchange = (e) => { S.lang = e.target.value; try { localStorage.setItem("awlang", S.lang); } catch {} };
-    $("#clear").onclick = async () => { await api("/app/chat/clear", "POST"); S.chatHistory = []; renderView(); };
-    const fi = $("#cf [name=f]"); fi.onchange = () => { $("#att").textContent = fi.files[0] ? `📎 ${fi.files[0].name}` : ""; };
-    $("#cf").onsubmit = (ev) => { ev.preventDefault(); sendChat(new FormData(ev.target)); };
-    $("#cf textarea").onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#cf").requestSubmit(); } };
-    wireDrafts();
-    const box = $("#msgs"); box.lastElementChild?.scrollIntoView({ block: "end" });
+    m.classList.add("wide");
+    m.innerHTML = `${requestsBanner()}<div class="chat-layout">${chatsPanel()}${convoHtml()}${railHtml()}</div>`;
+    wireChat();
   } else if (S.view === "activity") {
     const a = S.activity, t = S.topup;
     m.innerHTML = `<div class="row space"><h1>Money</h1><button id="sync">Refresh</button></div>
@@ -386,15 +430,32 @@ function renderView() {
     const fs = S.friends;
     const acc = (fs || []).filter((f) => f.status === "ACCEPTED"), inc = (fs || []).filter((f) => f.direction === "incoming"), out = (fs || []).filter((f) => f.direction === "outgoing");
     m.innerHTML = `<div class="row space"><h1>Friends</h1><button id="sync">Refresh</button></div>
-      <div class="card" style="margin-bottom:12px"><form id="ff" class="row"><input name="u" placeholder="Their username, e.g. seller_t1" required style="flex:1"><button class="primary">Add friend</button></form>
-        <div class="hint" style="margin-top:6px">Your wallet only pays friends you made a payee. Making or removing a payee is a block you sign; the server sets it on your wallet contract.</div></div>
+      <div class="grid" style="grid-template-columns:minmax(0,2fr) minmax(0,1fr);margin-bottom:12px">
+        <div class="card"><h2>Add a friend</h2><form id="ff" class="row"><input name="u" id="fq" placeholder="Name, username or email" autocomplete="off" required style="flex:1" value="${esc(S.friendQ || "")}"><button class="primary">Send request</button></form>
+          <div id="fres">${friendResults()}</div>
+          <div class="hint" style="margin-top:6px">Type part of their name or username, or their exact email. Only wallets in your currency are found. Your wallet only pays friends you made a payee: making or removing a payee is a block you sign.</div></div>
+        <div class="card"><h2>My username</h2>${S.friendsMe ? `<div style="font-size:18px;font-weight:600">@${esc(S.friendsMe.username)}</div>
+          <div class="hint">${S.friendsMe.chosen ? "Friends add you with this, or by your name or email." : "This one was made automatically and nobody can guess it: choose one friends can type. They can also find you by name or email."}</div>
+          <form id="uf" class="row" style="margin-top:8px"><input name="u" placeholder="new username" pattern="[a-zA-Z][a-zA-Z0-9_]{2,19}" title="3–20 letters, digits or _, starting with a letter" required style="flex:1"><button>${S.friendsMe.chosen ? "Change" : "Choose"}</button></form>` : `<p class="hint">Loading…</p>`}</div>
+      </div>
       ${inc.length ? `<div class="banner"><b>Friend requests</b>${inc.map((f) => `<div class="req row space"><div><b>${esc(f.name)}</b> <span class="hint">@${esc(f.username)}</span></div><div class="row"><button class="primary" data-acc="${esc(f.friendshipId)}">Accept</button><button data-rm="${esc(f.friendshipId)}">Decline</button></div></div>`).join("")}</div>` : ""}
       <div class="card">${fs ? (acc.length ? `<table><thead><tr><th>Name</th><th>Payee</th><th></th></tr></thead><tbody>${acc.map((c) => `<tr><td><b>${esc(c.name)}</b><div class="hint">@${esc(c.username)}</div></td>
         <td>${c.payee ? `<span class="chip ok">can be paid</span>` : `<span class="chip">not a payee</span>`}</td>
         <td style="text-align:right"><div class="row" style="justify-content:flex-end">${c.hasWallet ? `<button data-payee="${esc(c.friendshipId)}" data-on="${c.payee ? "0" : "1"}" class="${c.payee ? "danger" : "primary"}">${c.payee ? "Stop paying" : "Make payee"}</button>` : `<span class="hint">no wallet yet</span>`}<button data-rm="${esc(c.friendshipId)}" title="Remove friend">✕</button></div></td></tr>`).join("")}</tbody></table>` : `<p class="hint">No friends yet.</p>`) : `<p class="hint">Loading…</p>`}
       ${out.length ? `<p class="hint">Waiting for: ${out.map((f) => esc(f.name || f.username)).join(", ")}</p>` : ""}</div>`;
     $("#sync").onclick = () => load();
-    $("#ff").onsubmit = async (ev) => { ev.preventDefault(); try { S.friends = (await api("/app/friends", "POST", { op: "request", username: new FormData(ev.target).get("u") })).friends; toast("Request sent"); renderView(); } catch (e) { toast(e.message); } };
+    const addFriend = async (username) => { try { const r = await api("/app/friends", "POST", { op: "request", username }); S.friends = r.friends; S.friendQ = ""; S.friendFound = null; toast("Request sent"); renderView(); } catch (e) { toast(e.message); } };
+    // One match: add that person. Otherwise the text goes as typed (a username, an exact name or an email).
+    $("#ff").onsubmit = (ev) => { ev.preventDefault(); const q = $("#fq").value.trim(); addFriend(S.friendFound && S.friendFound.length === 1 ? S.friendFound[0].username : q); };
+    let searchT;
+    $("#fq").oninput = (e) => {
+      S.friendQ = e.target.value; clearTimeout(searchT);
+      if (S.friendQ.trim().length < 2) { S.friendFound = null; $("#fres").innerHTML = ""; return; }
+      searchT = setTimeout(async () => { const q = S.friendQ.trim(); try { const r = await api("/app/friends", "POST", { op: "search", q }); if (q !== S.friendQ.trim()) return; S.friendFound = r.results; } catch { S.friendFound = []; } $("#fres").innerHTML = friendResults(); wireFound(); }, 250);
+    };
+    const wireFound = () => document.querySelectorAll("[data-addu]").forEach((b) => (b.onclick = () => addFriend(b.dataset.addu)));
+    wireFound();
+    const uf = $("#uf"); if (uf) uf.onsubmit = async (ev) => { ev.preventDefault(); try { const r = await api("/app/friends", "POST", { op: "username", username: new FormData(uf).get("u") }); S.friends = r.friends; S.friendsMe = r.me; toast(`Your username is @${r.me.username}`); renderView(); } catch (e) { toast(e.message); } };
     document.querySelectorAll("[data-acc]").forEach((b) => (b.onclick = async () => { try { S.friends = (await api("/app/friends", "POST", { op: "accept", friendshipId: b.dataset.acc })).friends; renderView(); } catch (e) { toast(e.message); } }));
     document.querySelectorAll("[data-rm]").forEach((b) => (b.onclick = async () => { if (!confirm("Remove (or decline)? A payee stays until you stop paying them.")) return; try { S.friends = (await api("/app/friends", "POST", { op: "remove", friendshipId: b.dataset.rm })).friends; renderView(); } catch (e) { toast(e.message); } }));
     document.querySelectorAll("[data-payee]").forEach((b) => (b.onclick = async () => {
@@ -449,8 +510,19 @@ function renderView() {
   } else if (S.view === "deals") {
     m.innerHTML = `${requestsBanner()}<div class="row space"><h1>Deals</h1><button id="sync">Refresh</button></div>
       <p class="hint">Every move here (deliver, approve, dispute, accept, refund) is a block signed by your device key. New deals: AI chat.</p>
-      <div id="deals">${S.deals ? (S.deals.length ? S.deals.map(dealHtml).join("") : `<div class="card hint">No deals yet.</div>`) : `<div class="card hint">Loading…</div>`}</div>`;
+      ${S.deals && S.deals.length ? `<div class="row" style="margin-bottom:12px"><input id="dq" placeholder="Search deals" value="${esc(S.dealQ || "")}" style="flex:1;min-width:160px">
+        <select id="dfile" style="width:auto">${[["all", "Any files"], ["asks", "Asks for documents / files"], ["pdf", "Asks for a PDF"], ["todo", "I still have to send a file"], ["review", "Files delivered to me to review"]].map(([v, t]) => `<option value="${v}" ${S.dealFile === v ? "selected" : ""}>${t}</option>`).join("")}</select>
+        <span class="hint">${dealsShown().length} of ${S.deals.length}</span></div>` : ""}
+      <div id="deals">${S.deals ? (S.deals.length ? (dealsShown().length ? dealsShown().map(dealHtml).join("") : `<div class="card hint">No deal matches these filters.</div>`) : `<div class="card hint">No deals yet.</div>`) : `<div class="card hint">Loading…</div>`}</div>`;
     $("#sync").onclick = () => doSync();
+    const dq = $("#dq"); if (dq) dq.oninput = () => { S.dealQ = dq.value; const pos = dq.selectionStart; renderView(); const n = $("#dq"); n.focus(); n.setSelectionRange(pos, pos); };
+    const df = $("#dfile"); if (df) df.onchange = () => { S.dealFile = df.value; renderView(); };
+  } else if (S.view === "ai") {
+    m.innerHTML = `<div class="row space"><h1>AI settings</h1><button id="go-chat">Open AI chat</button></div>
+      <div class="card">${aiHtml()}</div>`;
+    $("#go-chat").onclick = () => go("chat");
+  } else if (S.view === "mcp") {
+    m.innerHTML = mcpPageHtml();
   } else if (S.view === "chain") {
     const c = S.chain;
     const linked = new Map((c?.links || []).map((l) => [l.event, l]));
@@ -468,8 +540,6 @@ function renderView() {
         <table><tr><th>Account</th><td>${esc(d.user)}</td></tr><tr><th>Computer</th><td>${esc(d.name)}</td></tr>
         <tr><th>Device key</th><td class="mono">${esc(d.address)}</td></tr><tr><th>Wallet</th><td class="mono">${esc(d.wallet)}</td></tr>
         <tr><th>Server</th><td>${esc(d.server)}</td></tr><tr><th>Linked</th><td>${when(d.linkedAt)}</td></tr></table></div>
-      <div class="card" style="margin-top:12px"><h2>AI</h2>${aiHtml()}</div>
-      <div class="card" style="margin-top:12px"><h2>Connect other AI agents (MCP)</h2>${mcpHtml()}</div>
       <div class="card" style="margin-top:12px"><h2>Backups</h2>
         <p class="hint">Your chain is backed up to the server after every sync, encrypted with a key only your device key can make: the server cannot read it. To move to a new computer you need the <b>key backup file</b> and your passphrase.</p>
         <a href="/app/key-backup?t=${encodeURIComponent(TOKEN)}" download><button class="primary">Save key backup</button></a>
@@ -477,7 +547,32 @@ function renderView() {
   }
   wireDealButtons();
   wireRequestButtons();
-  if (S.view === "settings") wireSettings();
+  if (S.view === "ai") wireSettings();
+  if (S.view === "mcp") wireMcp();
+}
+
+/** What a deal asks in files (the Files filter): documents asked for, a PDF, a file I owe, a file to review. */
+function dealFiles(d) {
+  const files = (d.milestones || []).filter((m) => m.delivery === "file");
+  const live = d.status === "Active";
+  return {
+    asks: files.length > 0,
+    pdf: files.some((m) => (m.fileTypes || []).some((t) => /pdf/i.test(t))),
+    todo: live && d.role === "seller" && files.some((m) => m.status === "Pending"),
+    review: live && d.role === "buyer" && files.some((m) => m.status === "Delivered"),
+  };
+}
+function dealsShown() {
+  const q = (S.dealQ || "").trim().toLowerCase(), f = S.dealFile || "all";
+  return (S.deals || []).filter((d) => (f === "all" || dealFiles(d)[f]) && (!q || [`d-${d.id}`, d.title, d.counterpartyLabel, d.counterparty, d.status].some((x) => String(x || "").toLowerCase().includes(q))));
+}
+
+function friendResults() {
+  const q = (S.friendQ || "").trim();
+  if (q.length < 2 || !S.friendFound) return "";
+  const known = new Set((S.friends || []).map((f) => f.username));
+  if (!S.friendFound.length) return `<p class="hint" style="margin:8px 0 0">No one matches “${esc(q)}”.</p>`;
+  return `<div style="margin-top:8px">${S.friendFound.map((r) => `<div class="req row space"><div><b>${esc(r.name)}</b> <span class="hint">@${esc(r.username)}</span></div>${known.has(r.username) ? `<span class="hint">already added</span>` : `<button class="primary" data-addu="${esc(r.username)}">Send request</button>`}</div>`).join("")}</div>`;
 }
 
 function aiHtml() {
@@ -498,20 +593,10 @@ function aiHtml() {
       <div class="row" style="margin-top:6px"><button class="primary">Use my key</button></div></form>`}`;
 }
 
-function mcpHtml() {
-  const m = S.mcp;
-  if (!m) return `<p class="hint">Loading…</p>`;
-  const cfg = JSON.stringify({ mcpServers: { "agentic-wallet": { command: m.command, args: m.args } } }, null, 2);
-  return `<p class="hint" style="margin-top:0">Let Claude Desktop, Cursor or another MCP client read your wallet and ask for moves. They can look (balance, deals, money, friends) and draft; anything that moves money or signs waits here for you to <b>Sign</b> with your device key. Keep this app open and unlocked while they use it.</p>
-    <label>Add to the client's MCP config</label><pre class="mono" style="white-space:pre-wrap;background:var(--chip);padding:10px;border-radius:8px">${esc(cfg)}</pre>
-    <div class="row"><button id="mcp-copy">Copy config</button><span class="hint">${m.calls ? `${m.calls} tool call(s) this session` : "No agent connected yet"}</span></div>`;
-}
-
 function wireSettings() {
   const save = $("#ins-save"); if (save) save.onclick = async () => { try { S.ai = { ...S.ai, ...(await api("/app/ai/instructions", "POST", { text: $("#ins").value })) }; toast("Saved"); } catch (e) { toast(e.message); } };
   const kf = $("#kf"); if (kf) kf.onsubmit = async (ev) => { ev.preventDefault(); const f = new FormData(kf); try { S.ai = { ...S.ai, ...(await api("/app/ai/key", "POST", { provider: f.get("provider"), model: f.get("model"), apiKey: f.get("apiKey") })) }; toast("Your key is set (sealed on this computer)"); renderView(); } catch (e) { toast(e.message); } };
   const rm = $("#key-rm"); if (rm) rm.onclick = async () => { S.ai = { ...S.ai, ...(await api("/app/ai/key/remove", "POST")) }; toast("Your key is removed"); renderView(); };
-  const cp = $("#mcp-copy"); if (cp) cp.onclick = () => navigator.clipboard.writeText(JSON.stringify({ mcpServers: { "agentic-wallet": { command: S.mcp.command, args: S.mcp.args } } }, null, 2)).then(() => toast("Copied"), () => toast("Copy failed"));
 }
 
 function verifyHtml() {
@@ -534,24 +619,184 @@ function blockText(b) {
   return e.type === "deal" ? `<b>Deal D-${esc(e.dealId)}</b> → ${esc(e.status)} <span class="hint">total ${esc(e.data.total)}</span>` : `<b>D-${esc(e.dealId)} milestone ${Number(e.index) + 1}</b> → ${esc(e.status)} <span class="hint">${esc(e.data.amount)}</span>`;
 }
 
-function msgHtml(x) {
-  const tools = (x.steps || []).map((st) => st && (st.tool || st.name)).filter(Boolean);
-  const body = x.role === "assistant" ? `<div class="md">${window.renderMarkdown(x.text)}</div>${x.model ? `<div class="hint" style="margin-top:4px">your key · ${esc(x.model)}</div>` : ""}` : esc(x.text);
-  return `<div class="msg ${x.role}">${body}${tools.length ? `<div class="tools">${tools.map((t) => `<span class="chip">${esc(t)}</span>`).join("")}</div>` : ""}</div>`;
+function go(view) { S.view = view; renderApp(); load(); }
+
+const TOOL_LABEL = {
+  get_wallet_status: "Checked your wallet and limits", deal_templates: "Read your deal templates", amend_deal: "Prepared a change to a deal",
+  save_deal_template: "Saved a deal template", list_deals: "Read your deals", propose_bank_deal: "Drafted a deal", propose_bank_sale: "Drafted a sale offer",
+  invite_seller: "Made a private link", remember_nickname: "Remembered a nickname", ask_deal_details: "Asked for missing details", list_groups: "Read your groups",
+  create_group: "Created a group", propose_to_group: "Put a draft to the group's vote", forget_nickname: "Forgot a nickname", discard_draft: "Discarded a draft",
+  pause_wallet: "Paused the wallet", forecast_cashflow: "Forecast cash flow", create_public_post: "Made a public post",
+};
+const TIERS = ["Read balance, deals, history", "Draft a deal · you approve the debit", "Approve small deliveries within limits + payees", "Pause · anyone can, only owner resumes"];
+const clock = (t) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const num = (n) => Number(n || 0).toLocaleString();
+const stepTools = (x) => (x.steps || []).map((st) => st && (st.tool || st.name)).filter(Boolean);
+
+function chatsPanel() {
+  const list = S.chats ? S.chats.chats : null, max = S.chats ? S.chats.max : 20;
+  const full = list && list.length >= max;
+  return `<aside class="chats-panel"><header><b>Chats</b>${list ? `<span>${list.length}/${max}</span>` : ""}</header>
+    <button class="primary" id="newchat" ${S.chatBusy || full || (!S.chatId && !(S.chatHistory || []).length) ? "disabled" : ""} title="${full ? `${max} chats max: delete one first` : "Start a new chat"}">＋ New chat</button>
+    <div class="chat-list">${!S.chatId && (S.chatHistory || []).length ? `<div class="on"><button><b>New chat</b><small>Just now</small></button></div>` : ""}
+    ${list ? list.map((c) => `<div class="${c.id === S.chatId ? "on" : ""}"><button data-chat="${esc(c.id)}" ${S.chatBusy ? "disabled" : ""}><b>${esc(c.title)}</b><small>${new Date(c.updatedAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })} · ${num(c.tokens)} tokens</small></button><button class="del" data-delchat="${esc(c.id)}" title="Delete this chat" ${S.chatBusy ? "disabled" : ""}>✕</button></div>`).join("") : `<div class="loading"><span class="spin"></span>Loading…</div>`}</div>
+    <p>${full ? `${max} chats max: delete one to start another. ` : ""}Chats are kept on this computer only. Deleting one removes the conversation; your deals stay.</p></aside>`;
 }
 
-function draftsHtml() {
-  const ds = (S.drafts || []).filter((d) => d.status !== "FUNDED");
-  if (!ds.length) return "";
-  return `<h2 style="margin-top:6px">Previews waiting for you</h2>` + ds.map((d) => {
-    const blocking = d.review && d.review.blocking;
-    return `<div class="card deal"><div class="row space"><div><b>${esc(d.title)}</b> <span class="hint">${esc(d.id)}</span>
-      <div class="hint">${d.side === "BUY" ? "You pay" : "You sell to"} ${esc(d.sellerLabel || d.counterparty)} · review ${esc(d.reviewHours)} h${d.paymentPlan ? " · split payment" : ""}</div></div>
-      <div class="row"><span class="chip">${esc(d.status)}</span><b>${esc(d.total)} ${esc(d.symbol)}</b></div></div>
-      ${(d.milestones || []).map((m, i) => `<div class="ms"><div>${i + 1}. ${esc(m.name)} · <b>${esc(m.amount)}</b>${m.deposit ? ` <span class="chip warn">deposit on signing</span>` : ""}<div class="hint">${esc(m.acceptance)}</div></div><div class="hint">${esc(m.delivery || (m.hasFile ? "file" : "note"))}</div></div>`).join("")}
-      ${d.review ? d.review.issues.map((i) => `<div class="issue ${i.level}">${esc(i.text)}</div>`).join("") : ""}
-      <div class="row" style="margin-top:10px">${["PREVIEW", "DRAFT", "FAILED"].includes(d.status) ? `<button class="primary" data-confirm="${esc(d.id)}" ${blocking ? "disabled title=\"Fix the blocking points with the AI first\"" : ""}>Confirm and sign</button>` : `<span class="hint">The AI still needs details: answer it in the chat.</span>`}</div></div>`;
-  }).join("");
+function draftCard(d) {
+  const blocking = d.review && d.review.blocking;
+  return `<div class="card deal"><div class="row space"><div><b>${esc(d.title)}</b> <span class="hint">${esc(d.id)}</span>
+    <div class="hint">${d.side === "BUY" ? "You pay" : "You sell to"} ${esc(d.sellerLabel || d.counterparty)} · review ${esc(d.reviewHours)} h${d.paymentPlan ? " · split payment" : ""}</div></div>
+    <div class="row"><span class="chip">${esc(d.status)}</span><b>${esc(d.total)} ${esc(d.symbol)}</b></div></div>
+    ${(d.milestones || []).map((m, i) => `<div class="ms"><div>${i + 1}. ${esc(m.name)} · <b>${esc(m.amount)}</b>${m.deposit ? ` <span class="chip warn">deposit on signing</span>` : ""}${m.due ? ` <span class="chip">due ${esc(m.due)}</span>` : ""}<div class="hint">${esc(m.acceptance)}</div></div><div class="hint">${esc(m.delivery || (m.hasFile ? "file" : "note"))}</div></div>`).join("")}
+    ${d.review ? d.review.issues.map((i) => `<div class="issue ${i.level}">${esc(i.text)}</div>`).join("") : ""}
+    <div class="row" style="margin-top:10px">${["PREVIEW", "DRAFT", "FAILED"].includes(d.status) ? `<button class="primary" data-confirm="${esc(d.id)}" ${blocking ? "disabled title=\"Fix the blocking points with the AI first\"" : ""}>Confirm and sign</button>` : d.status === "FUNDED" ? `<span class="chip ok">confirmed</span>` : `<span class="hint">The AI still needs details: answer it in the chat.</span>`}</div></div>`;
+}
+
+function msgHtml(x) {
+  if (x.role === "user") return `<div class="u-msg"><small>You · ${clock(x.at)}</small><p>${esc(x.text)}</p></div>`;
+  if (x.role === "error") return `<article class="a-msg"><div class="issue block" style="margin:0">${esc(x.text)}</div></article>`;
+  const tools = stepTools(x);
+  const drafts = (x.steps || []).filter((st) => st && st.draft).map((st) => (S.drafts || []).find((d) => d.id === st.draft.id) || st.draft);
+  const u = x.usage;
+  return `<div class="a-meta">Agent · ${clock(x.at)}</div>
+    ${tools.length ? `<div class="badges">${tools.map((t) => `<span title="${esc(TOOL_LABEL[t] || t)}">${esc(t)}</span>`).join("")}</div>` : ""}
+    <article class="a-msg${drafts.length ? " wide" : ""}"><div class="md">${window.renderMarkdown(x.text)}</div>${drafts.map(draftCard).join("")}
+    ${u || x.model ? `<div class="usage-line">${u ? `<span>${num(u.tokens)} tokens</span><span>${u.calls} model call${u.calls === 1 ? "" : "s"}</span>` : ""}${tools.length ? `<span>${tools.length} tool${tools.length === 1 ? "" : "s"}</span>` : ""}<span>${x.model ? `your key · ${esc(x.model)}` : "MilestonePay AI"}</span></div>` : ""}</article>`;
+}
+
+function convoHtml() {
+  const h = S.chatHistory || [];
+  const name = (S.info.device.user || "").split(/\s+/)[0];
+  const cur = S.account ? S.account.currency : "THB";
+  const sugg = [`Hire a friend for a logo · ${cur === "CNY" ? "¥1,000" : "฿5,000"} · 2 milestones`, "What is my balance and limit?", "List my deals", "Which deals are waiting for documents?"];
+  const own = S.ai && S.ai.own;
+  return `<section class="convo"><div class="convo-head"><div><h1>AI Chat</h1><span class="online"><i></i>${S.chatBusy ? "Working…" : "Agent online"} · ${own ? `your key (${esc(own.model)})` : "MilestonePay AI"}</span></div>
+      <div class="row"><select id="lang" style="width:auto;padding:5px 10px"><option value="th">ไทย</option><option value="en">English</option></select><span class="pill">Policy guard on</span></div></div>
+    <div class="convo-msgs" id="msgs">
+      <div class="a-meta">Agent</div>
+      <article class="a-msg"><p>Hi ${esc(name)}. Tell me what you want to hire or sell. I draft the deal and check your limits; nothing leaves your wallet until you sign it here with your device key.</p>
+        <div class="sugg">${sugg.map((p) => `<button type="button" data-sugg="${esc(p)}">${esc(p)}</button>`).join("")}</div></article>
+      ${S.chatLoading ? `<div class="loading"><span class="spin"></span>Opening the chat…</div>` : h.map(msgHtml).join("")}
+      ${S.chatBusy ? `<div class="a-meta">Agent</div><div class="steps-live"><span>◌ Thinking… the agent reads your wallet and runs its tools on the server</span></div>` : ""}
+    </div>
+    <form class="composer2" id="cf">
+      <label title="Attach a PDF, image or text file (up to 3 MB)">＋<input type="file" name="f" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.txt,.md,.csv,.json" style="display:none"></label>
+      <span class="attached" id="att"></span>
+      <textarea name="m" rows="1" placeholder="Message AI agent… (＋ to attach a file)" ${S.chatBusy ? "disabled" : ""}></textarea>
+      <button type="submit" title="Send" ${S.chatBusy ? "disabled" : ""}>↑</button>
+      <small>AI checks your balance and policy before any payment. Enter sends, Shift+Enter is a new line.</small>
+    </form></section>`;
+}
+
+function railHtml() {
+  const h = S.chatHistory || [];
+  const replies = h.filter((x) => x.role === "assistant");
+  const chatTokens = replies.reduce((n, x) => n + ((x.usage && x.usage.tokens) || 0), 0);
+  const calls = replies.reduce((n, x) => n + ((x.usage && x.usage.calls) || 0), 0);
+  const counts = {};
+  replies.forEach((x) => stepTools(x).forEach((t) => (counts[t] = (counts[t] || 0) + 1)));
+  const tools = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  const u = S.ai && S.ai.usage;
+  const bar = (label, used, limit) => { const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 100; return `<div class="kv"><span>${label}</span><span>${num(used)} / ${num(limit)}</span></div><div class="bar"><i style="width:${pct}%;background:${pct >= 100 ? "var(--bad)" : pct >= 80 ? "var(--warn)" : "var(--accent)"}"></i></div>`; };
+  const today = new Date().toDateString();
+  const mcpToday = S.mcp ? S.mcp.log.filter((c) => new Date(c.at).toDateString() === today) : [];
+  const mcpTokens = mcpToday.reduce((n, c) => n + (c.tokens || 0), 0);
+  const waiting = (S.drafts || []).filter((d) => ["PREVIEW", "DRAFT", "FAILED"].includes(d.status));
+  return `<aside class="rail">
+    <section><h3>Tokens</h3>${u ? `${bar("Today", u.today, u.perDay)}${bar("This week", u.week, u.perWeek)}${u.ownKeyToday ? `<div class="kv"><span>Your own key today</span><span>${num(u.ownKeyToday)}</span></div>` : ""}` : `<p class="hint">Loading…</p>`}
+      <div class="kv"><span>This chat</span><span>${num(chatTokens)} tokens</span></div>
+      <div class="kv"><span>Replies · model calls</span><span>${replies.length} · ${calls}</span></div>
+      <button class="linkbtn" data-go="ai">AI settings (own key, instructions) →</button></section>
+    <section><h3>Tools used in this chat</h3>${tools.length ? tools.map(([t, n]) => `<div class="kv"><span title="${esc(t)}">${esc(TOOL_LABEL[t] || t)}</span><span>×${n}</span></div>`).join("") : `<p class="hint" style="margin:0">None yet.</p>`}</section>
+    <section><h3>MCP: outside agents</h3>${S.mcp ? `<div class="kv"><span>Server</span><span>${S.mcp.settings.enabled ? `<span class="chip ok">on</span>` : `<span class="chip bad">off</span>`}</span></div>
+      <div class="kv"><span>Calls today</span><span>${mcpToday.length}</span></div><div class="kv"><span>Tokens today (ask_wallet_ai)</span><span>${num(mcpTokens)}</span></div>
+      ${mcpToday.slice(0, 4).map((c) => `<div class="kv"><span>${esc(c.tool)} · ${esc(c.client)}</span><span class="hint">${clock(c.at)}</span></div>`).join("")}` : `<p class="hint">Loading…</p>`}
+      <button class="linkbtn" data-go="mcp">Manage the MCP server →</button></section>
+    <section><h3>What the agent can do</h3>${TIERS.map((t, i) => `<div class="tier"><b>Tier ${i}</b><span>${esc(t)}</span></div>`).join("")}</section>
+    <section><h3>Previews waiting</h3>${waiting.length ? waiting.slice(0, 5).map((d) => `<div class="kv"><span title="${esc(d.title)}">${esc(d.title)}</span><button class="linkbtn" data-confirm="${esc(d.id)}">Confirm</button></div>`).join("") : `<p class="hint" style="margin:0">None.</p>`}</section>
+  </aside>`;
+}
+
+function rememberChat(id) { S.chatId = id; try { id ? localStorage.setItem("awchat", id) : localStorage.removeItem("awchat"); } catch {} }
+
+async function openChat(id) {
+  rememberChat(id); S.chatLoading = true; S.chatHistory = []; renderView();
+  try { S.chatHistory = (await api(`/app/chat?id=${encodeURIComponent(id)}`)).history; } catch (e) { toast(e.message); }
+  S.chatLoading = false; renderView();
+}
+
+function wireChat() {
+  $("#lang").value = S.lang || "th";
+  $("#lang").onchange = (e) => { S.lang = e.target.value; try { localStorage.setItem("awlang", S.lang); } catch {} };
+  $("#newchat").onclick = () => { rememberChat(null); S.chatHistory = []; renderView(); };
+  document.querySelectorAll("[data-chat]").forEach((b) => (b.onclick = () => openChat(b.dataset.chat)));
+  document.querySelectorAll("[data-delchat]").forEach((b) => (b.onclick = async () => {
+    const c = S.chats.chats.find((x) => x.id === b.dataset.delchat);
+    if (!confirm(`Delete the chat "${c ? c.title : ""}"? Drafts made in it stay.`)) return;
+    try { S.chats = await api("/app/chat/delete", "POST", { id: b.dataset.delchat }); if (b.dataset.delchat === S.chatId) { rememberChat(null); S.chatHistory = []; } renderView(); } catch (e) { toast(e.message); }
+  }));
+  document.querySelectorAll("[data-go]").forEach((b) => (b.onclick = () => go(b.dataset.go)));
+  const ta = $("#cf textarea");
+  const grow = () => { ta.style.height = "auto"; ta.style.height = Math.min(160, ta.scrollHeight) + "px"; };
+  ta.value = S.chatDraft || ""; grow();
+  ta.oninput = () => { S.chatDraft = ta.value; grow(); };
+  ta.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("#cf").requestSubmit(); } };
+  document.querySelectorAll("[data-sugg]").forEach((b) => (b.onclick = () => { ta.value = S.chatDraft = b.dataset.sugg; grow(); ta.focus(); }));
+  const fi = $("#cf [name=f]"); fi.onchange = () => { $("#att").textContent = fi.files[0] ? `📎 ${fi.files[0].name}` : ""; };
+  $("#cf").onsubmit = (ev) => { ev.preventDefault(); sendChat(new FormData(ev.target)); };
+  wireDrafts();
+  const box = $("#msgs"); box.scrollTop = box.scrollHeight;
+  if (!S.chatBusy) ta.focus();
+}
+
+function mcpPageHtml() {
+  const m = S.mcp;
+  if (!m) return `<h1>MCP server</h1><div class="card"><div class="loading"><span class="spin"></span>Loading…</div></div>`;
+  const cfg = JSON.stringify({ mcpServers: { "agentic-wallet": { command: m.command, args: m.args } } }, null, 2);
+  const cli = `claude mcp add agentic-wallet -- ${[m.command, ...m.args].map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(" ")}`;
+  const sw = (k, title, text) => `<label class="switch"><input type="checkbox" data-mcpset="${k}" ${m.settings[k] ? "checked" : ""} ${k !== "enabled" && !m.settings.enabled ? "disabled" : ""}><span><b>${title}</b><div class="hint">${text}</div></span></label>`;
+  const groupName = { read: "Read", ask: "Ask the AI", request: "Request a signature" };
+  const ar = S.info.agentRequests || [];
+  const clients = {};
+  m.log.forEach((c) => { const x = (clients[c.client] = clients[c.client] || { calls: 0, last: 0, tokens: 0, errors: 0 }); x.calls++; x.tokens += c.tokens || 0; x.last = Math.max(x.last, c.at); if (!c.ok) x.errors++; });
+  return `<div class="row space"><h1>MCP server</h1><div class="row">${m.settings.enabled ? `<span class="chip ok">On</span>` : `<span class="chip bad">Off</span>`}<button id="mcp-refresh">Refresh</button></div></div>
+    <p class="hint" style="margin-top:-8px">Let Claude Desktop, Cursor or another MCP client read your wallet and ask for moves. Nothing an agent does moves money: signing waits here for you. Keep the app open and unlocked while they use it.</p>
+    ${agentBanner()}
+    <div class="grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">
+      <div class="card"><h2>Access</h2>
+        ${sw("enabled", "MCP server on", "Off: every agent call is refused.")}
+        ${sw("read", "Read", "wallet_status, list_deals, list_activity, list_friends, list_drafts")}
+        ${sw("ask", "Ask the wallet's AI", "ask_wallet_ai: drafts deals on your token allowance (or your own key)")}
+        ${sw("request", "Request your signature", "request_deal_move, request_confirm_draft, request_payee: wait here until you Sign or Reject")}</div>
+      <div class="card"><h2>Connect a client</h2>
+        ${m.clients.map((c) => `<div class="req row space" style="border-bottom:1px solid var(--line-2);padding:8px 0"><div><b>${esc(c.name)}</b><div class="hint">${!c.readable ? "Its config file is not valid JSON: add it by hand" : c.added ? (c.current ? `Added. ${esc(c.restart)}` : "Added, but for another copy of the app: update it") : c.found ? "Installed, not connected" : "Not found on this computer"}</div><div class="mono hint">${esc(c.file)}</div></div>
+          <div class="row">${c.added ? `${c.current ? "" : `<button class="primary" data-mcpclient="${esc(c.id)}" data-on="1">Update</button>`}<button class="danger" data-mcpclient="${esc(c.id)}" data-on="0">Remove</button>` : `<button class="primary" data-mcpclient="${esc(c.id)}" data-on="1" ${c.readable ? "" : "disabled"}>Add</button>`}</div></div>`).join("")}
+        <label>Claude Code</label><pre class="mono" style="white-space:pre-wrap;background:var(--chip);padding:8px;border-radius:8px;margin:0">${esc(cli)}</pre>
+        <label>Any other client (JSON)</label><pre class="mono" style="white-space:pre-wrap;background:var(--chip);padding:8px;border-radius:8px;margin:0">${esc(cfg)}</pre>
+        <div class="row" style="margin-top:8px"><button id="mcp-copy">Copy JSON</button><button id="mcp-copy-cli">Copy command</button></div>
+        <p class="hint">Add/Remove edits that client's config file and keeps a copy next to it (.bak-agentic-wallet).</p></div>
+    </div>
+    <div class="card" style="margin-bottom:12px"><h2>Clients seen</h2>${Object.keys(clients).length ? `<table><thead><tr><th>Client</th><th>Calls</th><th>Refused/failed</th><th>Tokens</th><th>Last</th></tr></thead><tbody>${Object.entries(clients).map(([n, x]) => `<tr><td><b>${esc(n)}</b></td><td>${x.calls}</td><td>${x.errors}</td><td>${num(x.tokens)}</td><td>${when(x.last)}</td></tr>`).join("")}</tbody></table>` : `<p class="hint">No agent has connected yet.</p>`}</div>
+    <div class="card" style="margin-bottom:12px"><div class="row space"><h2 style="margin:0">Call log</h2>${m.log.length ? `<button id="mcp-clear">Clear log</button>` : ""}</div>
+      ${m.log.length ? `<table><thead><tr><th>Time</th><th>Client</th><th>Tool</th><th>Result</th><th>Tokens</th></tr></thead><tbody>${m.log.slice(0, 60).map((c) => `<tr><td class="hint">${when(c.at)}</td><td>${esc(c.client)}</td><td class="mono">${esc(c.tool)}</td><td>${c.ok ? `<span class="chip ok">ok · ${c.ms} ms</span>` : `<span class="chip bad" title="${esc(c.error || "")}">refused</span><div class="hint">${esc(c.error || "")}</div>`}</td><td>${c.tokens ? num(c.tokens) : ""}</td></tr>`).join("")}</tbody></table>` : `<p class="hint">Empty.</p>`}</div>
+    <div class="card"><h2>Tools</h2><table><thead><tr><th>Tool</th><th>Switch</th><th>What it does</th></tr></thead><tbody>${m.tools.map((t) => `<tr><td class="mono">${esc(t.name)}</td><td>${m.settings[t.group] && m.settings.enabled ? `<span class="chip ok">${groupName[t.group]}</span>` : `<span class="chip bad">${groupName[t.group]} · off</span>`}</td><td class="hint">${esc(t.description)}</td></tr>`).join("")}</tbody></table>
+      ${ar.length ? "" : `<p class="hint">Requests waiting for your signature appear at the top of this page and on Overview.</p>`}</div>`;
+}
+
+function wireMcp() {
+  const r = $("#mcp-refresh"); if (r) r.onclick = () => load();
+  document.querySelectorAll("[data-mcpset]").forEach((b) => (b.onchange = async () => { try { S.mcp = await api("/app/mcp/settings", "POST", { [b.dataset.mcpset]: b.checked }); renderView(); } catch (e) { toast(e.message); } }));
+  document.querySelectorAll("[data-mcpclient]").forEach((b) => (b.onclick = async () => {
+    const on = b.dataset.on === "1";
+    if (!on && !confirm("Remove MilestonePay from this client's MCP config?")) return;
+    b.disabled = true;
+    try { S.mcp = await api("/app/mcp/client", "POST", { id: b.dataset.mcpclient, on }); const c = S.mcp.clients.find((x) => x.id === b.dataset.mcpclient); toast(on ? `Added to ${c.name}. ${c.restart}` : `Removed from ${c.name}`); renderView(); } catch (e) { toast(e.message); b.disabled = false; }
+  }));
+  const cp = $("#mcp-copy"); if (cp) cp.onclick = () => navigator.clipboard.writeText(JSON.stringify({ mcpServers: { "agentic-wallet": { command: S.mcp.command, args: S.mcp.args } } }, null, 2)).then(() => toast("Copied"), () => toast("Copy failed"));
+  const cc = $("#mcp-copy-cli"); if (cc) cc.onclick = () => navigator.clipboard.writeText(`claude mcp add agentic-wallet -- ${[S.mcp.command, ...S.mcp.args].map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(" ")}`).then(() => toast("Copied"), () => toast("Copy failed"));
+  const cl = $("#mcp-clear"); if (cl) cl.onclick = async () => { if (!confirm("Clear the call log?")) return; S.mcp = await api("/app/mcp/log/clear", "POST"); renderView(); };
+  wireRequestButtons();
 }
 
 function wireDrafts() {
@@ -591,17 +836,24 @@ async function fileToAttachment(f) {
 async function sendChat(fd) {
   const message = String(fd.get("m") || "").trim();
   const f = fd.get("f");
-  if (!message && !(f && f.size)) return;
+  if (!message && !(f && f.size) || S.chatBusy) return;
   let attachment;
   try { attachment = f && f.size ? await fileToAttachment(f) : undefined; } catch (e) { toast(e.message); return; }
   S.chatHistory = [...(S.chatHistory || []), { role: "user", text: message || `📎 ${f.name}`, at: Date.now() }];
-  S.chatBusy = true; renderView();
+  S.chatBusy = true; S.chatDraft = ""; renderView();
+  let failed = null;
   try {
-    await api("/app/chat", "POST", { message: message || `Read the attached ${f.name}`, lang: S.lang || "th", attachment });
-  } catch (e) { toast(e.message); }
+    const r = await api("/app/chat", "POST", { chatId: S.chatId, message: message || `Read the attached ${f.name}`, lang: S.lang || "th", attachment });
+    rememberChat(r.chatId);
+  } catch (e) { failed = e.message; }
   S.chatBusy = false;
-  const [h, d] = await Promise.all([api("/app/chat"), api("/app/drafts").catch(() => ({ drafts: S.drafts || [] }))]);
-  S.chatHistory = h.history; S.drafts = d.drafts;
+  const [h, d, c, ai] = await Promise.all([
+    S.chatId ? api(`/app/chat?id=${encodeURIComponent(S.chatId)}`).catch(() => ({ history: S.chatHistory })) : Promise.resolve({ history: S.chatHistory }),
+    api("/app/drafts").catch(() => ({ drafts: S.drafts || [] })), api("/app/chats").catch(() => S.chats), api("/app/ai").catch(() => S.ai),
+  ]);
+  // Failed: the message was not saved; keep it on screen with the error under it.
+  S.chatHistory = failed ? [...S.chatHistory, { role: "error", text: failed, at: Date.now() }] : h.history;
+  S.drafts = d.drafts; S.chats = c; S.ai = ai;
   if (S.view === "chat") renderView();
 }
 
@@ -765,11 +1017,18 @@ async function load() {
     if (S.view === "overview") { const [a, d] = await Promise.all([api("/app/account"), api("/app/deals")]); S.account = a; S.deals = d.deals; }
     if (S.view === "deals") S.deals = (await api("/app/deals")).deals;
     if (S.view === "chain") S.chain = await api("/app/chain");
-    if (S.view === "chat") { const [h, d] = await Promise.all([api("/app/chat"), api("/app/drafts")]); S.chatHistory = h.history; S.drafts = d.drafts; }
+    if (S.view === "chat") {
+      if (S.chatId === undefined) { try { S.chatId = localStorage.getItem("awchat"); } catch { S.chatId = null; } }
+      const [c, d, ai, mcp] = await Promise.all([api("/app/chats"), api("/app/drafts"), api("/app/ai").catch(() => null), api("/app/mcp").catch(() => null)]);
+      S.chats = c; S.drafts = d.drafts; S.ai = ai; S.mcp = mcp;
+      if (S.chatId && !c.chats.some((x) => x.id === S.chatId)) rememberChat(null);
+      if (!S.chatBusy) S.chatHistory = S.chatId ? (await api(`/app/chat?id=${encodeURIComponent(S.chatId)}`)).history : (S.chatHistory || []).filter(() => !S.chatId);
+    }
     if (S.view === "activity") { const [a, t] = await Promise.all([api("/app/activity"), api("/app/topup").catch(() => null)]); S.activity = a; S.topup = t; }
-    if (S.view === "contacts" || S.view === "groups") S.friends = (await api("/app/friends")).friends;
+    if (S.view === "contacts" || S.view === "groups") { const f = await api("/app/friends"); S.friends = f.friends; S.friendsMe = f.me; }
     if (S.view === "links") S.links = (await api("/app/invite-links")).links;
-    if (S.view === "settings") { const [ai, mcp] = await Promise.all([api("/app/ai").catch(() => null), api("/app/mcp").catch(() => null)]); S.ai = ai; S.mcp = mcp; }
+    if (S.view === "ai") S.ai = await api("/app/ai").catch(() => null);
+    if (S.view === "mcp") S.mcp = await api("/app/mcp");
     if (S.view === "groups") S.groups = await api("/app/groups");
   } catch (e) { toast(e.message); }
   if (S.info.stage === "ready") renderApp(); else render();

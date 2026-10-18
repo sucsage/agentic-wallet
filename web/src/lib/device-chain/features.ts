@@ -11,7 +11,7 @@ import { TopupError, confirmTopup, startTopup, topupHistory, topupLimit } from "
 import { dealTerms } from "../bank/deals";
 import { db } from "../db";
 import { LinkAccessError, issueOtp, resetWithCode } from "../link-access";
-import { SocialError, acceptFriend, answerGroupInvite, createGroup, listFriends, listGroups, myGroupInvites, pendingVotes, removeFriend, requestFriend } from "../social";
+import { SocialError, acceptFriend, answerGroupInvite, createGroup, listFriends, listGroups, myGroupInvites, pendingVotes, removeFriend, requestFriend, searchCustomers, setUsername } from "../social";
 import { readFileDeals } from "../state";
 import { type DeviceRow, DeviceError, deviceWallet } from ".";
 
@@ -41,13 +41,30 @@ export async function deviceFriends(device: DeviceRow) {
   return friends.map((f) => ({ friendshipId: f.friendshipId, userId: f.userId, name: f.name, username: f.username, status: f.status, direction: f.direction, hasWallet: Boolean(f.wallet), payee: f.allowlisted }));
 }
 
-export async function friendAction(device: DeviceRow, input: { op: "request"; username: string } | { op: "accept" | "remove"; friendshipId: string }) {
+/** The friends list with the user's own username (how friends find them; w_… until they choose one). */
+export async function deviceFriendsView(device: DeviceRow) {
+  const [friends, me] = await Promise.all([deviceFriends(device), db.bankCustomer.findUnique({ where: { userId: device.userId }, select: { username: true } })]);
+  return { friends, me: me ? { username: me.username, chosen: !me.username.startsWith("w_") } : null };
+}
+
+type FriendInput =
+  | { op: "request"; username: string }
+  | { op: "accept" | "remove"; friendshipId: string }
+  | { op: "search"; q: string }
+  | { op: "username"; username: string };
+
+export async function friendAction(device: DeviceRow, input: FriendInput) {
+  if (input.op === "search") {
+    const c = await customer(device);
+    return { results: await social(searchCustomers(device.userId, c.currency, input.q)) };
+  }
   if (input.op === "request") {
     const c = await customer(device);
-    await social(requestFriend(device.userId, c.currency, input.username.trim().replace(/^@/, "")));
-  } else if (input.op === "accept") await social(acceptFriend(device.userId, input.friendshipId));
+    await social(requestFriend(device.userId, c.currency, input.username.trim()));
+  } else if (input.op === "username") await social(setUsername(device.userId, input.username));
+  else if (input.op === "accept") await social(acceptFriend(device.userId, input.friendshipId));
   else await social(removeFriend(device.userId, input.friendshipId));
-  return { friends: await deviceFriends(device) };
+  return deviceFriendsView(device);
 }
 
 // ------------------------------------------------------------------------------------------

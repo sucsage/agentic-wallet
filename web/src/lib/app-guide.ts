@@ -107,7 +107,8 @@ Witnesses (optional): each side can add one under "Witnesses"; they appear on th
 - Click a deal to open it. AI previews and drafts open in place: Confirm or Discard there.
 - Deals you were hired for through someone's private link are listed too ("via link") and open on that link's page.`,
   contacts: `Contacts:
-- Add a contact: Contacts → "Add a contact" → search by name or email → they accept.
+- Add a contact: Contacts → "Add a contact" → type part of their name or username, or their exact email → Send request → they accept.
+- Your username: new accounts get an automatic one (w_…) that nobody can guess. Choose your own under "My code" (Contacts) or "My username" (Friends in the desktop app): 3-20 letters, digits or _. Friends can also find you by name or email.
 - "Add to allow transfer list": lets your wallet pay them (needed before a deal with them or Send money).
 - Nicknames: tell the AI "พี่เอ is Seller One" and it remembers.
 - "Send money": 100 to 25,000 baht per person.
@@ -174,12 +175,15 @@ Witnesses (optional): each side can add one under "Witnesses"; they appear on th
 - When the other side of a deal also uses the app, the same event sits in both chains: "My chain" shows "✓ other party".
 1. Get the app for your computer from the team (one file; the first time, Windows asks "More info → Run anyway", macOS: right-click → Open). It opens in your browser.
 2. In the app: "Sign in" with your email and password, or "Create account" (then "Verify in my browser" with the demo digital ID, then "Create my wallet"). Name the computer and choose an app passphrase (it encrypts the computer's key; nobody can reset it). Accounts with a second factor: "Link with code" (website Profile → Desktop app → "Make a link code").
-3. Money: top up (PromptPay QR or card through Stripe test mode in your browser, your linked card, or a demo counter slip). Friends: add by username, accept requests, Make payee. Private links: copy, new one-time code, reset a lost password, new link. Groups: create, join, vote on group payments (each vote is a signed block).
+3. Money: top up (PromptPay QR or card through Stripe test mode in your browser, your linked card, or a demo counter slip). Friends: search by name, username or email, choose your own username, accept requests, Make payee. Private links: copy, new one-time code, reset a lost password, new link. Groups: create, join, vote on group payments (each vote is a signed block).
 4. Use the app for everyday work, each move a block you sign: AI chat (draft deals, then "Confirm and sign" under the chat), Deals (Deliver with a file, note or parcel; Approve, Dispute, Accept, Refund), Contacts (Make payee / Stop paying), Activity (money in and out). The website is still where people without an account open their private links.
 5. Profile → "My desktop app signs deal moves": moves pressed on the website then wait for your signature in the app ("Sign" or "Reject").
 6. Settings → "Save key backup" and keep the file: on a new computer, "Restore from backup" with that file and your passphrase brings the chain back (the chain itself is backed up to the server encrypted; the server cannot read it). Lost computer: Profile → Desktop app → Remove.
 - AI allowance: the AI has a token budget per day and per week for each person (Profile → Preferences and the app's Settings → AI show how much is left and when it resets). A person's own AI key in the desktop app is not limited.
-- AI in the app: replies are formatted (tables, lists). Settings → AI: your own instructions for the AI (also used on the website; they never override the rules) and, optionally, your own Anthropic or OpenRouter key and model (kept sealed on your computer). Settings → "Connect other AI agents": an MCP config for Claude Desktop or Cursor; those agents can read and draft, and every payment they ask for waits under "Requests from AI agents" for your Sign.
+- AI chat in the app: the website's layout, with up to 20 saved chats kept on the computer. Each reply shows its tokens, model calls and tools; the side panel shows today's and this week's token allowance, this chat's tokens, the tools used, and calls from outside agents (MCP). Deal previews appear inside the reply with "Confirm and sign".
+- AI settings (app menu): your own instructions for the AI (also used on the website; they never override the rules) and, optionally, your own Anthropic or OpenRouter key and model (kept sealed on your computer).
+- MCP server (app menu): turn the server on or off; allow or block reading, asking the wallet's AI, and requests for your signature; "Add" connects Claude Desktop or Cursor (it edits their config file and keeps a backup); the command for Claude Code and the JSON for other clients; which clients called, a call log with tokens, and the tool list. Every payment an agent asks for waits under "Requests from AI agents" for your Sign.
+- Deals in the app and on the website: the Files filter shows deals that ask for documents, ask for a PDF, wait for a file from you, or have a file delivered to you to review.
 - "Verify now" checks every block, that your latest block matches the server's countersigned one, and that it is in the blockchain anchor.`,
 };
 
