@@ -79,7 +79,7 @@ export function DesktopAppCard() {
         ) : (
           <span>Download: ask the team for the build for your computer (desktop/ in the repository builds all of them).</span>
         )}
-        <small>Test mode demo · the app is unsigned, so Windows and macOS ask once before opening it. It updates itself (Settings in the app).</small>
+        <small>Test mode demo · the app is unsigned, so Windows and macOS ask once before opening it. It opens in its own window and tells you when a new version is out.</small>
       </div>
 
       {s && active.length > 0 && (
