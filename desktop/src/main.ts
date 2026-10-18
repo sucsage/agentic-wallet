@@ -2,12 +2,15 @@ import { VERSION } from "./version";
 import { spawn as spawnProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 import { ApiError } from "./api";
 import { wallet } from "./core";
 import { MCP_TOOLS, runMcp } from "./mcp";
 import { chatResponse } from "./chat-flow";
-import { type ServerEntry, parseSource, serverTools, stopServer } from "./mcp-host";
+import { type ServerEntry, parseSource, safeName, serverTools, stopServer } from "./mcp-host";
+import { RECOMMENDED, type Suggestion, WEB_SERVER, searchRegistry } from "./web-tools";
 import { checkUpdate, cleanOldExecutable, installUpdate } from "./updater";
 import { dataDir, sessionPath } from "./paths";
 import indexHtml from "./ui/index.html" with { type: "text" };
@@ -211,7 +214,8 @@ async function route(req: Request, path: string, port: number): Promise<Response
     const b = await body<{ source: string; name?: string }>(req);
     const found = parseSource(String(b.source ?? ""), b.name ? String(b.name) : undefined);
     const list = wallet.mcpServers();
-    for (const [name, entry] of Object.entries(found)) list[name] = { ...entry, enabled: true, ask: true };
+    // "web" is the app's own web tools (mcp__web__…).
+    for (const [name, entry] of Object.entries(found)) list[name === WEB_SERVER ? "web_2" : name] = { ...entry, enabled: true, ask: true };
     wallet.saveMcpServers(list);
     return json(await mcpServersView());
   }
@@ -224,12 +228,50 @@ async function route(req: Request, path: string, port: number): Promise<Response
     if (typeof b.ask === "boolean") cur.ask = b.ask;
     if (typeof b.entry === "string") {
       const e = JSON.parse(b.entry) as ServerEntry;
+      // The page shows saved values as •••: keep those as they were.
+      for (const k of ["env", "headers"] as const) {
+        const v = e[k];
+        if (v) for (const [n, x] of Object.entries(v)) if (x === "•••") v[n] = cur[k]?.[n] ?? "";
+      }
       list[String(b.name)] = { ...e, enabled: cur.enabled, ask: cur.ask, source: cur.source };
     }
     stopServer(String(b.name));
     wallet.saveMcpServers(list);
     return json(await mcpServersView());
   }
+  // Finding servers: the recommended ones and a search of the official MCP Registry; one click adds one.
+  if (m === "GET" && path === "/app/mcp/suggest") {
+    const q = String(new URL(req.url).searchParams.get("q") ?? "");
+    const installed = wallet.mcpServers();
+    const mark = (s: Suggestion) => ({ ...s, installed: Object.values(installed).some((c) => JSON.stringify(c.url ?? c.args) === JSON.stringify(s.entry.url ?? expand(s.entry).args)) });
+    return json({ recommended: RECOMMENDED.map(mark), results: q ? (await searchRegistry(q)).map(mark) : [] });
+  }
+  if (m === "POST" && path === "/app/mcp/servers/install") {
+    const b = await body<{ id?: string; suggestion?: Suggestion }>(req);
+    const s = RECOMMENDED.find((x) => x.id === b.id) ?? b.suggestion;
+    if (!s || !s.entry) return json({ error: "Choose a server" }, 400);
+    const e = s.entry;
+    // Only what a suggestion can be: a remote https URL, or an npm package run with the app's Bun.
+    const remote = typeof e.url === "string" && /^https:\/\/[^\s{}]+$/.test(e.url);
+    const npm = e.command === "bun" && Array.isArray(e.args) && e.args[0] === "x" && /^(@[\w.-]+\/)?[\w.-]+(@[\w.^~-]+)?$/.test(String(e.args[1] ?? ""));
+    if (!remote && !npm) return json({ error: "That server cannot be added this way: paste its config instead" }, 400);
+    const list = wallet.mcpServers();
+    let name = safeName(s.name || "server");
+    for (let i = 2; list[name] || name === WEB_SERVER; i++) name = `${safeName(s.name || "server").slice(0, 36)}_${i}`;
+    const entry: ServerEntry = remote ? { url: e.url, ...(e.headers ? { headers: Object.fromEntries(Object.entries(e.headers).map(([k, v]) => [String(k), String(v)])) } : {}) } : { ...expand(e), ...(e.env ? { env: Object.fromEntries(Object.entries(e.env).map(([k, v]) => [String(k), String(v)])) } : {}) };
+    // A server that still needs a key or a setting starts turned off: the user fills it in first.
+    list[name] = { ...entry, enabled: !(s.needs && s.needs.length), ask: true, source: s.site || s.id };
+    wallet.saveMcpServers(list);
+    return json(await mcpServersView());
+  }
+  if (m === "POST" && path === "/app/window") {
+    const op = String((await body<{ op: string }>(req)).op ?? "");
+    if (!windowControl || !["minimize", "maximize", "close"].includes(op)) return json({ error: "No window to control" }, 400);
+    windowControl(op as "minimize" | "maximize" | "close");
+    return json({ ok: true });
+  }
+  if (m === "GET" && path === "/app/web-tools") return json(wallet.webTools());
+  if (m === "POST" && path === "/app/web-tools") return json(wallet.setWebTools(await body(req)));
   if (m === "POST" && path === "/app/mcp/servers/remove") {
     const name = String((await body<{ name: string }>(req)).name ?? "");
     const list = wallet.mcpServers();
@@ -256,12 +298,18 @@ function mcpEntry() {
 }
 
 /** The user's MCP servers with their status and tools (starting the enabled ones). */
+/** {documents} in a suggestion's arguments: this computer's Documents folder. */
+function expand(e: ServerEntry): ServerEntry {
+  return { command: e.command, args: (e.args ?? []).map((a) => String(a).replace("{documents}", join(homedir(), "Documents"))) };
+}
+
 async function mcpServersView() {
   const list = wallet.mcpServers();
   const servers = await Promise.all(
     Object.entries(list).map(async ([name, cfg]) => {
       const status = cfg.enabled ? await serverTools(name, cfg) : { tools: [], error: null, log: "" };
-      return { name, ...cfg, env: cfg.env ? Object.fromEntries(Object.keys(cfg.env).map((k) => [k, "•••"])) : undefined, tools: status.tools.map((t) => ({ name: t.name, description: (t.description ?? "").slice(0, 200) })), error: status.error, log: status.log };
+      const mask = (v?: Record<string, string>) => (v ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, x ? "•••" : ""])) : undefined);
+      return { name, ...cfg, env: mask(cfg.env), headers: mask(cfg.headers), tools: status.tools.map((t) => ({ name: t.name, description: (t.description ?? "").slice(0, 200) })), error: status.error, log: status.log };
     }),
   );
   return { servers };
@@ -474,6 +522,12 @@ export async function startApp(opts: { browser: boolean }): Promise<{ url: strin
 }
 
 export { runMcp };
+
+/** The windowed build's controls for the page's own title bar (minimize, maximize, close). */
+let windowControl: ((op: "minimize" | "maximize" | "close") => void) | null = null;
+export function setWindowControl(fn: typeof windowControl) {
+  windowControl = fn;
+}
 
 // Run as the program (the compiled app, or `bun run src/main.ts`); imported by the windowed build it waits to be started.
 if (import.meta.main) main();

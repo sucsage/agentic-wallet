@@ -1,4 +1,4 @@
-# MilestonePay desktop: installers for macOS, Windows and Linux, published as a GitHub Release.
+# MilestonePay desktop (the app in its own window): installers for macOS, Windows and Linux, published as a GitHub Release.
 # Runs when a tag desktop-v<version> is pushed (the version must match desktop/package.json).
 # The app's updater and the website's /download page read the release's latest.json.
 name: Desktop release
@@ -16,49 +16,7 @@ defaults:
     shell: bash
 
 jobs:
-  macos:
-    runs-on: macos-14
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-        with: { bun-version: "1.4.3" }
-      - run: bun install --frozen-lockfile
-      # The block format is shared with the website (web/src/lib/device-chain/format.ts): give it viem.
-      - run: mkdir -p ../web/node_modules && cp -R node_modules/. ../web/node_modules/
-      - run: bun test
-      - run: bun run build mac-arm64 mac-x64
-      - name: Apps and disk images
-        run: |
-          V=${GITHUB_REF_NAME#desktop-v}
-          bash packaging/macos/make-dmg.sh arm64 "$V"
-          bash packaging/macos/make-dmg.sh x64 "$V"
-      - uses: actions/upload-artifact@v4
-        with: { name: macos, path: "desktop/dist/*", if-no-files-found: error }
-
-  windows:
-    runs-on: windows-2022
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-        with: { bun-version: "1.4.3" }
-      - run: bun install --frozen-lockfile
-      # The block format is shared with the website (web/src/lib/device-chain/format.ts): give it viem.
-      - run: mkdir -p ../web/node_modules && cp -R node_modules/. ../web/node_modules/
-      - run: bun run build windows-x64
-      - name: Installer (Inno Setup)
-        env:
-          # Git Bash would turn /DAppVersion=... into a file path.
-          MSYS_NO_PATHCONV: "1"
-          MSYS2_ARG_CONV_EXCL: "*"
-        run: |
-          V=${GITHUB_REF_NAME#desktop-v}
-          ISCC="/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
-          if [ ! -f "$ISCC" ]; then choco install innosetup -y --no-progress; fi
-          "$ISCC" "/DAppVersion=$V" "/DSourceExe=..\\..\\dist\\AgenticWallet-windows-x64.exe" packaging/windows/installer.iss
-      - uses: actions/upload-artifact@v4
-        with: { name: windows, path: "desktop/dist/*", if-no-files-found: error }
-
-  linux:
+  test:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -68,18 +26,12 @@ jobs:
       # The block format is shared with the website (web/src/lib/device-chain/format.ts): give it viem.
       - run: mkdir -p ../web/node_modules && cp -R node_modules/. ../web/node_modules/
       - run: bun test
-      - run: bun run build linux-x64 linux-arm64
-      - name: Debian packages
-        run: |
-          V=${GITHUB_REF_NAME#desktop-v}
-          bash packaging/linux/make-deb.sh x64 "$V"
-          bash packaging/linux/make-deb.sh arm64 "$V"
-      - uses: actions/upload-artifact@v4
-        with: { name: linux, path: "desktop/dist/*", if-no-files-found: error }
 
-  # The same app in its own window (Electrobun, desktop/electrobun). Built on each platform; a
-  # platform that fails is left out of the release instead of stopping it.
+  # The app in its own window (Electrobun, desktop/electrobun): the only build since 0.5.0 (the
+  # browser build is gone). Built on each platform; a platform that fails is left out of the release
+  # instead of stopping it.
   window:
+    needs: [test]
     strategy:
       fail-fast: false
       matrix:
@@ -121,8 +73,8 @@ jobs:
         with: { name: "window-${{ matrix.name }}", path: "desktop/electrobun/out/*", if-no-files-found: error }
 
   release:
-    needs: [macos, windows, linux, window]
-    if: ${{ always() && needs.macos.result == 'success' && needs.windows.result == 'success' && needs.linux.result == 'success' }}
+    needs: [test, window]
+    if: ${{ always() && needs.test.result == 'success' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: write

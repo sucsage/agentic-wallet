@@ -601,6 +601,19 @@ class Wallet {
     store.setMeta("mcpServers", JSON.stringify(list));
   }
 
+  /** The app's own web tools (search, read a page) for the AI chat: on by default, run without asking. */
+  webTools(): { enabled: boolean; ask: boolean } {
+    return { enabled: true, ask: false, ...JSON.parse(store.getMeta("webTools") ?? "{}") };
+  }
+
+  setWebTools(v: { enabled?: boolean; ask?: boolean }) {
+    const next = { ...this.webTools() };
+    if (typeof v.enabled === "boolean") next.enabled = v.enabled;
+    if (typeof v.ask === "boolean") next.ask = v.ask;
+    store.setMeta("webTools", JSON.stringify(next));
+    return next;
+  }
+
   // ----------------------------------------------------------------------------------------
   // Requests from outside AI agents (MCP): queued here until the user signs or rejects them
   // ----------------------------------------------------------------------------------------

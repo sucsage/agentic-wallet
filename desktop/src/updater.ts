@@ -19,6 +19,8 @@ export type Manifest = {
   notes: string;
   page: string;
   assets: Record<string, { file: string; sha256: string; size: number }>;
+  /** The windowed app's installers (since 0.4.0). */
+  windowed?: Record<string, { file: string; sha256: string; size: number }>;
 };
 
 const MANIFEST_URL = `https://github.com/${RELEASE_REPO}/releases/latest/download/latest.json`;
@@ -86,8 +88,10 @@ export async function checkUpdate(force = false) {
     if (!m) return { ...base, latest: null, available: false, canInstall: false, reason: "No release published yet", page: `https://github.com/${RELEASE_REPO}/releases` };
     const available = newer(m.version, VERSION);
     const asset = m.assets[platformKey()];
+    const win = m.windowed?.[platformKey()];
+    const download = win && /^[\w.-]+$/.test(win.file) ? `https://github.com/${RELEASE_REPO}/releases/download/${encodeURIComponent(m.tag)}/${win.file}` : undefined;
     const reason = process.env.AW_SHELL === "electrobun"
-      ? "This is the windowed app: download the new version from the release page and install it over this one (your data stays)"
+      ? "Download the new version and install it over this one (quit MilestonePay first): your wallet data stays"
       : !compiled()
       ? "Running from source: update with git pull"
       : !asset
@@ -95,7 +99,7 @@ export async function checkUpdate(force = false) {
         : !writable()
           ? "The app is installed where it cannot write (e.g. the Linux .deb in /opt): install the new version from the release page"
           : null;
-    return { ...base, latest: m.version, notes: m.notes, date: m.date, page: m.page, available, canInstall: available && reason === null, reason };
+    return { ...base, latest: m.version, notes: m.notes, date: m.date, page: m.page, download, available, canInstall: available && reason === null, reason };
   } catch (e) {
     return { ...base, latest: null, available: false, canInstall: false, reason: `Could not check for updates: ${(e as Error).message}`, page: `https://github.com/${RELEASE_REPO}/releases` };
   }
