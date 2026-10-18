@@ -3,88 +3,110 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Agentic Wallet Desktop</title>
+<title>MilestonePay Desktop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap">
 <style>
+/* Same look as the MilestonePay website (web/src/components/mockup.css, v08 theme): dark only. */
 :root {
-  --bg: #f6f7f9; --panel: #ffffff; --ink: #14171c; --muted: #5d6673; --line: #e3e6eb;
-  --accent: #2f6df6; --accent-ink: #ffffff; --ok: #12805c; --ok-bg: #e6f5ee; --bad: #c0392b; --bad-bg: #fbeceb;
-  --warn: #9a6400; --warn-bg: #fff4dc; --chip: #eef1f5; --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
-@media (prefers-color-scheme: dark) {
-  :root { --bg: #0f1216; --panel: #171b21; --ink: #e8ebef; --muted: #98a1ad; --line: #272d36; --accent: #5b8cff; --chip: #222831;
-    --ok: #4cc79a; --ok-bg: #12291f; --bad: #ff7a6b; --bad-bg: #2d1715; --warn: #f0b545; --warn-bg: #2b2210; }
+  --bg: #101010; --side: #050505; --panel: #171717; --panel-2: #111111; --ink: #f5f6fa; --muted: #9da9ba; --dim: #8e8e93;
+  --line: #343434; --line-2: #292929; --field: #0c0c0c; --field-line: #333333; --chip: #202020;
+  --accent: #927cff; --accent-2: #8b69f6; --blue: #559bff; --user: #1a2635;
+  --ok: #89ef82; --ok-bg: #12230f; --bad: #ff656e; --bad-bg: #2a1214; --warn: #f3ed21; --warn-bg: #24220c;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color-scheme: dark;
 }
 * { box-sizing: border-box; }
-body { margin: 0; font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Thai", sans-serif; background: var(--bg); color: var(--ink); }
+html, body { background: var(--bg); }
+body { margin: 0; font: 14px/1.5 Inter, "IBM Plex Sans Thai", system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--ink); -webkit-font-smoothing: antialiased; }
 button, input, textarea, select { font: inherit; color: inherit; }
-button { cursor: pointer; border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 7px 12px; }
-button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
-button.danger { color: var(--bad); }
-button:disabled { opacity: .55; cursor: default; }
-input, textarea, select { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--panel); }
-label { display: block; font-weight: 600; margin: 12px 0 4px; }
-.hint { color: var(--muted); font-size: 12.5px; }
-.mono { font-family: var(--mono); font-size: 12.5px; word-break: break-all; }
-.center { min-height: 100vh; display: grid; place-items: center; padding: 16px; }
-.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
-.narrow { width: min(460px, 100%); }
-.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px; }
-.logo { width: 30px; height: 30px; border-radius: 8px; background: linear-gradient(135deg, var(--accent), #8a5cf6); display: grid; place-items: center; color: #fff; font-weight: 800; }
-.tabs { display: flex; gap: 6px; margin: 14px 0 4px; }
-.tabs button.on { background: var(--chip); font-weight: 600; }
-.err { background: var(--bad-bg); color: var(--bad); border-radius: 8px; padding: 8px 10px; margin-top: 12px; display: none; }
-.ok-box { background: var(--ok-bg); color: var(--ok); border-radius: 8px; padding: 8px 10px; }
-.layout { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
-nav { border-right: 1px solid var(--line); background: var(--panel); padding: 16px 12px; display: flex; flex-direction: column; gap: 4px; }
-nav .brand { margin: 0 6px 16px; }
-nav button { border: 0; text-align: left; background: transparent; padding: 9px 10px; }
-nav button.on { background: var(--chip); font-weight: 600; }
-nav .foot { margin-top: auto; padding: 8px; }
-main { padding: 22px; max-width: 1050px; width: 100%; }
-h1 { font-size: 20px; margin: 0 0 14px; }
+button { cursor: pointer; border: 1px solid var(--field-line); background: transparent; color: var(--ink); border-radius: 8px; padding: 8px 14px; font-size: 13px; font-weight: 600; transition: filter .15s, background .15s, border-color .15s; white-space: nowrap; }
+button:hover { border-color: #555; background: #1a1a1a; }
+button.primary { background: #fff; color: #111; border-color: #fff; }
+button.primary:hover { filter: brightness(.88); background: #fff; }
+button.danger { color: var(--bad); border-color: #5a2a2e; }
+button.danger:hover { border-color: var(--bad); background: transparent; }
+button:disabled { opacity: .5; cursor: default; filter: none; }
+input, textarea, select { width: 100%; border: 1px solid var(--field-line); border-radius: 10px; padding: 9px 12px; background: var(--field); font-size: 13px; outline: none; }
+input:focus, textarea:focus, select:focus { border-color: #6657a9; box-shadow: 0 0 0 3px #927cff22; }
+input[type=checkbox] { accent-color: var(--accent); }
+label { display: block; font-weight: 500; font-size: 12px; color: #c9ced6; margin: 12px 0 5px; }
+a { color: var(--blue); }
+.hint { color: var(--muted); font-size: 12px; }
+.mono { font-family: var(--mono); font-size: 12px; word-break: break-all; }
+.center { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; background: #000; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 17px; padding: 18px; }
+.narrow { width: min(420px, 100%); background: var(--panel-2); border-color: var(--line-2); border-radius: 20px; padding: 24px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px; letter-spacing: -.01em; }
+.mark { width: 0; height: 0; border-left: 9px solid transparent; border-right: 9px solid transparent; border-bottom: 17px solid var(--accent); filter: drop-shadow(0 2px 2px #5d3ee6); flex: none; }
+.tag { font-size: 10px; font-weight: 600; color: #c9b9ff; border: 1px solid #3b3166; background: #1a1530; border-radius: 99px; padding: 2px 8px; }
+.tabs { display: flex; gap: 4px; margin: 16px 0 4px; padding: 4px; background: #0a0a0a; border: 1px solid var(--line-2); border-radius: 12px; }
+.tabs button { flex: 1; border: 0; border-radius: 9px; padding: 8px 6px; font-weight: 500; color: var(--dim); }
+.tabs button.on { background: #262626; color: #fff; }
+.err { background: var(--bad-bg); color: var(--bad); border: 1px solid #5a2a2e; border-radius: 10px; padding: 8px 10px; margin-top: 12px; display: none; font-size: 13px; }
+.ok-box { background: var(--ok-bg); color: var(--ok); border: 1px solid #2c4a27; border-radius: 10px; padding: 8px 10px; font-size: 13px; }
+.layout { display: grid; grid-template-columns: 196px 1fr; min-height: 100vh; }
+nav { background: var(--side); padding: 14px 8px 10px; display: flex; flex-direction: column; gap: 2px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+nav .brand { margin: 2px 8px 14px; font-size: 15px; }
+nav .group { color: #777; font-size: 9px; letter-spacing: .08em; text-transform: uppercase; margin: 12px 8px 5px; }
+nav button { border: 0; border-left: 2px solid transparent; text-align: left; background: transparent; height: 32px; padding: 0 9px; border-radius: 8px; color: var(--dim); font-size: 12px; font-weight: 500; }
+nav button:hover { background: #191919; color: #e6e6e8; }
+nav button.on { background: #191919; color: #e6e6e8; border-left-color: var(--accent); font-weight: 700; padding-left: 7px; }
+nav .foot { margin-top: auto; padding: 6px; border: 1px solid var(--line-2); border-radius: 9px; display: flex; align-items: center; gap: 8px; }
+nav .avatar { width: 24px; height: 24px; border-radius: 50%; background: #fff; color: #111; display: grid; place-items: center; font-size: 9px; font-weight: 700; flex: none; }
+nav .who { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; flex: 1; }
+nav .who b { font-size: 11px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+nav .who small { font-size: 10px; color: #85858a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+nav .foot button { height: 26px; padding: 0 8px; font-size: 11px; border: 1px solid var(--line-2); border-left-width: 1px; }
+main { padding: 26px 28px 50px; max-width: 1180px; width: 100%; }
+h1 { font-size: 24px; letter-spacing: -.02em; margin: 0 0 16px; }
 h2 { font-size: 15px; margin: 0 0 10px; }
-.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 14px; }
-.stat .v { font-size: 22px; font-weight: 700; }
-.chip { display: inline-block; padding: 2px 8px; border-radius: 999px; background: var(--chip); font-size: 12px; }
-.chip.ok { background: var(--ok-bg); color: var(--ok); } .chip.bad { background: var(--bad-bg); color: var(--bad); } .chip.warn { background: var(--warn-bg); color: var(--warn); }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 13px; margin-bottom: 14px; }
+.stat .v { font-size: 26px; font-weight: 700; letter-spacing: -.02em; }
+.chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #383838; border-radius: 20px; padding: 3px 10px; color: #c6d0de; font-size: 11px; white-space: nowrap; }
+.chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--blue); }
+.chip.ok { color: var(--ok); } .chip.ok::before { background: var(--ok); }
+.chip.bad { color: var(--bad); } .chip.bad::before { background: var(--bad); }
+.chip.warn { color: var(--warn); } .chip.warn::before { background: var(--warn); }
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .space { justify-content: space-between; }
 .deal { margin-bottom: 12px; }
-.ms { border-top: 1px solid var(--line); padding: 10px 0; display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
+.ms { border-top: 1px solid var(--line-2); padding: 11px 0; display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
 table { width: 100%; border-collapse: collapse; }
-th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
-th { color: var(--muted); font-weight: 600; font-size: 12.5px; }
-.banner { background: var(--warn-bg); color: var(--warn); border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; }
-.banner .req { background: var(--panel); color: var(--ink); border-radius: 10px; padding: 10px; margin-top: 8px; }
-.check { display: grid; grid-template-columns: 22px 1fr; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
-dialog { border: 1px solid var(--line); border-radius: 14px; background: var(--panel); color: var(--ink); width: min(440px, 92vw); }
-dialog::backdrop { background: rgba(0,0,0,.35); }
+th, td { text-align: left; padding: 9px 6px; border-bottom: 1px solid var(--line-2); vertical-align: top; font-size: 13px; }
+th { color: var(--muted); font-weight: 500; font-size: 11px; }
+.banner { background: #1a1530; border: 1px solid #3b3166; color: #d9cfff; border-radius: 17px; padding: 14px 16px; margin-bottom: 14px; }
+.banner .req { background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-top: 8px; }
+.check { display: grid; grid-template-columns: 24px 1fr; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--line-2); }
+dialog { border: 1px solid var(--line); border-radius: 20px; background: var(--panel-2); color: var(--ink); width: min(460px, 92vw); padding: 22px; }
+dialog::backdrop { background: rgba(0,0,0,.6); backdrop-filter: blur(2px); }
+.demo { font-size: 11px; color: #c9b9ff; margin-top: 14px; text-align: center; }
 .msgs { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
-.msg { max-width: 82%; padding: 10px 12px; border-radius: 12px; white-space: pre-wrap; word-break: break-word; }
-.msg.user { align-self: flex-end; background: var(--accent); color: var(--accent-ink); }
-.msg.assistant { align-self: flex-start; background: var(--panel); border: 1px solid var(--line); }
-.msg .tools { margin-top: 6px; display: flex; gap: 4px; flex-wrap: wrap; }
-.msg.assistant { white-space: normal; }
+.msg { max-width: 78%; padding: 12px 14px; border-radius: 17px; white-space: pre-wrap; word-break: break-word; font-size: 13.5px; }
+.msg.user { align-self: flex-end; background: var(--user); border: 1px solid #253447; }
+.msg.assistant { align-self: flex-start; background: var(--panel); border: 1px solid var(--line); white-space: normal; color: #e3e6ed; }
+.msg .tools { margin-top: 8px; display: flex; gap: 4px; flex-wrap: wrap; }
 .md > :first-child { margin-top: 0; } .md > :last-child { margin-bottom: 0; }
 .md p, .md ul, .md ol, .md pre, .md blockquote, .md table { margin: 6px 0; }
-.md ul, .md ol { padding-left: 20px; } .md h3, .md h4, .md h5, .md h6 { margin: 10px 0 4px; font-size: 14.5px; }
-.md code { font-family: var(--mono); font-size: 12.5px; background: var(--chip); padding: 1px 5px; border-radius: 5px; }
-.md pre { background: var(--chip); padding: 10px; border-radius: 8px; overflow-x: auto; } .md pre code { background: none; padding: 0; }
+.md ul, .md ol { padding-left: 20px; } .md h3, .md h4, .md h5, .md h6 { margin: 10px 0 4px; font-size: 14px; }
+.md code { font-family: var(--mono); font-size: 12px; background: #262626; padding: 1px 5px; border-radius: 5px; }
+.md pre { background: #0c0c0c; border: 1px solid var(--line-2); padding: 10px; border-radius: 10px; overflow-x: auto; } .md pre code { background: none; padding: 0; }
 .md blockquote { border-left: 3px solid var(--line); padding-left: 10px; color: var(--muted); }
-.md table { border-collapse: collapse; font-size: 13px; display: block; overflow-x: auto; } .md th, .md td { border: 1px solid var(--line); padding: 4px 8px; }
-.md a { color: var(--accent); } .md hr { border: 0; border-top: 1px solid var(--line); }
+.md table { border-collapse: collapse; font-size: 12.5px; display: block; overflow-x: auto; } .md th, .md td { border: 1px solid var(--line); padding: 5px 9px; }
+.md a { color: var(--blue); } .md hr { border: 0; border-top: 1px solid var(--line); }
 .composer { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: end; position: sticky; bottom: 0; background: var(--bg); padding: 10px 0; }
-.composer textarea { resize: vertical; min-height: 44px; max-height: 200px; }
-.issue { font-size: 12.5px; padding: 4px 8px; border-radius: 8px; margin-top: 4px; }
+.composer textarea { resize: vertical; min-height: 46px; max-height: 200px; border-radius: 13px; }
+.issue { font-size: 12px; padding: 5px 9px; border-radius: 9px; margin-top: 5px; }
 .issue.block { background: var(--bad-bg); color: var(--bad); } .issue.warn { background: var(--warn-bg); color: var(--warn); }
 .in { color: var(--ok); } .out { color: var(--bad); }
-.demo { font-size: 11.5px; color: var(--muted); margin-top: 12px; }
 @media (max-width: 760px) {
   .layout { grid-template-columns: 1fr; }
-  nav { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 8px; }
-  nav button { white-space: nowrap; flex: none; }
-  nav .brand, nav .foot { display: none; }
-  main { padding: 16px; }
+  nav { flex-direction: row; overflow-x: auto; height: auto; position: static; padding: 8px; gap: 4px; }
+  nav .brand, nav .group, nav .foot { display: none; }
+  nav button { white-space: nowrap; flex: none; border-left: 0; }
+  nav button.on { border-left: 0; padding-left: 9px; }
+  main { padding: 16px 14px 36px; }
+  .msg { max-width: 94%; }
 }
 </style>
 </head>
@@ -118,7 +140,7 @@ const S = { lang: (() => { try { return localStorage.getItem("awlang") || "th"; 
 function showErr(el, e) { el.textContent = e.message || String(e); el.style.display = "block"; }
 
 async function boot() {
-  if (!TOKEN) { $("#root").innerHTML = `<div class="center"><div class="card narrow"><div class="brand"><div class="logo">A</div>Agentic Wallet</div><p>Open the app from the link it printed in its window (it carries a private token).</p></div></div>`; return; }
+  if (!TOKEN) { $("#root").innerHTML = `<div class="center"><div class="card narrow"><div class="brand"><span class="mark"></span>MilestonePay</div><p>Open the app from the link it printed in its window (it carries a private token).</p></div></div>`; return; }
   S.info = await api("/app/state");
   render();
 }
@@ -141,17 +163,17 @@ function renderSetup(tab = "login") {
   const computer = `<label>Name of this computer</label><input name="deviceName" value="${esc(S.info.hostname)}" />`;
   const body = {
     login: `${serverField}<label>Email</label><input name="email" type="email" autocomplete="username" required /><label>Password</label><input name="password" type="password" autocomplete="current-password" required />${computer}${pass}`,
-    signup: `${serverField}<label>Your name</label><input name="name" autocomplete="name" required minlength="2" /><label>Email</label><input name="email" type="email" autocomplete="username" required /><label>Account password</label><input name="password" type="password" minlength="8" autocomplete="new-password" required /><div class="hint">For signing in to Agentic Wallet (at least 8 characters).</div>${computer}${pass}`,
+    signup: `${serverField}<label>Your name</label><input name="name" autocomplete="name" required minlength="2" /><label>Email</label><input name="email" type="email" autocomplete="username" required /><label>Account password</label><input name="password" type="password" minlength="8" autocomplete="new-password" required /><div class="hint">For signing in to MilestonePay (at least 8 characters).</div>${computer}${pass}`,
     link: `${serverField}<label>Link code</label><input name="code" placeholder="ABCD-EFGH" autocomplete="off" required /><div class="hint">On the website: Profile → Desktop app → Make a link code (for accounts with a second factor).</div>${computer}${pass}`,
     restore: `<label>Key backup file</label><input name="file" type="file" accept=".json,application/json" required /><div class="hint">The file you saved from Settings → Save key backup.</div><label>App passphrase</label><input name="passphrase" type="password" required />`,
   }[tab];
   const label = { login: "Sign in and create my chain", signup: "Create account", link: "Link and create my chain", restore: "Restore" }[tab];
   $("#root").innerHTML = `<div class="center"><div class="card narrow">
-    <div class="brand"><div class="logo">A</div>Agentic Wallet Desktop</div>
+    <div class="brand"><span class="mark"></span>MilestonePay <span class="tag">Desktop</span></div>
     <p class="hint">Your deals as your own chain on this computer. The website keeps only its latest block, signed by both sides.</p>
     <div class="tabs" style="flex-wrap:wrap">${TABS.map(([k, l]) => `<button data-t="${k}" class="${tab === k ? "on" : ""}">${l}</button>`).join("")}</div>
     <form id="f">${body}<div class="err" id="e"></div><div class="row" style="margin-top:16px"><button class="primary" id="go">${label}</button></div></form>
-    <div class="demo">Test mode demo · Mock Bank money only</div>
+    <div class="demo">Demo · test money · no real funds</div>
   </div></div>`;
   document.querySelectorAll(".tabs button").forEach((b) => (b.onclick = () => renderSetup(b.dataset.t)));
   $("#f").onsubmit = async (ev) => {
@@ -179,7 +201,7 @@ async function renderOnboarding() {
   try { st = await api("/app/onboarding"); } catch (e) { toast(e.message); }
   const verified = st.identity === "VERIFIED" || st.account;
   $("#root").innerHTML = `<div class="center"><div class="card narrow">
-    <div class="brand"><div class="logo">A</div>Welcome, ${esc(d.user)}</div>
+    <div class="brand"><span class="mark"></span>Welcome, ${esc(d.user)}</div>
     <p class="hint">Two steps open your wallet. Test mode: the digital ID is a demo.</p>
     <div class="check"><div>${verified ? "✅" : "1"}</div><div><b>Verify your identity</b>
       <div class="hint">${verified ? "Verified · your wallet account is open." : st.identity === "PENDING" ? "Waiting for a reviewer." : "With your national digital ID (mock ThaID for Thailand, mock 国家网络身份认证 for China). It opens in your browser."}</div>
@@ -200,11 +222,11 @@ async function renderOnboarding() {
 function renderUnlock() {
   const d = S.info.device;
   $("#root").innerHTML = `<div class="center"><div class="card narrow">
-    <div class="brand"><div class="logo">A</div>Agentic Wallet Desktop</div>
+    <div class="brand"><span class="mark"></span>MilestonePay <span class="tag">Desktop</span></div>
     <p>${esc(d.user)} · <span class="hint">${esc(d.name)}</span></p>
     <form id="f"><label>Passphrase</label><input name="p" type="password" autofocus required />
     <div class="err" id="e"></div><div class="row" style="margin-top:14px"><button class="primary" id="go">Unlock</button></div></form>
-    <div class="demo">Test mode demo · Mock Bank money only</div></div></div>`;
+    <div class="demo">Demo · test money · no real funds</div></div></div>`;
   $("#f").onsubmit = async (ev) => {
     ev.preventDefault();
     try { S.info = await api("/app/unlock", "POST", { passphrase: new FormData(ev.target).get("p") }); S.view = "overview"; render(); if (S.info.stage === "ready") load(); }
@@ -216,10 +238,13 @@ function renderUnlock() {
 const VIEWS = [["overview", "Overview"], ["chat", "AI chat"], ["deals", "Deals"], ["activity", "Money"], ["contacts", "Friends"], ["links", "Private links"], ["groups", "Groups"], ["chain", "My chain"], ["settings", "Settings"]];
 function renderApp() {
   const d = S.info.device;
+  const groups = [["Wallet", ["overview", "chat", "deals", "activity"]], ["People", ["contacts", "links", "groups"]], ["Security", ["chain", "settings"]]];
+  const label = Object.fromEntries(VIEWS);
+  const initials = (d.user || "?").split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
   $("#root").innerHTML = `<div class="layout"><nav>
-      <div class="brand"><div class="logo">A</div>Agentic Wallet</div>
-      ${VIEWS.map(([k, l]) => `<button data-v="${k}" class="${S.view === k ? "on" : ""}">${l}</button>`).join("")}
-      <div class="foot hint">${esc(d.user)}<br>${esc(d.name)}<br><button id="lock" style="margin-top:8px">Lock</button></div>
+      <div class="brand"><span class="mark"></span>MilestonePay</div>
+      ${groups.map(([g, ks]) => `<div class="group">${g}</div>${ks.map((k) => `<button data-v="${k}" class="${S.view === k ? "on" : ""}">${label[k]}</button>`).join("")}`).join("")}
+      <div class="foot"><div class="avatar">${esc(initials)}</div><div class="who"><b>${esc(d.user)}</b><small>${esc(d.name)}</small></div><button id="lock" title="Lock the app">Lock</button></div>
     </nav><main id="main"></main></div>`;
   document.querySelectorAll("nav [data-v]").forEach((b) => (b.onclick = () => { S.view = b.dataset.v; renderApp(); load(); }));
   $("#lock").onclick = async () => { S.info = await api("/app/lock", "POST"); render(); };
@@ -414,13 +439,13 @@ function aiHtml() {
   if (!a) return `<p class="hint">Loading…</p>`;
   const u = a.usage;
   const bar = (label, used, limit, resets) => { const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 100; return `<div style="margin:6px 0"><div class="row space hint"><span>${label}</span><span>${used.toLocaleString()} / ${limit.toLocaleString()} tokens · resets ${new Date(resets).toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" })}</span></div><div style="height:6px;border-radius:99px;background:var(--chip);overflow:hidden"><i style="display:block;height:100%;width:${pct}%;background:${pct >= 100 ? "var(--bad)" : pct >= 80 ? "var(--warn)" : "var(--accent)"}"></i></div></div>`; };
-  const usage = u ? `<label>AI allowance (Agentic Wallet's AI)</label>${bar("Today", u.today, u.perDay, u.resetsDay)}${bar("This week", u.week, u.perWeek, u.resetsWeek)}<div class="hint">${a.own ? "You use your own key now: it is not counted." : "Use your own key below when the allowance runs out."}${u.ownKeyToday ? ` Your own key today: ${u.ownKeyToday.toLocaleString()} tokens.` : ""}</div>` : "";
+  const usage = u ? `<label>AI allowance (MilestonePay's AI)</label>${bar("Today", u.today, u.perDay, u.resetsDay)}${bar("This week", u.week, u.perWeek, u.resetsWeek)}<div class="hint">${a.own ? "You use your own key now: it is not counted." : "Use your own key below when the allowance runs out."}${u.ownKeyToday ? ` Your own key today: ${u.ownKeyToday.toLocaleString()} tokens.` : ""}</div>` : "";
   return `${usage}<label>Your instructions for the AI</label><textarea id="ins" rows="3" maxlength="1000" placeholder="e.g. Always answer in Thai. Suggest 2 milestones by default.">${esc(a.aiInstructions || "")}</textarea>
     <div class="hint">Shapes tone, language and defaults, here and on the website. They never override the rules: payees, limits, terms review and your signature always apply.</div>
     <div class="row" style="margin-top:6px"><button id="ins-save">Save instructions</button></div>
     <label style="margin-top:16px">Model</label>
-    ${a.own ? `<div class="row space"><div>Your own key · <b>${esc(a.own.provider)}</b> · ${esc(a.own.model)} <span class="mono hint">${esc(a.own.key)}</span></div><button id="key-rm" class="danger">Use Agentic Wallet's AI</button></div>`
-      : `<p class="hint" style="margin:0 0 6px">Now: Agentic Wallet's AI. Or bring your own key: it is sealed on this computer with your device key and sent only with your chat messages, for that request (never stored by the server).</p>
+    ${a.own ? `<div class="row space"><div>Your own key · <b>${esc(a.own.provider)}</b> · ${esc(a.own.model)} <span class="mono hint">${esc(a.own.key)}</span></div><button id="key-rm" class="danger">Use MilestonePay's AI</button></div>`
+      : `<p class="hint" style="margin:0 0 6px">Now: MilestonePay's AI. Or bring your own key: it is sealed on this computer with your device key and sent only with your chat messages, for that request (never stored by the server).</p>
       <form id="kf"><div class="row"><select name="provider" style="width:auto"><option value="openrouter">OpenRouter (OpenAI, Google, Anthropic…)</option><option value="anthropic">Anthropic</option></select>
       <input name="model" placeholder="model, e.g. openai/gpt-5.5 or claude-sonnet-5-5" required style="flex:1;min-width:200px"></div>
       <input name="apiKey" type="password" placeholder="API key" autocomplete="off" required style="margin-top:6px">

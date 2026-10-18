@@ -203,7 +203,7 @@ async function main() {
         headers: {
           "content-type": "text/html; charset=utf-8",
           "cache-control": "no-store",
-          "content-security-policy": "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+          "content-security-policy": "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
           "x-frame-options": "DENY",
           "referrer-policy": "no-referrer",
         },
@@ -221,7 +221,7 @@ async function main() {
         }
       } else if (session) text = "Unlock the app, then the top-up is added on its next check.";
       return new Response(
-        `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Top-up</title><body style="font:15px system-ui;background:#0f1216;color:#e8ebef;display:grid;place-items:center;min-height:100vh;margin:0"><div style="max-width:420px;padding:22px;border:1px solid #272d36;border-radius:14px;background:#171b21"><h1 style="font-size:18px;margin:0 0 8px">Agentic Wallet</h1><p>${text.replace(/[&<>"']/g, "")}</p><p style="color:#98a1ad;font-size:13px">You can close this tab and go back to the app. (Test mode)</p></div></body>`,
+        `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Top-up</title><body style="font:15px system-ui;background:#0f1216;color:#e8ebef;display:grid;place-items:center;min-height:100vh;margin:0"><div style="max-width:420px;padding:22px;border:1px solid #272d36;border-radius:14px;background:#171b21"><h1 style="font-size:18px;margin:0 0 8px">MilestonePay</h1><p>${text.replace(/[&<>"']/g, "")}</p><p style="color:#98a1ad;font-size:13px">You can close this tab and go back to the MilestonePay app. (Test mode)</p></div></body>`,
         { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'" } },
       );
     }

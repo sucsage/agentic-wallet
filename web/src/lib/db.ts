@@ -1,8 +1,15 @@
 import "server-only";
 
+import { setDefaultAutoSelectFamilyAttemptTimeout } from "node:net";
+
 import { PrismaPg } from "@prisma/adapter-pg";
 
 import { PrismaClient } from "@/generated/prisma/client";
+
+// The database is far away (Neon us-east-2): a TCP handshake can take longer than Node's 250 ms
+// per-address attempt when it tries IPv6 and IPv4 in turn, which fails every connection with
+// ETIMEDOUT. Give each attempt 2 s.
+setDefaultAutoSelectFamilyAttemptTimeout(2000);
 
 // One client per server process; dev hot reload would otherwise open a new pool on every edit.
 const g = globalThis as unknown as { prisma?: PrismaClient };
