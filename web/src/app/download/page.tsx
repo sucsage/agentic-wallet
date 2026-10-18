@@ -32,8 +32,8 @@ async function latest(): Promise<Latest | null> {
 const mb = (n: number) => `${(n / 1024 / 1024).toFixed(0)} MB`;
 
 const HOW: Record<string, string> = {
-  "macos-arm64": "Open the .dmg and drag MilestonePay to Applications. First time: right-click the app → Open (or System Settings → Privacy & Security → Open Anyway).",
-  "macos-x64": "Open the .dmg and drag MilestonePay to Applications. First time: right-click the app → Open (or System Settings → Privacy & Security → Open Anyway).",
+  "macos-arm64": "Open the .dmg and drag MilestonePay to Applications, then open it from there (not from the .dmg). First time: right-click → Open (or System Settings → Privacy & Security → Open Anyway); the first start unpacks for about 10 seconds.",
+  "macos-x64": "Open the .dmg and drag MilestonePay to Applications, then open it from there (not from the .dmg). First time: right-click → Open (or System Settings → Privacy & Security → Open Anyway); the first start unpacks for about 10 seconds.",
   "windows-x64": "Run the setup. It installs for your user only (no administrator rights). If SmartScreen warns about an unknown publisher: More info → Run anyway.",
   "linux-x64": "sudo apt install ./milestonepay_*_amd64.deb, then open MilestonePay from your apps.",
   "linux-arm64": "sudo apt install ./milestonepay_*_arm64.deb, then open MilestonePay from your apps.",
