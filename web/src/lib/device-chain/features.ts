@@ -2,10 +2,10 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 
-import { rotateBuyerInviteLink } from "../bank/buyer-invites";
 import { customerOfUser } from "../bank/customers";
 import { issueSlip, paySlip } from "../bank/counter";
-import { inviteLinkFor, rotateInviteLink } from "../bank/invites";
+import { inviteLinkFor } from "../bank/invites";
+import { RelinkError, relinkInvite } from "../bank/relink";
 import { linkOf, topupFromLink } from "../bank/stripe-link";
 import { TopupError, confirmTopup, startTopup, topupHistory, topupLimit } from "../bank/topup";
 import { dealTerms } from "../bank/deals";
@@ -23,7 +23,7 @@ import { type DeviceRow, DeviceError, deviceWallet } from ".";
 
 const social = <T>(p: Promise<T>) =>
   p.catch((e) => {
-    throw e instanceof SocialError || e instanceof TopupError || e instanceof LinkAccessError ? new DeviceError(400, e.message) : e;
+    throw e instanceof SocialError || e instanceof TopupError || e instanceof LinkAccessError || e instanceof RelinkError ? new DeviceError(400, e.message) : e;
   });
 
 async function customer(device: DeviceRow) {
@@ -103,10 +103,7 @@ export async function linkAction(device: DeviceRow, origin: string, input: { dea
   if (!deal) throw new DeviceError(404, "Deal not found");
   const link = await inviteLinkFor(device.userId, deal.counterparty, origin);
   if (!link) throw new DeviceError(404, "You did not invite the other side of this deal");
-  if (input.action === "rotate") {
-    const token = link.kind === "seller" ? await rotateInviteLink(device.userId, link.id) : await rotateBuyerInviteLink(device.userId, link.id);
-    return { link: `${origin}/${link.kind === "seller" ? "invite" : "pay"}/${token}` };
-  }
+  if (input.action === "rotate") return social(relinkInvite(device.userId, link, input.code, origin));
   const invite = link.kind === "seller" ? await db.sellerInvite.findUniqueOrThrow({ where: { id: link.id } }) : await db.buyerInvite.findUniqueOrThrow({ where: { id: link.id } });
   if (input.action === "otp") {
     if (invite.accessPassword) throw new DeviceError(409, "They already set a password. If they lost it, they press “Forgot password” on their link and send you the reset code.");

@@ -2,6 +2,7 @@ import { getAddress } from "viem";
 
 import { BuyerInviteError, buyerInviteForRequest } from "@/lib/bank/buyer-invites";
 import { DealError, deliveryFile } from "@/lib/bank/deals";
+import { fileResponse } from "@/lib/deal-files";
 import { HttpError, errorResponse } from "@/lib/guard";
 
 /** The invited buyer downloads a delivered file, once the escrow released its key. */
@@ -17,13 +18,10 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/pay/[token]/fil
     const f = await deliveryFile(getAddress(invite.buyerWallet), id, index).catch((e) => {
       throw e instanceof DealError ? new HttpError(403, e.message) : e;
     });
-    return new Response(new Uint8Array(f.bytes), {
-      headers: {
-        "content-type": f.mime,
-        "content-disposition": `attachment; filename="${encodeURIComponent(f.name)}"`,
-        "cache-control": "no-store",
-      },
-    });
+    // PDFs and images open in place (preview), anything else downloads; nothing runs.
+    const res = fileResponse(f);
+    res.headers.set("x-sha256", f.sha256);
+    return res;
   } catch (err) {
     return errorResponse(err);
   }

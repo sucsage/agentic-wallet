@@ -412,12 +412,12 @@ function renderView() {
       ${ls ? (ls.length ? ls.map((l) => `<div class="card deal"><div class="row space"><div><b>${esc(l.name)}</b> <span class="hint">${l.kind === "seller" ? "works for you" : "buys from you"} · D-${esc(l.dealId)} ${esc(l.title)}</div>
           <div class="mono hint" style="margin-top:4px">${l.link ? esc(l.link) : "(link hidden: make a new one)"}</div></div><span class="chip ${l.linked ? "ok" : ""}">${l.linked ? "joined" : esc(l.status)}</span></div>
         <div class="hint" style="margin-top:6px">${!l.access.required ? "Open link (made before one-time codes)" : l.access.passwordSet ? "They set a password." : l.access.otp ? `One-time code: <b class="mono">${esc(l.access.otp)}</b> (until ${when(l.access.otpExpiresAt)})` : "No live code: make a new one."}</div>
-        <div class="row" style="margin-top:8px">${l.link ? `<button data-copy="${esc(l.link)}">Copy link</button>` : ""}${l.access.required && !l.access.passwordSet ? `<button data-otp="${l.dealId}">New one-time code</button>` : ""}${l.access.passwordSet ? `<button data-reset="${l.dealId}">They lost the password…</button>` : ""}<button data-rot="${l.dealId}" class="danger">New link (old stops)</button></div></div>`).join("") : `<div class="card hint">No private links yet. Ask the AI to hire or sell to someone without an account.</div>`) : `<div class="card hint">Loading…</div>`}`;
+        <div class="row" style="margin-top:8px">${l.link ? `<button data-copy="${esc(l.link)}">Copy link</button>` : ""}${l.access.required && !l.access.passwordSet ? `<button data-otp="${l.dealId}">New one-time code</button>` : ""}${l.access.passwordSet ? `<button data-reset="${l.dealId}">They lost the password…</button>` : ""}<button data-rot="${l.dealId}" class="danger">New link (needs their code)</button></div></div>`).join("") : `<div class="card hint">No private links yet. Ask the AI to hire or sell to someone without an account.</div>`) : `<div class="card hint">Loading…</div>`}`;
     $("#sync").onclick = () => load();
-    const act = async (dealId, action, code) => { try { const r = await api("/app/invite-links", "POST", { dealId: Number(dealId), action, code }); if (r.link) toast("New link made"); else if (r.otp) toast(`New code: ${r.otp}`); else toast("Done"); await load(); } catch (e) { toast(e.message); } };
+    const act = async (dealId, action, code) => { try { const r = await api("/app/invite-links", "POST", { dealId: Number(dealId), action, code }); if (r.link) toast(r.otp ? `New link made · one-time code ${r.otp}` : "New link made"); else if (r.otp) toast(`New code: ${r.otp}`); else toast("Done"); await load(); } catch (e) { toast(e.message); } };
     document.querySelectorAll("[data-copy]").forEach((b) => (b.onclick = () => navigator.clipboard.writeText(b.dataset.copy).then(() => toast("Copied"), () => toast("Copy failed"))));
     document.querySelectorAll("[data-otp]").forEach((b) => (b.onclick = () => act(b.dataset.otp, "otp")));
-    document.querySelectorAll("[data-rot]").forEach((b) => (b.onclick = () => confirm("Make a new link? The old one stops working.") && act(b.dataset.rot, "rotate")));
+    document.querySelectorAll("[data-rot]").forEach((b) => (b.onclick = () => { const code = prompt("They press “Forgot password” (or “Lost the code?”) on their link and send you a 6-digit code. Enter it to make a new link (the old one stops working):"); if (code) act(b.dataset.rot, "rotate", code.trim()); }));
     document.querySelectorAll("[data-reset]").forEach((b) => (b.onclick = () => { const code = prompt("The reset code they sent you (from “Forgot password” on their link):"); if (code) act(b.dataset.reset, "reset", code.trim()); }));
   } else if (S.view === "groups") {
     const g = S.groups;
@@ -632,6 +632,22 @@ function deliverDialog(dealId, index) {
   };
 }
 
+const fmtDay = (x) => new Date(`${x}T12:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+function dueLeft(x) { const n = Math.ceil((new Date(`${x}T23:59:59+07:00`).getTime() - Date.now()) / 86400000); return n > 1 ? `in ${n} days` : n === 1 ? "tomorrow" : n === 0 ? "today" : `late by ${-n} day${n === -1 ? "" : "s"}`; }
+/** A milestone's due date (agreed by both sides): countdown, propose / accept, late refund request. */
+function dueHtml(d, m) {
+  const u = m.due;
+  if (!u || m.delivery === "deposit") return "";
+  const editable = d.status !== "Cancelled" && m.status === "Pending";
+  const today = new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10);
+  return `<div class="hint" style="margin-top:4px">Due: ${u.due ? `<span style="color:${u.late ? "var(--bad)" : "inherit"}">${esc(fmtDay(u.due))} · ${esc(dueLeft(u.due))}</span>` : "no date agreed"}
+    ${u.proposedDue && u.proposedBy === "them" ? ` · they propose ${esc(fmtDay(u.proposedDue))} ${editable ? `<button class="primary" data-due="accept" data-deal="${d.id}" data-i="${m.index}" style="padding:2px 8px;font-size:11px">Accept</button>` : ""}` : ""}
+    ${u.proposedDue && u.proposedBy === "me" ? ` · you proposed ${esc(fmtDay(u.proposedDue))} (waiting)` : ""}
+    ${editable ? ` <input type="date" min="${today}" data-due-date="${d.id}-${m.index}" style="width:auto;padding:2px 6px;font-size:11px"> <button data-due="propose" data-deal="${d.id}" data-i="${m.index}" style="padding:2px 8px;font-size:11px">${u.due ? "Propose another date" : "Propose a due date"}</button>` : ""}
+    ${u.late && d.role === "buyer" && !u.lateRequestedAt ? ` <button class="danger" data-due="late" data-deal="${d.id}" data-i="${m.index}" style="padding:2px 8px;font-size:11px">Ask for a refund (late)</button>` : ""}
+    ${u.lateRequestedAt ? `<div style="color:var(--bad)">${d.role === "buyer" ? "You asked for a refund" : "The buyer asks for a refund: nothing was delivered by the agreed date"} (${esc(new Date(u.lateRequestedAt).toLocaleDateString())})</div>` : ""}</div>`;
+}
+
 const STATUS_CHIP = { Released: "ok", Approved: "ok", KeyReleased: "ok", Active: "ok", Disputed: "bad", Refunded: "warn", Cancelled: "warn", Delivered: "warn", Split: "warn" };
 function dealHtml(d) {
   const now = Date.now() / 1000;
@@ -653,7 +669,7 @@ function dealHtml(d) {
         if (d.role === "seller" && m.status === "Pending" && m.delivery !== "deposit") acts.push(`<button class="primary" data-deliver="${d.id}" data-i="${m.index}">Deliver</button>`);
         if (d.role === "seller" && ["Pending", "Delivered", "Disputed"].includes(m.status)) acts.push(btn("refund", m.index, "Refund buyer", "danger"));
       }
-      return `<div class="ms"><div>${esc(m.name)} · <b>${esc(m.amount)}</b> <span class="chip ${STATUS_CHIP[m.status] || ""}">${esc(m.status)}</span> <span class="hint">${esc(m.delivery || "")}</span>${m.split ? `<span class="hint"> seller ${esc(m.split.toSeller)} / buyer ${esc(m.split.toBuyer)}</span>` : ""}</div><div class="row">${acts.join("")}</div></div>`;
+      return `<div class="ms"><div>${esc(m.name)} · <b>${esc(m.amount)}</b> <span class="chip ${STATUS_CHIP[m.status] || ""}">${esc(m.status)}</span> <span class="hint">${esc(m.delivery || "")}</span>${dueHtml(d, m)}${m.split ? `<span class="hint"> seller ${esc(m.split.toSeller)} / buyer ${esc(m.split.toBuyer)}</span>` : ""}</div><div class="row">${acts.join("")}</div></div>`;
     }).join("")}
   </div>`;
 }
@@ -682,7 +698,19 @@ function confirmMove(action, dealId, index, requestId) {
   };
 }
 
+function wireDueButtons() {
+  document.querySelectorAll("[data-due]").forEach((b) => (b.onclick = async () => {
+    const action = b.dataset.due, dealId = Number(b.dataset.deal), index = Number(b.dataset.i);
+    const date = action === "propose" ? document.querySelector(`[data-due-date="${dealId}-${index}"]`)?.value : undefined;
+    if (action === "propose" && !date) return toast("Choose a date first");
+    if (action === "late" && !confirm("Nothing was delivered by the agreed date. Ask the seller to refund this milestone?")) return;
+    b.disabled = true;
+    try { await api("/app/due", "POST", { dealId, index, action, date }); toast(action === "accept" ? "Due date agreed" : action === "late" ? "Refund asked" : "Date proposed"); await load(); } catch (e) { toast(e.message); b.disabled = false; }
+  }));
+}
+
 function wireDealButtons() {
+  wireDueButtons();
   document.querySelectorAll("[data-act]").forEach((b) => (b.onclick = () => confirmMove(b.dataset.act, b.dataset.deal, b.dataset.i)));
   document.querySelectorAll("[data-deliver]").forEach((b) => (b.onclick = () => deliverDialog(b.dataset.deliver, b.dataset.i)));
 }

@@ -61,15 +61,22 @@ export async function readDealFile(wallet: Address, dealId: number, fileId: stri
   return { name: f.name, mime: f.mime, bytes: Buffer.from(f.data) };
 }
 
-/** A safe response for a stored file: images and PDFs open in the browser, anything else downloads. Never runs. */
+/**
+ * A safe response for a stored file: images and PDFs open in the browser (and in this app's own
+ * preview frame), anything else downloads. Never runs: images get a sandbox CSP; a PDF cannot (the
+ * browser's PDF viewer refuses sandboxed documents), so it gets no script, no network and no
+ * framing by other sites instead.
+ */
 export function fileResponse(f: { name: string; mime: string; bytes: Buffer }) {
-  const inline = /^image\/(png|jpeg|webp|gif)$|^application\/pdf$/.test(f.mime);
+  const pdf = f.mime === "application/pdf" && f.bytes.subarray(0, 5).toString("latin1") === "%PDF-";
+  const image = /^image\/(png|jpeg|webp|gif)$/.test(f.mime);
+  const inline = pdf || image;
   return new Response(new Uint8Array(f.bytes), {
     headers: {
       "content-type": inline ? f.mime : "application/octet-stream",
       "content-disposition": `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(f.name)}`,
       "x-content-type-options": "nosniff",
-      "content-security-policy": "sandbox; default-src 'none'; img-src 'self'; style-src 'unsafe-inline'",
+      "content-security-policy": pdf ? "default-src 'none'; object-src 'none'; frame-ancestors 'self'" : "sandbox; default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; frame-ancestors 'self'",
       "cache-control": "private, no-store",
     },
   });

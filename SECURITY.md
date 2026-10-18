@@ -119,6 +119,8 @@ What a user (or an attacker on their computer) can and cannot do with the chain 
 | Live app + server | `AGENTIC_WALLET_DATA=… AW_PASS=… bun run security` | local server: token, Host (DNS rebinding), no CORS, agent token cannot sign, CSP; MCP: tools read, a move stays PENDING and the balance does not change; server: unsigned, foreign-signed, replayed and stale requests, forged events, history rewrite, foreign-key and edited blocks, a swapped delivery file, a refused BYOK key not echoed, a prompt-injection custom instruction that tries to make the AI pay | 17/17 pass (2026-10-18) |
 | Contracts | `cd contracts && npx hardhat test nodejs` | includes `ChainAnchor` (anchorer only, no empty root) | pass |
 
+- Private links: replacing a working link needs the 6-digit code its holder gets on their page (the inviter cannot take a link over alone); a link claimed by an account is destroyed at once; a finished deal's link closes 7 days later.
+- Work files open in place: framing by this origin only; PDFs served without scripts or network (`default-src 'none'`), other types as downloads; a delivery stays encrypted until approval and is previewed only as watermarked page images.
 - Known limits: the executables are not code-signed (Windows SmartScreen and macOS Gatekeeper warn once); a forgotten passphrase cannot be reset (link the computer again; deal history stays on the server and in the escrow); the anchor proves the head existed, not who was right in a deal.
 
 ## 5. Application security

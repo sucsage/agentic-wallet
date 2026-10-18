@@ -80,3 +80,5 @@
 .aw-guarantor-form small{opacity:.7}
 .aw-guarantor-err{color:#ff6b6b;margin:0}
 .inv-hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
+
+.inv-closing{max-width:760px;margin:12px auto 0;padding:10px 14px;border:1px solid #6b5a1e;background:#241f0c;color:#f3e7a8;border-radius:12px;font-size:13px}

@@ -138,6 +138,7 @@ async function route(req: Request, path: string, port: number): Promise<Response
     return json(r);
   }
   if (m === "POST" && path === "/app/counter-pay") return json(await wallet.counterPay(String((await body<{ slip: string }>(req)).slip ?? "")));
+  if (m === "POST" && path === "/app/due") return json(await wallet.due(await body(req)));
   if (m === "GET" && path === "/app/invite-links") return json(await wallet.inviteLinks());
   if (m === "POST" && path === "/app/invite-links") return json(await wallet.inviteLinkAction(await body(req)));
   if (m === "GET" && path === "/app/groups") return json(await wallet.groups());

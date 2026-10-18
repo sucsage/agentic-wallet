@@ -15,7 +15,7 @@ export async function GET(req: Request, ctx: RouteContext<"/api/apply/[slug]">) 
   }
 }
 
-/** Apply: multipart with name, contact, message, links (one per line), price, and up to 3 files. No account needed. */
+/** Apply: multipart with name, contact, message, links (one per line), price, `portfolio` (one PDF, required) and up to 3 other `files`. No account needed. */
 export async function POST(req: Request, ctx: RouteContext<"/api/apply/[slug]">) {
   try {
     rateLimit(req, "apply", 10, 60 * 60 * 1000);
@@ -34,13 +34,12 @@ export async function POST(req: Request, ctx: RouteContext<"/api/apply/[slug]">)
       price: price ? Number(price) : null,
     });
     if (!body.success) throw new HttpError(400, body.error.issues[0]?.message ?? "Fill in your name, a contact and a message (10+ characters)");
+    const portfolio = form.get("portfolio");
+    if (!(portfolio instanceof File) || portfolio.size === 0) throw new HttpError(400, "Attach your portfolio as a PDF");
     const files = form.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
-    if (files.length > MAX_FILES || files.some((f) => f.size > MAX_FILE_BYTES)) throw new HttpError(413, "Up to 3 files, 4 MB each");
-    const out = await apply(
-      (await ctx.params).slug,
-      body.data,
-      await Promise.all(files.map(async (f) => ({ name: f.name, mime: f.type, bytes: Buffer.from(await f.arrayBuffer()) }))),
-    ).catch(asHttp(400));
+    if (files.length > MAX_FILES || [portfolio, ...files].some((f) => f.size > MAX_FILE_BYTES)) throw new HttpError(413, "A portfolio and up to 3 other files, 4 MB each");
+    const read = async (f: File, kind: "portfolio" | "other") => ({ name: f.name, mime: f.type, bytes: Buffer.from(await f.arrayBuffer()), kind });
+    const out = await apply((await ctx.params).slug, body.data, [await read(portfolio, "portfolio"), ...(await Promise.all(files.map((f) => read(f, "other"))))]).catch(asHttp(400));
     return Response.json(out, { status: 201 });
   } catch (err) {
     return errorResponse(err);

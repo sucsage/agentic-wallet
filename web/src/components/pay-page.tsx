@@ -3,7 +3,11 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { isPdfDelivery } from "@/lib/file-types";
+
 import { DealFileLinks } from "./deal-file-links";
+import { DueControl, type Due } from "./due-control";
+import { FileLink, PdfPagePreview } from "./file-preview";
 import { CaptureGuard } from "./capture-guard";
 import { GuarantorForm } from "./guarantor-form";
 import { LinkGate } from "./link-gate";
@@ -25,6 +29,7 @@ type Milestone = {
   name: string;
   acceptance: string | null;
   canApprove: boolean;
+  due?: Due | null;
   delivery: { note: string; fileName: string | null; mime: string | null; parcel: { carrierLabel: string; tracking: string; status: string; delivered: boolean | null } | null } | null;
 };
 type Deal = {
@@ -41,7 +46,7 @@ type Deal = {
   files?: { id: string; name: string; mime: string; size: number }[];
   milestones: Milestone[];
 };
-type View = { name: string; sellerName: string; currency: "THB" | "CNY"; expiresAt: string; balance: string; deals: Deal[] };
+type View = { name: string; sellerName: string; currency: "THB" | "CNY"; expiresAt: string; balance: string; deals: Deal[]; closesAt?: string | null };
 
 const SIGN = { THB: "฿", CNY: "¥" } as const;
 const STEP: Record<string, string> = {
@@ -206,6 +211,7 @@ export function PayPage({ token }: { token: string }) {
     <div className="inv-page">
       <CaptureGuard />
       <div className="inv-banner">DEMO · test payments only (Stripe test mode) · use test card 4242 4242 4242 4242</div>
+      {view?.closesAt && <div className="inv-closing">Every deal here is finished. This link closes on {new Date(view.closesAt).toLocaleDateString()}: download your files and receipts before then.</div>}
       <main className="inv-main">
         <header className="inv-head">
           <span className="inv-mark" aria-hidden />
@@ -242,6 +248,17 @@ export function PayPage({ token }: { token: string }) {
                   <span>{money(m.amount)}</span>
                 </div>
                 {m.acceptance && <small>To be approved: {m.acceptance}</small>}
+                <DueControl
+                  due={m.due ?? null}
+                  role="buyer"
+                  editable={d.status !== "Cancelled" && m.status === "Pending"}
+                  onAction={async (action, date) => {
+                    const r = await fetch(`${base}/due`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ dealId: d.id, action, index: m.index, date }) });
+                    const j = await r.json().catch(() => ({}));
+                    if (!r.ok) throw new Error(j.error ?? `Error ${r.status}`);
+                    await load();
+                  }}
+                />
                 <small className="inv-step">{d.status === "Proposed" ? "Waiting for your payment" : (STEP[m.status] ?? m.status)}</small>
                 {m.delivery?.note && <small>Seller&apos;s note: {m.delivery.note}</small>}
                 {m.delivery?.parcel && (
@@ -249,20 +266,22 @@ export function PayPage({ token }: { token: string }) {
                     {m.delivery.parcel.carrierLabel} · {m.delivery.parcel.tracking} · {m.delivery.parcel.status}
                   </small>
                 )}
-                {m.delivery?.mime?.startsWith("image/") && !["KeyReleased", "Released"].includes(m.status) && (
+                {(m.delivery?.mime?.startsWith("image/") || isPdfDelivery(m.delivery ?? null)) && !["KeyReleased", "Released"].includes(m.status) && (
                   <div className="inv-preview aw-protect">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={`${base}/preview/${d.id}/${m.index}`} alt={`Watermarked preview of ${m.delivery.fileName ?? "the delivery"}`} loading="lazy" />
+                    {isPdfDelivery(m.delivery ?? null) ? (
+                      <PdfPagePreview base={`${base}/preview/${d.id}/${m.index}`} alt={`Watermarked preview of ${m.delivery?.fileName ?? "the delivery"}`} />
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={`${base}/preview/${d.id}/${m.index}`} alt={`Watermarked preview of ${m.delivery?.fileName ?? "the delivery"}`} loading="lazy" />
+                    )}
                     <small>Watermarked, reduced preview. The original file unlocks once you approve.</small>
                   </div>
                 )}
-                {m.delivery?.fileName && !m.delivery.mime?.startsWith("image/") && !["KeyReleased", "Released"].includes(m.status) && (
+                {m.delivery?.fileName && !m.delivery.mime?.startsWith("image/") && !isPdfDelivery(m.delivery) && !["KeyReleased", "Released"].includes(m.status) && (
                   <small>File delivered: {m.delivery.fileName} (no preview for this file type; it unlocks once you approve)</small>
                 )}
                 {m.hasFile && ["KeyReleased", "Released"].includes(m.status) && (
-                  <a className="inv-download" href={`${base}/files/${d.id}/${m.index}`}>
-                    ⬇ Download {m.delivery?.fileName ?? "the file"}
-                  </a>
+                  <FileLink className="inv-download" href={`${base}/files/${d.id}/${m.index}`} name={m.delivery?.fileName ?? "file"} mime={isPdfDelivery(m.delivery ?? null) ? "application/pdf" : (m.delivery?.mime ?? "")} />
                 )}
                 {m.canApprove && (
                   <button type="button" className="inv-primary" disabled={!!busy} onClick={() => void approve(d, m)}>

@@ -2,6 +2,7 @@
 
 import { type FormEvent, useEffect, useState } from "react";
 
+import { FileLink } from "./file-preview";
 import "./invite.css";
 
 type Post = {
@@ -16,6 +17,9 @@ type Post = {
   reviewHours: number;
   closesAt: string;
   open: boolean;
+  positions: number;
+  chosen: number;
+  files: { id: string; name: string; mime: string; size: number }[];
 };
 
 /**
@@ -28,6 +32,7 @@ export function ApplyPage({ slug }: { slug: string }) {
   const [error, setError] = useState<string | null>(null);
   const [v, setV] = useState({ name: "", contact: "", message: "", links: "", price: "", website: "" });
   const [files, setFiles] = useState<File[]>([]);
+  const [portfolio, setPortfolio] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<string | null>(null);
   const [formErr, setFormErr] = useState<string | null>(null);
@@ -48,11 +53,14 @@ export function ApplyPage({ slug }: { slug: string }) {
   async function submit(e: FormEvent) {
     e.preventDefault();
     setFormErr(null);
-    if (files.length > 3 || files.some((f) => f.size > 4 * 1024 * 1024)) return setFormErr("Up to 3 files, 4 MB each");
+    if (!portfolio) return setFormErr("Attach your portfolio as a PDF");
+    if (portfolio.type !== "application/pdf" && !/\.pdf$/i.test(portfolio.name)) return setFormErr("The portfolio must be a PDF file");
+    if (files.length > 3 || [portfolio, ...files].some((f) => f.size > 4 * 1024 * 1024)) return setFormErr("A portfolio and up to 3 other files, 4 MB each");
     setBusy(true);
     try {
       const form = new FormData();
       for (const [k, val] of Object.entries(v)) form.set(k, val);
+      form.set("portfolio", portfolio);
       for (const f of files) form.append("files", f);
       const r = await fetch(`/api/apply/${slug}`, { method: "POST", body: form });
       const b = await r.json().catch(() => null);
@@ -93,6 +101,19 @@ export function ApplyPage({ slug }: { slug: string }) {
                 Budget {money(post.budget)} · paid through escrow, milestone by milestone after approval ({post.reviewHours} h to review each delivery). Applications close{" "}
                 {new Date(post.closesAt).toLocaleDateString()}.
               </p>
+              {post.positions > 1 && (
+                <p className="inv-muted">
+                  Hiring {post.positions} people ({post.chosen} chosen so far): each gets their own deal on these terms.
+                </p>
+              )}
+              {post.files.length > 0 && (
+                <div className="inv-files">
+                  <small className="inv-label">DOCUMENTS FROM {post.owner.toUpperCase()} · READ BEFORE APPLYING</small>
+                  {post.files.map((f) => (
+                    <FileLink key={f.id} href={`/api/apply/${slug}/files/${f.id}`} name={f.name} mime={f.mime} size={f.size} />
+                  ))}
+                </div>
+              )}
               {post.milestones.map((m, i) => (
                 <div className="inv-ms" key={i}>
                   <div className="inv-ms-head">
@@ -130,7 +151,7 @@ export function ApplyPage({ slug }: { slug: string }) {
                     <textarea value={v.message} onChange={(e) => setV({ ...v, message: e.target.value })} rows={5} required minLength={10} maxLength={4000} />
                   </label>
                   <label>
-                    <span>Portfolio links (one per line, up to 5)</span>
+                    <span>Portfolio links (optional, one per line, up to 5)</span>
                     <textarea value={v.links} onChange={(e) => setV({ ...v, links: e.target.value })} rows={3} placeholder="https://…" />
                   </label>
                   <label>
@@ -138,7 +159,11 @@ export function ApplyPage({ slug }: { slug: string }) {
                     <input value={v.price} onChange={(e) => setV({ ...v, price: e.target.value })} inputMode="decimal" />
                   </label>
                   <label>
-                    <span>Files (samples, a quotation · up to 3, 4 MB each)</span>
+                    <span>Portfolio (one PDF, required · 4 MB max): {post.owner}&apos;s AI reads it to compare applicants</span>
+                    <input type="file" accept="application/pdf,.pdf" required onChange={(e) => setPortfolio(e.target.files?.[0] ?? null)} />
+                  </label>
+                  <label>
+                    <span>Other files (samples, a quotation · optional, up to 3, 4 MB each)</span>
                     <input type="file" multiple onChange={(e) => setFiles([...(e.target.files ?? [])].slice(0, 3))} />
                   </label>
                   <input className="inv-hp" tabIndex={-1} autoComplete="off" aria-hidden value={v.website} onChange={(e) => setV({ ...v, website: e.target.value })} name="website" />

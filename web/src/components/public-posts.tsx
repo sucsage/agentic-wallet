@@ -6,7 +6,7 @@ import { localizeMockupNode, useLang } from "@/lib/i18n";
 
 import { api, tokenMoney } from "./app-data";
 import { copyText } from "./chat-markdown";
-import { kb } from "./deal-file-links";
+import { FileLink } from "./file-preview";
 import { toast } from "./header-tools";
 import { Button, Loading } from "./mockup-ui";
 
@@ -17,8 +17,9 @@ type Application = {
   message: string;
   links: string[];
   price: number | null;
-  files: { id: string; name: string; mime: string; size: number }[];
+  files: { id: string; name: string; mime: string; size: number; kind?: string }[];
   ai: { score: number; reason: string; rank: number } | null;
+  chosenAt: string | null;
   at: string;
 };
 type Post = {
@@ -32,6 +33,9 @@ type Post = {
   closesAt: string;
   awardedTo: string | null;
   link: string;
+  positions: number;
+  chosen: number;
+  files: { id: string; name: string; mime: string; size: number }[];
   applications: Application[];
 };
 
@@ -86,11 +90,11 @@ export function PublicPostsPanel({ currency, onChosen, onCount }: { currency: "T
               <div>
                 <b>{p.title}</b>
                 <small>
-                  Budget {tokenMoney(p.budget, currency)} · {p.applications.length} application{p.applications.length === 1 ? "" : "s"} ·{" "}
-                  {p.status === "AWARDED" ? "someone chosen" : p.open ? `open until ${new Date(p.closesAt).toLocaleDateString()}` : "closed"}
+                  Budget {tokenMoney(p.budget, currency)} each · hiring {p.positions} · chosen {p.chosen}/{p.positions} · {p.applications.length} application{p.applications.length === 1 ? "" : "s"} ·{" "}
+                  {p.status === "AWARDED" ? "all places taken" : p.open ? `open until ${new Date(p.closesAt).toLocaleDateString()}` : "closed"}
                 </small>
               </div>
-              <span className={`aw-post-status ${p.open ? "open" : p.status.toLowerCase()}`}>{p.open ? "Open" : p.status === "AWARDED" ? "Chosen" : "Closed"}</span>
+              <span className={`aw-post-status ${p.open ? "open" : p.status.toLowerCase()}`}>{p.open ? "Open" : p.status === "AWARDED" ? "All chosen" : "Closed"}</span>
             </header>
             <div className="aw-post-link">
               <input readOnly value={p.link} onFocus={(e) => e.currentTarget.select()} aria-label="Public link" />
@@ -111,8 +115,9 @@ export function PublicPostsPanel({ currency, onChosen, onCount }: { currency: "T
                 </Button>
               )}
             </div>
+            <PostDocuments post={p} busy={!!busy} onChange={() => void load()} onError={setErr} />
             {apps.map((a) => (
-              <div key={a.id} className={`aw-post-app${p.awardedTo === a.id ? " chosen" : ""}`}>
+              <div key={a.id} className={`aw-post-app${a.chosenAt ? " chosen" : ""}`}>
                 <div className="aw-post-app-head">
                   <b>
                     {a.ai ? `#${a.ai.rank} · ` : ""}
@@ -131,24 +136,26 @@ export function PublicPostsPanel({ currency, onChosen, onCount }: { currency: "T
                       </a>
                     ))}
                     {a.files.map((f) => (
-                      <a key={f.id} href={`/api/posts/files/${f.id}`} target="_blank" rel="noopener">
-                        📎 {f.name} <small>{kb(f.size)}</small>
-                      </a>
+                      <span key={f.id} className="aw-post-file">
+                        {f.kind === "portfolio" && <small className="aw-post-portfolio">Portfolio</small>}
+                        <FileLink href={`/api/posts/files/${f.id}`} name={f.name} mime={f.mime} size={f.size} />
+                      </span>
                     ))}
                   </div>
                 )}
                 <small className="aw-post-contact">Contact (only you see it): {a.contact}</small>
-                {p.status !== "AWARDED" && (
+                {a.chosenAt && <span className="aw-post-score hi">✓ Chosen · their deal is in your previews</span>}
+                {!a.chosenAt && p.chosen < p.positions && p.status !== "CLOSED" && (
                   <Button
                     disabled={!!busy}
                     onClick={() =>
                       void run(`h${a.id}`, async () => {
-                        const r = await api<{ draftId: string; name: string; contact: string }>(`/api/posts/${p.id}/choose`, {
+                        const r = await api<{ draftId: string; name: string; contact: string; chosen: number; positions: number }>(`/api/posts/${p.id}/choose`, {
                           method: "POST",
                           headers: { "content-type": "application/json" },
                           body: JSON.stringify({ applicationId: a.id }),
                         });
-                        onChosen(r.draftId, `Deal drafted for ${r.name}. Check it below and Confirm: their private link and one-time code are made then; send them to ${r.contact} (the code separately).`);
+                        onChosen(r.draftId, `Deal drafted for ${r.name} (${r.chosen} of ${r.positions} chosen). Confirm it: their private link and one-time code are made then; send them to ${r.contact} (the code separately).`);
                       })
                     }
                   >
@@ -163,5 +170,56 @@ export function PublicPostsPanel({ currency, onChosen, onCount }: { currency: "T
       {err && <p className="aw-bank-error">{err}</p>}
     </div>,
     lang,
+  );
+}
+
+/** The owner's documents for applicants (rules, a brief): they see them on the post's page. */
+function PostDocuments({ post, busy, onChange, onError }: { post: Post; busy: boolean; onChange: () => void; onError: (e: string) => void }) {
+  const [uploading, setUploading] = useState(false);
+  async function upload(file: File | undefined) {
+    if (!file) return;
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.set("file", file);
+      await api(`/api/posts/${post.id}/files`, { method: "POST", body: form });
+      onChange();
+    } catch (e) {
+      onError((e as Error).message);
+    } finally {
+      setUploading(false);
+    }
+  }
+  return (
+    <div className="aw-post-docs">
+      <small>
+        <b>Documents for applicants</b> (rules, a brief · up to 5, 4 MB each): they read them on the post&apos;s page.
+      </small>
+      {post.files.map((f) => (
+        <span key={f.id} className="aw-post-file">
+          <FileLink href={`/api/posts/${post.id}/files/${f.id}`} name={f.name} mime={f.mime} size={f.size} />
+          <Button
+            variant="outline"
+            disabled={busy || uploading}
+            onClick={async () => {
+              try {
+                await api(`/api/posts/${post.id}/files/${f.id}`, { method: "DELETE" });
+                onChange();
+              } catch (e) {
+                onError((e as Error).message);
+              }
+            }}
+          >
+            Remove
+          </Button>
+        </span>
+      ))}
+      {post.files.length < 5 && (
+        <label className="aw-post-upload">
+          <input type="file" disabled={busy || uploading} onChange={(e) => void upload(e.target.files?.[0])} />
+          <span>{uploading ? "Uploading…" : "+ Attach a document"}</span>
+        </label>
+      )}
+    </div>
   );
 }

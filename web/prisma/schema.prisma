@@ -528,8 +528,11 @@ model PublicPost {
   status       PublicPostStatus  @default(OPEN)
   closesAt     DateTime
   awardedTo    String?
+  /// How many people the post hires (or buys from); it stops taking applications once that many are chosen.
+  positions    Int               @default(1)
   createdAt    DateTime          @default(now())
   applications PostApplication[]
+  files        PostFile[]
 
   @@index([userId])
 }
@@ -546,6 +549,9 @@ model PostApplication {
   price     Decimal?          @db.Decimal(18, 2)
   /// The AI's read: { score 0-100, reason } (null until asked).
   ai        Json?
+  /// Chosen by the owner: the deal drafted with them.
+  chosenAt  DateTime?
+  draftId   String?
   createdAt DateTime          @default(now())
   files     ApplicationFile[]
 
@@ -556,10 +562,44 @@ model ApplicationFile {
   id            String          @id @default(cuid())
   applicationId String
   application   PostApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  /// "portfolio" (the required PDF) or "other" (samples, a quotation).
+  kind          String          @default("other")
   name          String
   mime          String
   size          Int
   data          Bytes
+}
+
+/// A document the post's owner attaches for applicants to read (rules, a brief, a contract draft).
+model PostFile {
+  id        String     @id @default(cuid())
+  postId    String
+  post      PublicPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  name      String
+  mime      String
+  size      Int
+  data      Bytes
+  createdAt DateTime   @default(now())
+
+  @@index([postId])
+}
+
+/// The delivery due date of one milestone, agreed by both sides (off-chain: the escrow has no
+/// delivery deadline). One side proposes, the other accepts; past it the buyer may ask for a refund.
+model MilestoneDue {
+  dealId          Int
+  index           Int
+  /// The agreed date (null until both agree).
+  due             DateTime?
+  proposedDue     DateTime?
+  /// The wallet (lowercase) that proposed proposedDue.
+  proposedBy      String?
+  agreedAt        DateTime?
+  /// The buyer asked for this milestone's money back after the due date passed.
+  lateRequestedAt DateTime?
+  updatedAt       DateTime   @updatedAt
+
+  @@id([dealId, index])
 }
 
 enum PaymentPlanStatus {
@@ -941,6 +981,8 @@ model SellerInvite {
 
   @@index([userId])
   @@index([claimedByUserId])
+  /// Every deal of this link finished (and, for a seller, the payout set): the link closes 7 days later.
+  finishedAt     DateTime?
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1238,6 +1280,8 @@ model BuyerInvite {
   createdAt    DateTime @default(now())
 
   @@index([userId])
+  /// Every deal of this link finished (and, for a seller, the payout set): the link closes 7 days later.
+  finishedAt     DateTime?
 }
 
 /// A desktop app linked to a user (lib/device-chain). Its address is the device key, made and kept on

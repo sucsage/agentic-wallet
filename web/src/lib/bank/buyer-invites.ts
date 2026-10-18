@@ -79,7 +79,7 @@ export async function buyerInviteByToken(token: string): Promise<BuyerInvite> {
   if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) throw new BuyerInviteError("This link is not valid");
   const invite = await db.buyerInvite.findUnique({ where: { tokenHash: hashToken(token) } });
   if (!invite) throw new BuyerInviteError("This link is not valid");
-  if (invite.expiresAt < new Date()) throw new BuyerInviteError("This link has expired; ask the seller for a new one");
+  if (invite.expiresAt < new Date()) throw new BuyerInviteError(invite.finishedAt ? "This deal is finished and its link has closed" : "This link has expired; ask the seller for a new one");
   return invite;
 }
 

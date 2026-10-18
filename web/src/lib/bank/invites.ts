@@ -140,6 +140,9 @@ export async function claimInvite(invite: SellerInvite, userId: string): Promise
     },
   });
   if (updated.count !== 1) throw new InviteError("This invite is linked to another account");
+  // The link has done its job: the deal now lives in this account (/invite/id.<invite>), so the
+  // address itself is destroyed. Whoever else holds it can no longer open it.
+  await db.sellerInvite.update({ where: { id: invite.id }, data: { tokenHash: hashToken(randomBytes(24).toString("base64url")), tokenEnc: null } });
   // The buyer and the seller become contacts (both took a step: one invited, the other opened it).
   const [a, b] = [invite.userId, userId];
   const existing = await db.friendship.findFirst({ where: { OR: [{ requesterId: a, addresseeId: b }, { requesterId: b, addresseeId: a }] } });
@@ -196,8 +199,8 @@ export function claimedInvites(userId: string) {
 export async function inviteByToken(token: string): Promise<SellerInvite> {
   if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) throw new InviteError("This link is not valid");
   const invite = await db.sellerInvite.findUnique({ where: { tokenHash: hashToken(token) } });
-  if (!invite) throw new InviteError("This link is not valid or was replaced by a newer one");
-  if (invite.expiresAt < new Date()) throw new InviteError("This link has expired; ask the buyer for a new one");
+  if (!invite) throw new InviteError("This link is not valid: it was replaced by a newer one, or it moved into an account (sign in to see the deal)");
+  if (invite.expiresAt < new Date()) throw new InviteError(invite.finishedAt ? "This deal is finished and its link has closed" : "This link has expired; ask the buyer for a new one");
   return invite;
 }
 

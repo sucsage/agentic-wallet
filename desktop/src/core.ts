@@ -453,6 +453,11 @@ class Wallet {
   counterPay(slip: string) {
     return this.call<unknown>("POST", "/api/device/topup/counter", { slip });
   }
+  /** A milestone's due date: propose, accept the other side's, or (buyer, late) ask for a refund. */
+  due(body: { dealId: number; index: number; action: string; date?: string }) {
+    return this.call<{ due: unknown[] }>("POST", "/api/device/due", body);
+  }
+
   inviteLinks() {
     return this.call<{ links: unknown[] }>("GET", "/api/device/invite-links");
   }

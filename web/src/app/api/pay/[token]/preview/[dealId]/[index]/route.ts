@@ -15,10 +15,11 @@ export async function GET(req: Request, ctx: RouteContext<"/api/pay/[token]/prev
     const id = Number(p.dealId);
     const index = Number(p.index);
     if (!Number.isInteger(id) || !Number.isInteger(index)) throw new HttpError(400, "Invalid request");
-    const jpeg = await deliveryPreview(getAddress(invite.buyerWallet), id, index).catch((e) => {
+    const page = Number(new URL(req.url).searchParams.get("page") ?? 1);
+    const { jpeg, pages } = await deliveryPreview(getAddress(invite.buyerWallet), id, index, page).catch((e) => {
       throw e instanceof DealError ? new HttpError(404, e.message) : e;
     });
-    return new Response(new Uint8Array(jpeg), { headers: { "content-type": "image/jpeg", "cache-control": "private, no-store" } });
+    return new Response(new Uint8Array(jpeg), { headers: { "content-type": "image/jpeg", "cache-control": "private, no-store", "x-preview-pages": String(pages) } });
   } catch (err) {
     return errorResponse(err);
   }

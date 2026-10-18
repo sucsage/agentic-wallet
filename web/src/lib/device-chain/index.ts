@@ -14,6 +14,7 @@ import { accountOf } from "../bank/ledger";
 import { customerOfUser } from "../bank/customers";
 import { type DealMove, DEAL_MOVES, runDealMove } from "../bank/deal-actions";
 import { appOrigin, confirmDraft } from "../bank/confirm-draft";
+import { dueDates } from "../bank/milestone-due";
 import { DealError, dealTerms, deliver, syncDeal } from "../bank/deals";
 import { type DraftMilestone, deliveryOf, draftView, listDrafts } from "../bank/drafts";
 import { CARRIERS, type Carrier } from "../post";
@@ -442,6 +443,7 @@ export async function deviceDeals(device: DeviceRow) {
   const terms = await Promise.all(deals.map((d) => dealTerms(d.id, d.role === "buyer" ? wallet : d.counterparty, d.role === "seller" ? wallet : d.counterparty)));
   const counterDevices = await db.device.findMany({ where: { walletAddress: { in: [...new Set(deals.map((d) => d.counterparty))] }, revokedAt: null }, select: { walletAddress: true } });
   const withApp = new Set(counterDevices.map((d) => d.walletAddress.toLowerCase()));
+  const dues = await Promise.all(deals.map((d) => dueDates(wallet, d.id).catch(() => [])));
   return deals.map((d, i) => {
     const names = Array.isArray(terms[i]?.milestones) ? (terms[i]!.milestones as DraftMilestone[]) : [];
     return {
@@ -467,6 +469,7 @@ export async function deviceDeals(device: DeviceRow) {
           delivery: t ? (t.deposit ? "deposit" : deliveryOf(t)) : m.hasFile ? "file" : "note",
           acceptance: t?.acceptance ?? null,
           fileTypes: t?.fileTypes ?? [],
+          due: dues[i]?.find((x) => x.index === m.index) ?? null,
         };
       }),
     };

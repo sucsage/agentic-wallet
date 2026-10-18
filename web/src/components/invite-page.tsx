@@ -11,6 +11,7 @@ import { DealFileLinks } from "./deal-file-links";
 import { CaptureGuard } from "./capture-guard";
 import { GuarantorForm } from "./guarantor-form";
 import { LinkGate } from "./link-gate";
+import { DueControl, type Due } from "./due-control";
 import "./invite.css";
 
 const KIND = "invite" as const;
@@ -31,6 +32,7 @@ type Milestone = {
   deadline: number;
   canDeliver: boolean;
   fileTypes?: string[];
+  due?: Due | null;
   delivery: { note: string; fileName: string | null; sha256: string } | null;
   dispute: ({ reason: string; status: string; decision: string | null; confidence: number | null; rationale: string | null; txHash: string | null } & Partial<DisputeFlowData>) | null;
 };
@@ -52,6 +54,10 @@ type Deal = {
 };
 
 type View = {
+  /** This link was just linked to the signed-in account and destroyed: the deal's address in that account. */
+  movedTo?: string | null;
+  /** Every deal finished: when this link stops opening. */
+  closesAt?: string | null;
   name: string;
   buyerName: string;
   currency: "THB" | "CNY";
@@ -170,8 +176,15 @@ export function InvitePage({ token }: { token: string }) {
   const linkedToYou = Boolean(view?.linked?.toYou);
   const offerWaiting = Boolean(view?.deals.some((d) => d.canAccept));
   const stay = typeof window !== "undefined" && Boolean(new URLSearchParams(window.location.search).get("stay"));
+  // Linked to the signed-in account just now: this link's address was destroyed, so move to the
+  // account's own address for the deal (stay on it while an offer waits for an answer).
+  const movedTo = view?.movedTo ?? null;
   useEffect(() => {
-    if (!linkedToYou || offerWaiting || stay) return;
+    if (!movedTo) return;
+    window.location.replace(`${movedTo}${offerWaiting || stay ? "?stay=1" : ""}`);
+  }, [movedTo, offerWaiting, stay]);
+  useEffect(() => {
+    if (!linkedToYou || offerWaiting || stay || movedTo) return;
     const t = setTimeout(() => window.location.replace("/deals?from=link"), 1200);
     return () => clearTimeout(t);
   }, [linkedToYou, offerWaiting, stay]);
@@ -189,6 +202,7 @@ export function InvitePage({ token }: { token: string }) {
     <div className="inv-page">
       <CaptureGuard />
       <div className="inv-banner">DEMO · simulated money · do not enter real bank details you care about</div>
+      {view?.closesAt && <div className="inv-closing">Every deal here is finished. This link closes on {new Date(view.closesAt).toLocaleDateString()}: download what you need before then.</div>}
       <main className="inv-main">
         <header className="inv-head">
           <span className="inv-mark" aria-hidden />
@@ -358,6 +372,15 @@ function DealCard({
             <span>{money(m.amount)}</span>
           </div>
           {m.acceptance && <small className="inv-muted">To be approved: {m.acceptance}</small>}
+          <DueControl
+            due={m.due ?? null}
+            role="seller"
+            editable={deal.status !== "Cancelled" && m.status === "Pending"}
+            onAction={async (action, date) => {
+              await call(`${base}/due`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ dealId: deal.id, action, index: m.index, date }) });
+              await onDone();
+            }}
+          />
           {deal.notes
             ?.filter((n) => n.kind === "CHANGES" && n.index === m.index)
             .map((n, i) => (

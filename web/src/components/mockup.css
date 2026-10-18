@@ -1994,3 +1994,15 @@
 .aw-ai-usage-bar{height:6px;border-radius:99px;background:#222;overflow:hidden}
 .aw-ai-usage-bar i{display:block;height:100%;background:#4c8dff;border-radius:99px}
 .aw-ai-usage-bar i[data-level=high]{background:#f0b545}.aw-ai-usage-bar i[data-level=full]{background:#ff6b5b}
+
+.aw-post-docs{display:grid;gap:6px;margin:10px 0;padding:10px 12px;border:1px dashed #333;border-radius:12px}
+.aw-post-docs>small{color:#9da9ba}
+.aw-post-file{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap}
+.aw-post-portfolio{font-size:10px;font-weight:700;color:#c9b9ff;border:1px solid #3b3166;background:#1a1530;border-radius:99px;padding:1px 7px}
+.aw-post-upload{display:inline-flex;align-items:center;gap:8px;cursor:pointer;color:#7ea2ff;font-size:12px}
+.aw-post-upload input{display:none}
+
+.aw-draft-page{display:grid;gap:14px;max-width:980px}
+.aw-draft-back{justify-self:start;border:0;background:none;color:#9da9ba;font-size:13px;cursor:pointer;padding:0}
+.aw-draft-back:hover{color:#fff}
+.aw-draft-page>.aw-button{justify-self:start}

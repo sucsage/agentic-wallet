@@ -481,6 +481,7 @@ const BANK_TOOLS = [
       requirements: { type: "string", description: "What applicants must send, e.g. a portfolio link and 2 samples of logos" },
       review_hours: { type: "integer", description: "Hours to review each delivery (usually 72)" },
       closes_in_days: { type: "integer", description: "Days the post takes applications (1-60, usually 7-14)" },
+      positions: { type: "integer", description: "How many people to hire (or buy from) through this post, usually 1; each chosen applicant gets their own deal on these terms" },
       milestones: BANK_MILESTONES,
       rules: { type: "string", description: "The rules of the work for the chosen person, or empty" },
     },
@@ -771,6 +772,7 @@ const INPUTS: Record<string, z.ZodType> = {
     requirements: z.string().min(3).max(1500),
     review_hours: z.number().int().min(1).max(720),
     closes_in_days: z.number().int().min(1).max(60).default(14),
+    positions: z.number().int().min(1).max(20).default(1),
     rules: z.string().max(12_000).default(""),
     milestones: DEAL_FIELDS.milestones,
   }),
@@ -1285,7 +1287,7 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
     }
     case "create_public_post": {
       if (!userId) throw new Error("Posts need a signed-in user");
-      const i = input as DealInput & { requirements: string; closes_in_days: number };
+      const i = input as DealInput & { requirements: string; closes_in_days: number; positions?: number };
       const units = await walletUnits(wallet);
       const missing = missingInfo({ ...i, ship_to: "", guarantors_required: "none", payment_plan: [] });
       if (missing.length) return { tool: name, input, summary: `NEED_INFO (nothing was saved): ask the user for ${missing.join("; ")}.` };
@@ -1297,6 +1299,7 @@ async function runTool(wallet: Address, name: string, rawInput: unknown, userId?
         summary: i.summary,
         requirements: i.requirements,
         closesInDays: i.closes_in_days,
+        positions: i.positions ?? 1,
         terms: { reviewHours: i.review_hours, milestones: draftMilestones(i, units.decimals), rules: i.rules.trim() || null },
       });
       const link = `${appOrigin()}/apply/${post.slug}`;

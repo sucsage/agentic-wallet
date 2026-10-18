@@ -163,14 +163,27 @@ export async function startReset(kind: LinkKind, invite: Invite): Promise<{ code
  * in on the link is signed out, and a new OTP is made for the inviter to send.
  */
 export async function resetWithCode(kind: LinkKind, invite: Invite, code: string): Promise<{ otp: string; expiresAt: Date }> {
+  await consumeResetCode(kind, invite, code);
+  return issueOtp(kind, invite);
+}
+
+/**
+ * The code the link's holder got from "Forgot password" (or "I need a new link") on their page,
+ * entered by the inviter. Used once: the password is cleared and everyone signed in on the link is
+ * signed out. Nothing about the link can change without it, so the inviter cannot take the link
+ * over (or hand it to someone else) on their own.
+ */
+export async function consumeResetCode(kind: LinkKind, invite: Invite, code: string): Promise<void> {
   checkLock(invite);
   if (!invite.accessResetHash || !invite.accessResetUntil || invite.accessResetUntil < new Date()) {
-    throw new LinkAccessError("No reset was asked for, or it expired: the person presses “Forgot password” on their link to get a code", "bad");
+    throw new LinkAccessError("No code was asked for, or it expired: the person presses “Forgot password” (or “Lost the code?”) on their link and sends you the code", "bad");
   }
-  if (codeHash(invite.id, "reset", code.replace(/\D/g, "")) !== invite.accessResetHash) return countFailure(kind, invite, "Wrong reset code");
+  if (codeHash(invite.id, "reset", code.replace(/\D/g, "")) !== invite.accessResetHash) {
+    await countFailure(kind, invite, "Wrong code");
+    return;
+  }
   await table(kind).update({
     where: { id: invite.id },
     data: { accessPassword: null, accessVersion: { increment: 1 }, accessResetHash: null, accessResetUntil: null, accessTries: 0 },
   });
-  return issueOtp(kind, invite);
 }

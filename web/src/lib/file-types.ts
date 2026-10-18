@@ -34,3 +34,6 @@ export const fileTypesLabel = (types: readonly string[] | null | undefined) => (
 /** Rounds of changes a buyer may ask for on one delivered milestone: agreed per milestone, at most 10. */
 export const MAX_REVISIONS = 10;
 export const revisionsAllowed = (n: number | null | undefined) => (typeof n === "number" && Number.isFinite(n) ? Math.max(0, Math.min(MAX_REVISIONS, Math.round(n))) : MAX_REVISIONS);
+
+/** A delivered PDF (by type or name). */
+export const isPdfDelivery = (d: { mime: string | null; fileName: string | null } | null | undefined) => Boolean(d && (d.mime === "application/pdf" || /\.pdf$/i.test(d.fileName ?? "")));

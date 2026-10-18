@@ -15,7 +15,7 @@ import { useAppRouter as useRouter, useNavigationPending } from "./navigation";
 import { LoadingSkeleton } from "./loading-skeleton";
 import { authClient } from "@/lib/auth-client";
 import { AppDataProvider, useAppData } from "./app-data";
-import { BankAuthorizeLive, LiveChat, LiveDeals, LivePrivacy } from "./mockup-live";
+import { BankAuthorizeLive, LiveChat, LiveDeals, LiveDraftDetail, LivePrivacy } from "./mockup-live";
 import { LiveApprovals, LiveDealDetail, LiveFriends, LiveGroups, LivePolicy, LiveSummary } from "./mockup-live-2";
 import { translateMockupText, useLang } from "@/lib/i18n";
 import { AuthScreen, OnboardingScreen, ResetPasswordScreen, safeNext } from "./onboarding";
@@ -25,7 +25,7 @@ import type { BankChoice } from "./mockup-screens";
 import "./mockup.css";
 import "./v08.css";
 
-type Route = "landing" | "login" | "reset-password" | "bank-authorize" | `รายละเอียดดีล ${string}` | ScreenName;
+type Route = "landing" | "login" | "reset-password" | "bank-authorize" | `รายละเอียดดีล ${string}` | `ร่างดีล ${string}` | ScreenName;
 const SECTION_PATHS: Partial<Record<ScreenName, string>> = {
   "รออนุมัติ": "/approvals",
   "กระเป๋": "/summary",
@@ -35,10 +35,10 @@ const SECTION_PATHS: Partial<Record<ScreenName, string>> = {
   "ความเป็นส่วนตัว": "/profile",
 };
 
-export function MockupApp({ initialRoute = "landing", initialBank = "thai", initialDealId = "D-014", initialScreen, initialGroupWallet, initialGroupCreate = false, initialJoinToken }: { initialRoute?: "landing" | "login" | "reset-password" | "authorize" | "chat" | "deals" | "deal-detail"; initialBank?: BankChoice; initialDealId?: string; initialScreen?: ScreenName; initialGroupWallet?: string; initialGroupCreate?: boolean; initialJoinToken?: string }) {
+export function MockupApp({ initialRoute = "landing", initialBank = "thai", initialDealId = "D-014", initialScreen, initialGroupWallet, initialGroupCreate = false, initialJoinToken }: { initialRoute?: "landing" | "login" | "reset-password" | "authorize" | "chat" | "deals" | "deal-detail" | "draft-detail"; initialBank?: BankChoice; initialDealId?: string; initialScreen?: ScreenName; initialGroupWallet?: string; initialGroupCreate?: boolean; initialJoinToken?: string }) {
   const router = useRouter();
   const pending = useNavigationPending();
-  const [route, setRoute] = useState<Route>(initialScreen ?? (initialRoute === "authorize" ? "bank-authorize" : initialRoute === "chat" ? "สร้างดีล" : initialRoute === "deals" ? "ดีลทั้งหมด" : initialRoute === "deal-detail" ? `รายละเอียดดีล ${initialDealId}` : initialRoute));
+  const [route, setRoute] = useState<Route>(initialScreen ?? (initialRoute === "authorize" ? "bank-authorize" : initialRoute === "chat" ? "สร้างดีล" : initialRoute === "deals" ? "ดีลทั้งหมด" : initialRoute === "deal-detail" ? `รายละเอียดดีล ${initialDealId}` : initialRoute === "draft-detail" ? `ร่างดีล ${initialDealId}` : initialRoute));
   const [sidebarOpen, setSidebarOpen] = useState(true);
   // With a mouse on a wide screen the menu starts closed and opens while hovered (as an overlay, so the
   // page does not move); its toggle pins it open. Touch and narrow screens keep the plain toggle.
@@ -56,6 +56,14 @@ export function MockupApp({ initialRoute = "landing", initialBank = "thai", init
       setRoute(next as Route);
       return;
     }
+    // A preview (draft) has its own page too.
+    const draftMatch = next.match(/^ร่างดีล (\S+)$/);
+    if (draftMatch) {
+      router.push(`/deals/preview/${encodeURIComponent(draftMatch[1])}`);
+      setRoute(next as Route);
+      return;
+    }
+    if (next === "ดีลทั้งหมด") router.push("/deals");
     if (next === "สร้างดีล") router.push("/chat");
     setRoute(next as Route);
   };
@@ -86,6 +94,7 @@ export function MockupApp({ initialRoute = "landing", initialBank = "thai", init
           const dealId = route.slice("รายละเอียดดีล ".length);
           return <LiveDealDetail dealId={dealId} go={goToScreen} />;
         }
+        if (typeof route === "string" && route.startsWith("ร่างดีล ")) return <LiveDraftDetail draftId={route.slice("ร่างดีล ".length)} go={goToScreen} />;
         break;
     }
     switch (route) {
@@ -115,7 +124,7 @@ export function MockupApp({ initialRoute = "landing", initialBank = "thai", init
     {route === "reset-password" && <ResetPasswordScreen />}
     {route === "bank-authorize" && <BankAuthorizeLive bank={selectedBank} onCancel={() => router.push("/login")} onContinue={enterApp} />}
     {isApp && !session && <main className="aw-main"><Loading block text={isPending ? "Checking your sign-in…" : "Taking you to sign in…"} /></main>}
-    {isApp && session && <TwoFactorGate><AppDataProvider enabled><OnboardingGate><div className={`aw-workspace${route === "สร้างดีล" ? " aw-ai-chat-workspace" : ""}${menuOpen ? "" : " aw-sidebar-collapsed"}${hoverMenu && menuPeek && !menuPinned ? " aw-sidebar-peek" : ""}`}><aside className="aw-sidebar" onMouseEnter={() => hoverMenu && setMenuPeek(true)} onMouseLeave={() => setMenuPeek(false)}><div className="aw-sidebar-menu-head"><small>{translateMockupText("MENU", lang)}</small><button className={`aw-sidebar-toggle${menuOpen ? " is-open" : " is-closed"}${hoverMenu && menuPinned ? " is-pinned" : ""}`} type="button" aria-label={translateMockupText(hoverMenu ? (menuPinned ? "Unpin the menu" : "Keep the menu open") : sidebarOpen ? "ซ่อนเมนูด้านข้าง" : "แสดงเมนูด้านข้าง", lang)} aria-expanded={menuOpen} aria-pressed={hoverMenu ? menuPinned : undefined} title={translateMockupText(hoverMenu ? (menuPinned ? "Unpin the menu" : "Keep the menu open") : sidebarOpen ? "ซ่อนเมนู" : "แสดงเมนู", lang)} onClick={toggleMenu}><svg className="aw-menu-glyph" viewBox="0 0 18 18" fill="none" aria-hidden="true"><rect x="2.25" y="2.75" width="13.5" height="12.5" rx="2.25" /><path d="M7 3v12.5" /><path className="aw-menu-chevron" d="m11.5 6.5-2.25 2.5 2.25 2.5" /></svg></button></div><div className="aw-sidebar-navigation">{SIDEBAR_GROUPS.map(group => <nav className="aw-sidebar-group" key={group.title}><small className="aw-nav-title">{translateMockupText(group.title, lang)}</small>{group.items.map(item => <button key={item.label} title={translateMockupText(item.label, lang)} disabled={"disabled" in item && Boolean(item.disabled)} className={`aw-nav-item${item.route === route || (((typeof route === "string" && route.startsWith("รายละเอียดดีล ")) || route === "คำตัดสิน AI") && item.route === "ดีลทั้งหมด") ? " active" : ""}${"disabled" in item && item.disabled ? " disabled" : ""}`} onClick={() => { if (!item.route) return; if (item.route === "สร้างดีล") router.push("/chat"); else if (item.route === "ดีลทั้งหมด") router.push("/deals"); else { const path = SECTION_PATHS[item.route as ScreenName]; if (path) router.push(path); setRoute(item.route as Route); } }}><SidebarIcon name={item.icon} /><span className="aw-nav-label">{translateMockupText(item.label, lang)}</span><NavBadge route={item.route} /></button>)}</nav>)}</div><SidebarProfile onOpen={() => { router.push("/profile"); setRoute("ความเป็นส่วนตัว"); }} /></aside><main className={`aw-main${route === "สร้างดีล" ? " aw-main-chat" : route === "ดีลทั้งหมด" ? " aw-main-deals" : (typeof route === "string" && route.startsWith("รายละเอียดดีล ")) ? " aw-main-deal-detail" : route === "คำตัดสิน AI" ? " aw-main-decision" : route === "รออนุมัติ" ? " aw-main-approvals" : route === "กระเป๋" ? " aw-main-summary" : route === "เพื่อน" ? " aw-main-friends" : route === "กลุ่ม" ? " aw-main-groups" : route === "นโยบาย & Allowlist" ? " aw-main-policy" : ""}`}><div className="aw-screen">{pending ? <LoadingSkeleton /> : screen()}</div></main></div></OnboardingGate></AppDataProvider></TwoFactorGate>}
+    {isApp && session && <TwoFactorGate><AppDataProvider enabled><OnboardingGate><div className={`aw-workspace${route === "สร้างดีล" ? " aw-ai-chat-workspace" : ""}${menuOpen ? "" : " aw-sidebar-collapsed"}${hoverMenu && menuPeek && !menuPinned ? " aw-sidebar-peek" : ""}`}><aside className="aw-sidebar" onMouseEnter={() => hoverMenu && setMenuPeek(true)} onMouseLeave={() => setMenuPeek(false)}><div className="aw-sidebar-menu-head"><small>{translateMockupText("MENU", lang)}</small><button className={`aw-sidebar-toggle${menuOpen ? " is-open" : " is-closed"}${hoverMenu && menuPinned ? " is-pinned" : ""}`} type="button" aria-label={translateMockupText(hoverMenu ? (menuPinned ? "Unpin the menu" : "Keep the menu open") : sidebarOpen ? "ซ่อนเมนูด้านข้าง" : "แสดงเมนูด้านข้าง", lang)} aria-expanded={menuOpen} aria-pressed={hoverMenu ? menuPinned : undefined} title={translateMockupText(hoverMenu ? (menuPinned ? "Unpin the menu" : "Keep the menu open") : sidebarOpen ? "ซ่อนเมนู" : "แสดงเมนู", lang)} onClick={toggleMenu}><svg className="aw-menu-glyph" viewBox="0 0 18 18" fill="none" aria-hidden="true"><rect x="2.25" y="2.75" width="13.5" height="12.5" rx="2.25" /><path d="M7 3v12.5" /><path className="aw-menu-chevron" d="m11.5 6.5-2.25 2.5 2.25 2.5" /></svg></button></div><div className="aw-sidebar-navigation">{SIDEBAR_GROUPS.map(group => <nav className="aw-sidebar-group" key={group.title}><small className="aw-nav-title">{translateMockupText(group.title, lang)}</small>{group.items.map(item => <button key={item.label} title={translateMockupText(item.label, lang)} disabled={"disabled" in item && Boolean(item.disabled)} className={`aw-nav-item${item.route === route || (((typeof route === "string" && (route.startsWith("รายละเอียดดีล ") || route.startsWith("ร่างดีล "))) || route === "คำตัดสิน AI") && item.route === "ดีลทั้งหมด") ? " active" : ""}${"disabled" in item && item.disabled ? " disabled" : ""}`} onClick={() => { if (!item.route) return; if (item.route === "สร้างดีล") router.push("/chat"); else if (item.route === "ดีลทั้งหมด") router.push("/deals"); else { const path = SECTION_PATHS[item.route as ScreenName]; if (path) router.push(path); setRoute(item.route as Route); } }}><SidebarIcon name={item.icon} /><span className="aw-nav-label">{translateMockupText(item.label, lang)}</span><NavBadge route={item.route} /></button>)}</nav>)}</div><SidebarProfile onOpen={() => { router.push("/profile"); setRoute("ความเป็นส่วนตัว"); }} /></aside><main className={`aw-main${route === "สร้างดีล" ? " aw-main-chat" : route === "ดีลทั้งหมด" ? " aw-main-deals" : (typeof route === "string" && (route.startsWith("รายละเอียดดีล ") || route.startsWith("ร่างดีล "))) ? " aw-main-deal-detail" : route === "คำตัดสิน AI" ? " aw-main-decision" : route === "รออนุมัติ" ? " aw-main-approvals" : route === "กระเป๋" ? " aw-main-summary" : route === "เพื่อน" ? " aw-main-friends" : route === "กลุ่ม" ? " aw-main-groups" : route === "นโยบาย & Allowlist" ? " aw-main-policy" : ""}`}><div className="aw-screen">{pending ? <LoadingSkeleton /> : screen()}</div></main></div></OnboardingGate></AppDataProvider></TwoFactorGate>}
   </div>;
 }
 

@@ -72,6 +72,8 @@ You can attach files for the buyer (a spec, a catalogue, a sample, a quotation) 
 3. When the other side accepts the offer, the deposit moves to the seller at once, automatically: nobody delivers or approves it. The other milestones stay locked in escrow until each delivery is approved.
 4. The contract (Deals → the deal → Export documents → Contract) states the deposit.`,
   deliver: `Delivering (seller):
+- Due dates: each milestone shows its agreed due date and a countdown. Either side proposes a date on the deal page ("Propose a due date"); the other accepts it. Past the date with nothing delivered, the buyer can "Ask for this milestone's money back (late)": the seller sees it and refunds from the deal page.
+- PDFs and images open in a preview in the page; before approval the buyer sees a watermarked preview of a delivered PDF's first pages.
 1. Deals → the deal → the milestone → the delivery form.
 2. Write the evidence: what you delivered and how it meets the acceptance criteria.
 3. A file milestone: attach the file (max 4 MB). If the deal lists accepted formats (e.g. "PDF, DWG only"), only those can be uploaded. The file is encrypted; its fingerprint (sha256) goes on-chain; the buyer sees a watermarked preview and gets the file after approving.
@@ -164,9 +166,9 @@ Witnesses (optional): each side can add one under "Witnesses"; they appear on th
 - A PRIVATE link is for one person you already chose (someone without an account): made on Confirm, with a one-time code.
 - A PUBLIC link is an open call, when you do not know who yet. Ask the AI, e.g. "post a public call for a logo designer, 6,000 baht in 2 milestones, applicants send a portfolio link and 2 samples".
 1. The AI makes the post and gives you the link: share it anywhere (Facebook, LINE groups…). Anyone can open it and apply with a proposal, a price, portfolio links and up to 3 files. No account needed.
-2. Deals → "Public posts": every application, its links and files, and the contact (only you see it).
-3. "✦ AI: who fits best?" ranks them with a short reason (the AI reads what they wrote and sent; it does not open their links).
-4. "Choose <name>" drafts the deal with them. Confirm it: their private link and one-time code are made; send both to their contact (the code separately). The post then stops taking applications. "Close" stops it any time.`,
+2. Deals → "Public posts": every application, its portfolio PDF (required), links and files, and the contact (only you see it). Attach documents for applicants there too (rules, a brief): they read them on the post's page. A post can hire several people ("hire 2 designers"): choose one per place.
+3. "✦ AI: who fits best?" ranks them with a short reason, mainly on their portfolio PDF (it reads the text; it does not open links).
+4. "Choose <name>" drafts the deal with them (it opens on its own page). Confirm it: their private link and one-time code are made; send both to their contact (the code separately). The post then stops taking applications. "Close" stops it any time.`,
   desktop_app: `Desktop app (macOS, Windows, Linux; test mode demo):
 - What it is: your deals as your own chain on your computer. Every deal event (offer, payment locked, delivery, approval, dispute, ruling) is signed by the server and added as a block; each block names the one before it and is signed by your computer's key, so an old block cannot be changed without breaking the chain. This website keeps only your latest block (countersigned) and puts one fingerprint of everyone's latest blocks on the blockchain every hour (a public timestamp).
 - When the other side of a deal also uses the app, the same event sits in both chains: "My chain" shows "✓ other party".

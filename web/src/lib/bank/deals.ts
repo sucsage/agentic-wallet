@@ -492,16 +492,31 @@ ${blotches}${grid}${scribbles}
  * The original stays encrypted until the key is released; the preview is small, grainy and marked
  * all over (watermarkSvg), so a screenshot of it cannot stand in for the work.
  */
-export async function deliveryPreview(wallet: Address, dealId: number, index: number): Promise<Buffer> {
+/** Pages of a delivered PDF that get a watermarked preview (the rest only after approval). */
+export const PDF_PREVIEW_PAGES = 5;
+
+/**
+ * A watermarked, downscaled preview of a delivered image or of one page of a delivered PDF, for
+ * the buyer to check before approving (the file itself stays encrypted until then). `pages` says
+ * how many PDF pages can be previewed.
+ */
+export async function deliveryPreview(wallet: Address, dealId: number, index: number, page = 1): Promise<{ jpeg: Buffer; pages: number }> {
   await dealForWallet(wallet, dealId);
   const d = await db.dealDelivery.findUnique({ where: { escrow_dealId_index: { escrow: escrow(dealId), dealId, index } } });
   if (!d?.ciphertext || !d.fileKey || !d.iv || !d.tag) throw new DealError("No file for this milestone");
-  if (!d.mime?.startsWith("image/")) throw new DealError("Previews are made for images only");
+  const pdf = d.mime === "application/pdf" || /\.pdf$/i.test(d.fileName ?? "");
+  if (!d.mime?.startsWith("image/") && !pdf) throw new DealError("Previews are made for images and PDFs");
   const dec = createDecipheriv("aes-256-gcm", Buffer.from(d.fileKey, "hex"), Buffer.from(d.iv, "hex"));
   dec.setAuthTag(Buffer.from(d.tag, "hex"));
   const bytes = Buffer.concat([dec.update(Buffer.from(d.ciphertext)), dec.final()]);
-  const seed = (dealId * 7919 + index * 104729 + parseInt(d.sha256.slice(0, 8), 16)) >>> 0;
-  return watermarkPreview(bytes, `D-${dealId}`, seed);
+  const seed = (dealId * 7919 + index * 104729 + parseInt(d.sha256.slice(0, 8), 16) + page * 31) >>> 0;
+  if (!pdf) return { jpeg: await watermarkPreview(bytes, `D-${dealId}`, seed), pages: 1 };
+  const { getDocumentProxy, renderPageAsImage } = await import("unpdf");
+  const doc = await getDocumentProxy(new Uint8Array(bytes));
+  const pages = Math.min(doc.numPages, PDF_PREVIEW_PAGES);
+  if (!Number.isInteger(page) || page < 1 || page > pages) throw new DealError(`Pages 1-${pages} can be previewed before approval`);
+  const png = await renderPageAsImage(new Uint8Array(bytes), page, { canvasImport: () => import("@napi-rs/canvas"), scale: 1.4 });
+  return { jpeg: await watermarkPreview(Buffer.from(png), `D-${dealId}`, seed), pages };
 }
 
 /** The preview itself: downscaled, grained and marked (exported for tests). */

@@ -1541,11 +1541,12 @@ function dealStage(status: string, milestones: { status: string }[]): DealStage 
   return status === "Proposed" ? "waiting" : "active";
 }
 
-export function LiveDeals({ go }: { go: (screen: string) => void }) {
-  const lang = useLang();
-  const { wallet, drafts, me, refresh } = useAppData();
-  // A draft opens here (it used to be on the Approvals page): approve or discard it in place.
-  const [openDraft, setOpenDraft] = useState<string | null>(null);
+/**
+ * Confirm or discard a preview (the AI's draft): used by its own page (/deals/preview/<id>). A
+ * confirmed deal with someone without an account copies their private link and shows the one-time code.
+ */
+function useDraftActions(onDiscarded?: () => void) {
+  const { me, refresh } = useAppData();
   const [draftMsg, setDraftMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [draftBusy, setDraftBusy] = useState(false);
   const draftAddress = me?.acting ? (me.wallets.find((w) => w.label === me.acting?.name)?.address ?? me.wallets[0]?.address) : me?.wallets[0]?.address;
@@ -1558,7 +1559,7 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
     try {
       if (kind === "discard") {
         await api(`/api/workspace/${address}/drafts/${d.id}`, { method: "DELETE" });
-        setOpenDraft(null);
+        onDiscarded?.();
         setDraftMsg({ ok: true, text: `Discarded “${d.title}”.` });
       } else {
         const r = await api<{
@@ -1596,6 +1597,13 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
       setDraftBusy(false);
     }
   }
+  return { draftAction, draftMsg, setDraftMsg, draftBusy };
+}
+
+export function LiveDeals({ go }: { go: (screen: string) => void }) {
+  const lang = useLang();
+  const { wallet, drafts, me, refresh } = useAppData();
+  const { draftMsg, setDraftMsg } = useDraftActions();
   const [filter, setFilter] = useState<"All" | "Buying" | "Selling" | "Dispute" | "Templates" | "Public posts">("All");
   const [postCount, setPostCount] = useState<number | null>(null);
   const [templateFrom, setTemplateFrom] = useState<TemplatePayload | null>(null);
@@ -1827,7 +1835,7 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
             onCount={setPostCount}
             onChosen={(draftId, text) => {
               setDraftMsg({ ok: true, text });
-              void refresh().then(() => setOpenDraft(draftId));
+              void refresh().then(() => go(`ร่างดีล ${draftId}`));
             }}
           />
         )}
@@ -1860,12 +1868,11 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
                 <tr
                   key={r.key}
                   tabIndex={0}
-                  className={r.draftId && openDraft === r.draftId ? "selected" : undefined}
-                  onClick={() => (r.href ? (window.location.href = r.href) : r.draftId ? setOpenDraft(openDraft === r.draftId ? null : r.draftId) : go(`รายละเอียดดีล ${r.id}`))}
+                  onClick={() => (r.href ? (window.location.href = r.href) : r.draftId ? go(`ร่างดีล ${r.draftId}`) : go(`รายละเอียดดีล ${r.id}`))}
                   onKeyDown={(e) => {
                     if (e.key !== "Enter" && e.key !== " ") return;
                     if (r.href) window.location.href = r.href;
-                    else if (r.draftId) setOpenDraft(openDraft === r.draftId ? null : r.draftId);
+                    else if (r.draftId) go(`ร่างดีล ${r.draftId}`);
                     else go(`รายละเอียดดีล ${r.id}`);
                   }}
                 >
@@ -1899,26 +1906,6 @@ export function LiveDeals({ go }: { go: (screen: string) => void }) {
         </div>
         {draftMsg && <p className={draftMsg.ok ? "aw-live-ok" : "aw-bank-error"}>{draftMsg.text}</p>}
         {templateFrom && <SaveTemplateDialog payload={templateFrom} currency={currency} onClose={() => setTemplateFrom(null)} onSaved={(text) => setDraftMsg({ ok: true, text })} />}
-        {(() => {
-          const d = drafts.find((x) => x.id === openDraft && (x.status === "PREVIEW" || x.status === "DRAFT" || x.status === "FAILED"));
-          if (!d) return null;
-          return (
-            <div className="aw-deals-draft">
-              <DraftCard
-                draft={d}
-                currency={currency}
-                balance={me?.accounts[0] ? Number(me.accounts[0].balance) / 100 : null}
-                company={me?.acting ? { name: me.acting.name, threshold: me.acting.threshold } : null}
-                onApprove={(x) => void draftAction(x, "approve")}
-                onDiscard={(x) => void draftAction(x, "discard")}
-                busy={draftBusy}
-                onSaveTemplate={(x) => setTemplateFrom(templateFromDraft(x))}
-                onPlanChanged={() => void refresh()}
-              />
-              {draftBusy && <Loading text="Working on it…" />}
-            </div>
-          );
-        })()}
         {explorer && wallet && (
           <p className="aw-profile-passbook-note">
             Every lock is an on-chain transaction:{" "}
@@ -2217,6 +2204,53 @@ export function LivePrivacy() {
           </Card>
         </section>
       </main>
+    </div>,
+    lang,
+  );
+}
+
+/** A preview (the AI's draft) on its own page: read the terms, then Confirm or Discard. */
+export function LiveDraftDetail({ draftId, go }: { draftId: string; go: (screen: string) => void }) {
+  const lang = useLang();
+  const { drafts, me, refresh, loading } = useAppData() as ReturnType<typeof useAppData> & { loading?: boolean };
+  const { draftAction, draftMsg, draftBusy } = useDraftActions(() => go("ดีลทั้งหมด"));
+  const [templateFrom, setTemplateFrom] = useState<TemplatePayload | null>(null);
+  const currency = me?.bank.currency ?? "THB";
+  const d = drafts.find((x) => x.id === draftId);
+  const open = d && (d.status === "PREVIEW" || d.status === "DRAFT" || d.status === "FAILED");
+  return localizeMockupNode(
+    <div className="aw-draft-page">
+      <button type="button" className="aw-draft-back" onClick={() => go("ดีลทั้งหมด")}>
+        ← All deals
+      </button>
+      {!d ? (
+        loading || drafts.length === 0 ? <Loading text="Loading the preview…" /> : <p className="aw-posts-empty">This preview is gone: it was confirmed or discarded.</p>
+      ) : (
+        <>
+          <PageTitle eyebrow={d.side === "SELL" ? "OFFER TO SELL · PREVIEW" : "DEAL PREVIEW"} title={d.title} description={open ? "Nothing is locked until you confirm. Check every milestone and the terms review." : `Status: ${d.status.toLowerCase()}`} />
+          {open && (
+            <DraftCard
+              draft={d}
+              currency={currency}
+              balance={me?.accounts[0] ? Number(me.accounts[0].balance) / 100 : null}
+              company={me?.acting ? { name: me.acting.name, threshold: me.acting.threshold } : null}
+              onApprove={(x) => void draftAction(x, "approve")}
+              onDiscard={(x) => void draftAction(x, "discard")}
+              busy={draftBusy}
+              onSaveTemplate={(x) => setTemplateFrom(templateFromDraft(x))}
+              onPlanChanged={() => void refresh()}
+            />
+          )}
+          {!open && d.dealId !== null && (
+            <button type="button" className="aw-button" onClick={() => go(`รายละเอียดดีล D-${d.dealId}`)}>
+              Open deal D-{d.dealId}
+            </button>
+          )}
+        </>
+      )}
+      {draftBusy && <Loading text="Working on it…" />}
+      {draftMsg && <p className={draftMsg.ok ? "aw-live-ok" : "aw-bank-error"}>{draftMsg.text}</p>}
+      {templateFrom && <SaveTemplateDialog payload={templateFrom} currency={currency} onClose={() => setTemplateFrom(null)} onSaved={() => setTemplateFrom(null)} />}
     </div>,
     lang,
   );

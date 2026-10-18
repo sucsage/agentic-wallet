@@ -1,3 +1,4 @@
+import { getAddress } from "viem";
 import { z } from "zod";
 
 import {
@@ -10,6 +11,8 @@ import {
   startBuyerPayment,
 } from "@/lib/bank/buyer-invites";
 import { DealError } from "@/lib/bank/deals";
+import { closeFinishedLink } from "@/lib/bank/link-end";
+import { dueDates } from "@/lib/bank/milestone-due";
 import { db } from "@/lib/db";
 import { HttpError, errorResponse, rateLimit } from "@/lib/guard";
 
@@ -26,7 +29,18 @@ export async function GET(req: Request, ctx: RouteContext<"/api/pay/[token]">) {
   try {
     rateLimit(req, "pay-view", 120, 60 * 60 * 1000);
     const invite = await buyerInviteForRequest((await ctx.params).token).catch(asHttp(404));
-    return json(await buyerInviteView(invite));
+    const view = await buyerInviteView(invite);
+    // Every deal finished: the link closes a week later (it was used; an old link left open is a risk).
+    const deals = (view as { deals?: { status: string; milestones: { status: string }[] }[] }).deals ?? [];
+    const closesAt = await closeFinishedLink("buyer", invite, deals).catch((e) => (console.error("closeFinishedLink", e), null));
+    const buyer = getAddress(invite.buyerWallet);
+    const withDue = await Promise.all(
+      (view.deals as { id: number; milestones: { index: number }[] }[]).map(async (d) => {
+        const dues = await dueDates(buyer, d.id).catch(() => []);
+        return { ...d, milestones: d.milestones.map((m) => ({ ...m, due: dues.find((x) => x.index === m.index) ?? null })) };
+      }),
+    );
+    return json({ ...view, deals: withDue, closesAt });
   } catch (err) {
     return errorResponse(err);
   }

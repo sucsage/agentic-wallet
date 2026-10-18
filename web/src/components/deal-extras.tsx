@@ -6,6 +6,7 @@ import { localizeMockupNode, useLang } from "@/lib/i18n";
 
 import { api } from "./app-data";
 import { kb } from "./deal-file-links";
+import { FileLink } from "./file-preview";
 import { Button } from "./mockup-ui";
 
 const DEVICES = {
@@ -272,10 +273,7 @@ export function DealFiles({ dealId }: { dealId: number }) {
       <ul>
         {data.files.map((f) => (
           <li key={f.id}>
-            <a href={`/api/deals/${dealId}/attachments/${f.id}`} target="_blank" rel="noopener">
-              📎 {f.name}
-            </a>
-            <small>{kb(f.size)}</small>
+            <FileLink href={`/api/deals/${dealId}/attachments/${f.id}`} name={f.name} mime={f.mime} size={f.size} />
             {data.canAdd && f.mine && (
               <button type="button" disabled={busy} onClick={() => void remove(f.id)}>
                 Remove

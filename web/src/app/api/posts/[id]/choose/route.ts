@@ -14,7 +14,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/posts/[id]/choo
     const r = await choose(user.id, (await ctx.params).id, body.data.applicationId).catch((e) => {
       throw e instanceof PostError || e instanceof DraftError ? new HttpError(400, e.message) : e;
     });
-    return Response.json({ draftId: r.draft.id, name: r.name, contact: r.contact });
+    return Response.json({ draftId: r.draft.id, name: r.name, contact: r.contact, chosen: r.chosen, positions: r.positions });
   } catch (err) {
     return errorResponse(err);
   }

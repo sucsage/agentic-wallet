@@ -1,8 +1,10 @@
+import { isPdfDelivery } from "@/lib/file-types";
 import { after } from "next/server";
 
 import { disputeOf, disputeView } from "@/lib/bank/arbiter";
 import { planOf, planView } from "@/lib/bank/payment-plans";
 import { revisionsAllowed } from "@/lib/file-types";
+import { dueDates } from "@/lib/bank/milestone-due";
 import { DealError, OFFER_DAYS, dealForWallet, dealTerms, deliveryInfo, demoDeliverable, isSiteDelivery, syncDeal } from "@/lib/bank/deals";
 import { deliveryOf, draftView } from "@/lib/bank/drafts";
 import { inviteLinkFor } from "@/lib/bank/invites";
@@ -51,12 +53,13 @@ export async function GET(req: Request, ctx: RouteContext<"/api/deals/[id]">) {
     const witnesses = await db.dealWitness.findMany({ where: { escrow: config.fileEscrowOf(id), dealId: id } });
     const guarantors = await db.dealGuarantor.findMany({ where: { escrow: config.fileEscrowOf(id), dealId: id } });
     const changeCounts = await db.dealNote.groupBy({ by: ["index"], where: { escrow: config.fileEscrowOf(id), dealId: id, kind: "CHANGES" }, _count: { _all: true } });
-    const [deliveries, friends, disputes, invite] = await Promise.all([
+    const [deliveries, friends, disputes, invite, dues] = await Promise.all([
       Promise.all(deal.milestones.map((m) => deliveryInfo(id, m.index))),
       friendLabels(user.id),
       Promise.all(deal.milestones.map((m) => disputeOf(id, m.index))),
       // The other side has no account and this user invited them: their private link.
       inviteLinkFor(user.id, deal.counterparty, new URL(req.url).origin),
+      dueDates(wallet, id).catch(() => []),
     ]);
     return Response.json({
       ...deal,
@@ -91,11 +94,13 @@ export async function GET(req: Request, ctx: RouteContext<"/api/deals/[id]">) {
       declined: declines.some((d) => d.userId === user.id) ? "me" : declines.length > 0 ? "them" : null,
       milestones: deal.milestones.map((m, i) => ({
         ...m,
+        due: dues[i] ?? null,
         name: terms?.milestones[i]?.name ?? `Milestone ${i + 1}`,
         acceptance: terms?.milestones[i]?.acceptance ?? null,
         delivers: m.hasFile ? "file" : deliveryOf(terms?.milestones[i]),
-        // Images get a watermarked preview the buyer can see before approving.
-        canPreview: Boolean(deliveries[i]?.mime?.startsWith("image/")),
+        // Images and PDFs (first pages) get a watermarked preview the buyer can see before approving.
+        canPreview: Boolean(deliveries[i]?.mime?.startsWith("image/") || isPdfDelivery(deliveries[i])),
+        previewPdf: isPdfDelivery(deliveries[i]),
         // A web page (.html) is tried in a browser / phone mockup instead.
         canMockup: isSiteDelivery(deliveries[i]),
         deposit: terms?.milestones[i]?.deposit === true,

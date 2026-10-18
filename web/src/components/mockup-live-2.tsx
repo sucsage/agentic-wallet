@@ -9,6 +9,8 @@ import { localizeMockupNode, useLang } from "@/lib/i18n";
 
 import { api, download, tokenMoney, useAppData } from "./app-data";
 import { DisputeFlow, type DisputeFlowData, isStagedDispute } from "./dispute-flow";
+import { DueControl, type Due } from "./due-control";
+import { FileLink, PdfPagePreview } from "./file-preview";
 import { usePrefs } from "./prefs";
 import { FundCompany, setActing } from "./company";
 import { GroupChat } from "./group-chat";
@@ -1860,6 +1862,10 @@ type DealDetail = {
     moves: string[];
     delivers: "file" | "parcel" | "note";
     canPreview: boolean;
+    /** The delivery due date agreed by both sides (lib/bank/milestone-due). */
+    due?: Due | null;
+    /** A delivered PDF: its first pages are previewed (watermarked) before approval. */
+    previewPdf?: boolean;
     canMockup?: boolean;
     deposit?: boolean;
     /** The formats agreed for a file milestone ([] = any). */
@@ -1869,6 +1875,7 @@ type DealDetail = {
     delivery: {
       note: string;
       fileName: string | null;
+      mime?: string | null;
       size: number | null;
       sha256: string;
       deliveredAt: string;
@@ -2307,11 +2314,15 @@ function InviteLinkCard({ dealId, invite, onDone }: { dealId: number; invite: No
         className="aw-invite-link-new"
         disabled={busy}
         onClick={async () => {
-          if (shown && !window.confirm("Make a new link? The old one stops working.")) return;
+          // A working link is only replaced with the code its holder sends you (from their link's page).
+          const code = shown ? window.prompt("They press “Forgot password” (or “Lost the code?”) on their link and send you a 6-digit code. Enter it to make a new link (the old one stops working):") : "";
+          if (shown && !code) return;
           setBusy(true);
           setErr(null);
           try {
-            setLink((await send<{ link: string }>(`/api/deals/${dealId}/invite-link`, "POST")).link);
+            const r = await send<{ link: string; otp: string | null }>(`/api/deals/${dealId}/invite-link`, "POST", { code: code ?? undefined });
+            setLink(r.link);
+            if (r.otp) window.alert(`New link made. Its one-time code is ${r.otp}: send it to them separately from the link.`);
             await onDone();
           } catch (e) {
             setErr((e as Error).message);
@@ -2320,7 +2331,7 @@ function InviteLinkCard({ dealId, invite, onDone }: { dealId: number; invite: No
           }
         }}
       >
-        {busy ? "…" : shown ? "Make a new link (the old one stops working)" : "Make a new link"}
+        {busy ? "…" : shown ? "New link (needs the code they send you)" : "Make a new link"}
       </button>
       {err && <p className="aw-bank-error">{err}</p>}
       <LinkAccessPanel dealId={dealId} invite={invite} onDone={onDone} />
@@ -2602,6 +2613,17 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
               </div>
               {m.acceptance && <p>Acceptance: {m.acceptance}</p>}
               {m.deadline > 0 && ["Delivered", "Approved", "KeyReleased"].includes(m.status) && <small>Window ends {when(m.deadline)}</small>}
+              {!m.deposit && (
+                <DueControl
+                  due={m.due ?? null}
+                  role={data.role}
+                  editable={data.status !== "Cancelled" && m.status === "Pending"}
+                  onAction={async (action, date) => {
+                    await send(`/api/deals/${id}/due`, "POST", { action, index: m.index, date });
+                    await after();
+                  }}
+                />
+              )}
               {m.delivery && (
                 <div className="aw-d012-success">
                   📎 &nbsp;Evidence: {m.delivery.note}
@@ -2613,8 +2635,12 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
                   )}
                   {m.canPreview && !m.canDownload && (
                     <div className="aw-preview aw-protect">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={`/api/deals/${id}/preview/${m.index}`} alt={`Watermarked preview of ${m.delivery.fileName ?? "the delivery"}`} loading="lazy" />
+                      {m.previewPdf ? (
+                        <PdfPagePreview base={`/api/deals/${id}/preview/${m.index}`} alt={`Watermarked preview of ${m.delivery.fileName ?? "the delivery"}`} />
+                      ) : (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={`/api/deals/${id}/preview/${m.index}`} alt={`Watermarked preview of ${m.delivery.fileName ?? "the delivery"}`} loading="lazy" />
+                      )}
                       <small>Watermarked, reduced preview. The original unlocks once you approve and the key is released.</small>
                     </div>
                   )}
@@ -2622,9 +2648,7 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
                   {m.canDownload ? (
                     <>
                       <br />
-                      <Button variant="outline" onClick={() => download(`/api/deals/${id}/files/${m.index}`)}>
-                        ⇩ Download file
-                      </Button>
+                      <FileLink href={`/api/deals/${id}/files/${m.index}`} name={m.delivery.fileName ?? "file"} mime={m.previewPdf ? "application/pdf" : (m.delivery.mime ?? "")} />
                     </>
                   ) : (
                     m.delivery.fileName && data.role === "buyer" && !m.canPreview && <small> · unlocks after you approve and the key is released</small>

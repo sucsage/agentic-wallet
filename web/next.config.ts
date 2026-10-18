@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Native canvas (PDF pages rendered for watermarked previews) loads from node_modules at run time.
+  serverExternalPackages: ["@napi-rs/canvas"],
 };
 
 export default nextConfig;
