@@ -46,7 +46,16 @@ function checkSecret(secret: string, stored: string | null): boolean {
 }
 
 export async function securityOf(userId: string) {
-  return db.userSecurity.upsert({ where: { userId }, update: {}, create: { userId } });
+  // A new user's first pages ask at the same time: two upserts can both try to create the row, and
+  // the loser fails on the primary key. Read first, create once, and on that race read the winner's row.
+  const found = await db.userSecurity.findUnique({ where: { userId } });
+  if (found) return found;
+  try {
+    return await db.userSecurity.create({ data: { userId } });
+  } catch (e) {
+    if ((e as { code?: string }).code === "P2002") return db.userSecurity.findUniqueOrThrow({ where: { userId } });
+    throw e;
+  }
 }
 
 export function publicSecurity(s: Awaited<ReturnType<typeof securityOf>>) {

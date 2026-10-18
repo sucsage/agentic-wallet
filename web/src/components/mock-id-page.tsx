@@ -65,7 +65,8 @@ export function MockIdPage({ provider, request }: { provider: "thaid" | "netid";
     setId(sampleId(provider));
     const parts = request.login_hint.trim().split(/\s+/);
     if (thai) {
-      setGiven(parts[0] ?? "");
+      // One word ("Sage"): it is the given name; the family name stays empty.
+      setGiven(parts[0] ?? "Test");
       setFamily(parts.slice(1).join(" "));
       setBirth("1999-05-17");
     } else setFull(request.login_hint);

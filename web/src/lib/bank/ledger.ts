@@ -48,19 +48,39 @@ export class IdempotencyConflict extends Error {
   }
 }
 
+/**
+ * Get-or-create that survives two first requests at once: an upsert's create can lose the race on
+ * the unique key (P2002), in which case the row the other request made is read instead.
+ */
+async function once(find: () => Promise<BankAccount | null>, create: () => Promise<BankAccount>): Promise<BankAccount> {
+  const found = await find();
+  if (found) return found;
+  try {
+    return await create();
+  } catch (e) {
+    if ((e as { code?: string }).code === "P2002") {
+      const again = await find();
+      if (again) return again;
+    }
+    throw e;
+  }
+}
+
 export function reserveAccount(currency: Currency = "THB"): Promise<BankAccount> {
   const { id, label } = RESERVES[currency];
-  return db.bankAccount.upsert({ where: { id }, update: {}, create: { id, kind: "RESERVE", label, currency } });
+  return once(
+    () => db.bankAccount.findUnique({ where: { id } }),
+    () => db.bankAccount.create({ data: { id, kind: "RESERVE", label, currency } }),
+  );
 }
 
 /** One account per on-chain address; opening it again returns the same account. */
 export function openAccount(ownerAddress: string, label: string, currency: Currency = "THB"): Promise<BankAccount> {
   const address = ownerAddress.toLowerCase();
-  return db.bankAccount.upsert({
-    where: { ownerAddress: address },
-    update: {},
-    create: { ownerAddress: address, label, currency },
-  });
+  return once(
+    () => db.bankAccount.findUnique({ where: { ownerAddress: address } }),
+    () => db.bankAccount.create({ data: { ownerAddress: address, label, currency } }),
+  );
 }
 
 export function accountOf(ownerAddress: string): Promise<BankAccount | null> {

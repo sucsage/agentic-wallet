@@ -52,7 +52,8 @@ export async function POST(req: Request, ctx: RouteContext<"/api/mock-id/[provid
     let claims: Record<string, unknown>;
     if (provider === "THAID") {
       if (!validThaiId(id)) throw new HttpError(400, "Not a valid Thai citizen id (13 digits; the last is a check digit)");
-      if (!b.identity.given_name || !b.identity.family_name) throw new HttpError(400, "Enter the name as on the ID card");
+      // Some people have one name only (or sign up with one word): the given name alone is enough here.
+      if (!b.identity.given_name && !b.identity.full_name) throw new HttpError(400, "Enter the name as on the ID card");
       claims = {
         pid: id,
         given_name: b.identity.given_name,
