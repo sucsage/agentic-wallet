@@ -6,14 +6,22 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { ApiError } from "./api";
 import { wallet } from "./core";
 import { MCP_TOOLS, runMcp } from "./mcp";
-import { clientStatus, setClient } from "./mcp-clients";
+import { chatResponse } from "./chat-flow";
+import { type ServerEntry, parseSource, serverTools, stopServer } from "./mcp-host";
 import { checkUpdate, cleanOldExecutable, installUpdate } from "./updater";
 import { dataDir, sessionPath } from "./paths";
 import indexHtml from "./ui/index.html" with { type: "text" };
+import extrasJs from "./ui/extras.js" with { type: "text" };
 import markdownJs from "./ui/markdown.js" with { type: "text" };
+import thApp from "./ui/th-app.json" with { type: "json" };
+import thWeb from "./ui/th-web.json" with { type: "json" };
 
 /** The page with the markdown renderer inlined (one file, no extra request). */
-const PAGE = (indexHtml as unknown as string).replace("/*MARKDOWN*/", () => markdownJs as unknown as string);
+/** Thai for the TH switch: the website's strings, then the app's own (which win). "<" escaped for the inline script. */
+const TH_DICT = JSON.stringify({ ...thWeb, ...thApp }).replace(/</g, "\\u003c");
+const PAGE = (indexHtml as unknown as string)
+  .replace("/*MARKDOWN*/", () => markdownJs as unknown as string)
+  .replace("/*EXTRAS*/", () => `window.TH_DICT = ${TH_DICT};\n${extrasJs as unknown as string}`);
 
 /**
  * Agentic Wallet desktop app. One file per OS (bun build --compile): it serves its screen on
@@ -145,11 +153,6 @@ async function route(req: Request, path: string, port: number): Promise<Response
   }
   if (m === "GET" && path === "/app/mcp") return json(mcpView());
   if (m === "POST" && path === "/app/mcp/settings") return (wallet.setMcpSettings(await body(req)), json(mcpView()));
-  if (m === "POST" && path === "/app/mcp/client") {
-    const b = await body<{ id: string; on: boolean }>(req);
-    setClient(String(b.id ?? ""), b.on === true, mcpEntry());
-    return json(mcpView());
-  }
   if (m === "POST" && path === "/app/mcp/log/clear") return (wallet.clearMcpLog(), json(mcpView()));
   if (m === "POST" && path === "/app/agent-requests") {
     const b = await body<{ id: string; sign: boolean }>(req);
@@ -199,10 +202,44 @@ async function route(req: Request, path: string, port: number): Promise<Response
     return new Response(new Uint8Array(jpeg), { headers: { "content-type": "image/jpeg", "cache-control": "no-store", "x-preview-pages": String(pages) } });
   }
   if (m === "POST" && path === "/app/acting") return json(await wallet.setActing((await body<{ groupId: string | null }>(req)).groupId ?? null));
-  if (m === "GET" && path === "/app/chats") return json(wallet.chatList());
-  if (m === "GET" && path === "/app/chat") return json({ history: wallet.chatHistory(new URL(req.url).searchParams.get("id")) });
-  if (m === "POST" && path === "/app/chat") return json(await wallet.chat(await body(req)));
-  if (m === "POST" && path === "/app/chat/delete") return json(wallet.deleteChat(String((await body<{ id: string }>(req)).id ?? "")));
+  // The AI chat: saved chats on the server (shared with the website), replies streamed, the user's MCP tools run here.
+  if (m === "GET" && path === "/app/chats") return json(await wallet.chatList());
+  if (m === "GET" && path === "/app/chat") return json(await wallet.chatHistory(String(new URL(req.url).searchParams.get("id") ?? "")));
+  if (m === "POST" && path === "/app/chat") return chatResponse(await body(req));
+  if (m === "POST" && path === "/app/chat/delete") return json(await wallet.deleteChat(String((await body<{ id: string }>(req)).id ?? "")));
+  // MCP servers for MilestonePay's AI (the app is their client).
+  if (m === "GET" && path === "/app/mcp/servers") return json(await mcpServersView());
+  if (m === "POST" && path === "/app/mcp/servers/add") {
+    const b = await body<{ source: string; name?: string }>(req);
+    const found = parseSource(String(b.source ?? ""), b.name ? String(b.name) : undefined);
+    const list = wallet.mcpServers();
+    for (const [name, entry] of Object.entries(found)) list[name] = { ...entry, enabled: true, ask: true };
+    wallet.saveMcpServers(list);
+    return json(await mcpServersView());
+  }
+  if (m === "POST" && path === "/app/mcp/servers/update") {
+    const b = await body<{ name: string; enabled?: boolean; ask?: boolean; entry?: string }>(req);
+    const list = wallet.mcpServers();
+    const cur = list[String(b.name)];
+    if (!cur) return json({ error: "No such server" }, 404);
+    if (typeof b.enabled === "boolean") cur.enabled = b.enabled;
+    if (typeof b.ask === "boolean") cur.ask = b.ask;
+    if (typeof b.entry === "string") {
+      const e = JSON.parse(b.entry) as ServerEntry;
+      list[String(b.name)] = { ...e, enabled: cur.enabled, ask: cur.ask, source: cur.source };
+    }
+    stopServer(String(b.name));
+    wallet.saveMcpServers(list);
+    return json(await mcpServersView());
+  }
+  if (m === "POST" && path === "/app/mcp/servers/remove") {
+    const name = String((await body<{ name: string }>(req)).name ?? "");
+    const list = wallet.mcpServers();
+    delete list[name];
+    stopServer(name);
+    wallet.saveMcpServers(list);
+    return json(await mcpServersView());
+  }
   if (m === "GET" && path === "/app/key-backup")
     return new Response(wallet.keyBackup(), {
       headers: { "content-type": "application/json", "content-disposition": 'attachment; filename="agentic-wallet-key-backup.json"', "cache-control": "no-store" },
@@ -218,10 +255,22 @@ function mcpEntry() {
   return { command: process.execPath, args: compiled ? ["--mcp"] : ["run", process.argv[1], "--mcp"] };
 }
 
+/** The user's MCP servers with their status and tools (starting the enabled ones). */
+async function mcpServersView() {
+  const list = wallet.mcpServers();
+  const servers = await Promise.all(
+    Object.entries(list).map(async ([name, cfg]) => {
+      const status = cfg.enabled ? await serverTools(name, cfg) : { tools: [], error: null, log: "" };
+      return { name, ...cfg, env: cfg.env ? Object.fromEntries(Object.keys(cfg.env).map((k) => [k, "•••"])) : undefined, tools: status.tools.map((t) => ({ name: t.name, description: (t.description ?? "").slice(0, 200) })), error: status.error, log: status.log };
+    }),
+  );
+  return { servers };
+}
+
 /** The MCP server page: switches, the clients it can set up, the tools and the latest calls. */
 function mcpView() {
   const entry = mcpEntry();
-  return { ...entry, calls: agentCalls, settings: wallet.mcpSettings(), clients: clientStatus(entry), tools: MCP_TOOLS, log: wallet.mcpLog().slice(-100).reverse() };
+  return { ...entry, calls: agentCalls, settings: wallet.mcpSettings(), tools: MCP_TOOLS, log: wallet.mcpLog().slice(-100).reverse() };
 }
 
 /**

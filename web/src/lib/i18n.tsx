@@ -947,3 +947,20 @@ export function LangToggle() {
     </button>
   );
 }
+
+/** Every English → Thai string of the website, merged (the desktop app's TH switch uses it: scripts/export-th.mts). */
+export const thaiDictionary = (): Record<string, string> => ({
+  ...mockupTh,
+  ...aiChatThai,
+  ...verdictThai,
+  ...approvalsThai,
+  ...summaryThai,
+  ...friendsThai,
+  ...groupsThai,
+  ...createGroupThai,
+  ...groupInviteThai,
+  ...balancebarThai,
+  ...profileThai,
+  ...policyThai,
+  ...groupWalletThai,
+});

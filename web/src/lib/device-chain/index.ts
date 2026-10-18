@@ -24,7 +24,7 @@ import { actingCompany } from "../company";
 import { db } from "../db";
 import { HttpError } from "../guard";
 import { hmac } from "../kyc";
-import { SocialError, listFriends, setFriendPayee, vote } from "../social";
+import { SocialError, friendLabels, listFriends, setFriendPayee, vote } from "../social";
 import { readFileDeals } from "../state";
 import { primaryWalletAddress } from "../user-wallets";
 import {
@@ -464,6 +464,8 @@ export async function deviceDeals(device: DeviceRow) {
   const counterDevices = await db.device.findMany({ where: { walletAddress: { in: [...new Set(deals.map((d) => d.counterparty))] }, revokedAt: null }, select: { walletAddress: true } });
   const withApp = new Set(counterDevices.map((d) => d.walletAddress.toLowerCase()));
   const dues = await Promise.all(deals.map((d) => dueDates(wallet, d.id).catch(() => [])));
+  // Friends and private-link people by name, as on the website.
+  const labels = await friendLabels(device.userId);
   // Delivered files (name and type only), so the app can offer the watermarked preview.
   const files = await db.dealDelivery.findMany({
     where: { dealId: { in: deals.map((d) => d.id) }, ciphertext: { not: null } },
@@ -476,7 +478,7 @@ export async function deviceDeals(device: DeviceRow) {
       title: terms[i]?.title ?? `Deal D-${d.id}`,
       role: d.role,
       counterparty: d.counterparty,
-      counterpartyLabel: d.counterpartyLabel,
+      counterpartyLabel: labels.get(d.counterparty.toLowerCase()) ?? d.counterpartyLabel,
       counterpartyHasApp: withApp.has(d.counterparty.toLowerCase()),
       offeredBy: d.offeredBy,
       total: d.total,
@@ -528,8 +530,14 @@ export async function deviceContacts(device: DeviceRow) {
 export async function deviceDrafts(device: DeviceRow) {
   const drafts = await listDrafts(device.userId, deviceWallet(device));
   const open = drafts.filter((d) => ["PREVIEW", "DRAFT", "FAILED", "NEED_INFO"].includes(d.status));
-  const views = await Promise.all(open.map((d) => draftView(d)));
-  return JSON.parse(JSON.stringify(views, (_k, v) => (typeof v === "bigint" ? v.toString() : v)));
+  const [views, labels] = await Promise.all([Promise.all(open.map((d) => draftView(d))), friendLabels(device.userId)]);
+  // A seller or buyer who is a friend (or has a private link) shows by name, as on the website.
+  const named = views.map((v) => {
+    const addr = /^0x[0-9a-fA-F]{40}$/.test(String(v.sellerLabel ?? "")) ? String(v.sellerLabel) : String(v.counterparty ?? "");
+    const name = labels.get(addr.toLowerCase());
+    return name && (!v.sellerLabel || /^0x/.test(String(v.sellerLabel))) ? { ...v, sellerLabel: name } : v;
+  });
+  return JSON.parse(JSON.stringify(named, (_k, v) => (typeof v === "bigint" ? v.toString() : v)));
 }
 
 const KIND_LABEL: Record<string, string> = {

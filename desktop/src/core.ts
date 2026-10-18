@@ -23,6 +23,7 @@ import {
   verifyProof,
 } from "../../web/src/lib/device-chain/format";
 import { ApiError, plain, signed, signedRaw, signedForm } from "./api";
+import type { ServerConfig } from "./mcp-host";
 import * as store from "./store";
 import { currentProfile, setProfile } from "./paths";
 import { type VaultFile, WrongPassphrase, hasVault, lastAccount, listAccounts, openBackup, openKey, openLocal, readVault, rememberAccount, sealBackup, sealKey, sealLocal, writeVault } from "./vault";
@@ -32,18 +33,11 @@ export const DEFAULT_SERVER = "https://agentic-wallet-inky.vercel.app";
 type Head = { height: number; hash: Hex; serverSig: Hex; block: SignedBlock } | null;
 type Pending = { head: Head; server: Address; events: { event: DealEventBody; serverSig: Hex }[]; requests: WebRequest[] };
 /** Website routes the app may call for the user (not admin, sign-in, cron or the device routes, which have their own client). */
-const WEB_ALLOWED = /^\/api\/(address|approvals|bank|buyer-invites|companies|deals|friends|groups|invites|link-access|me|plans|policy|posts|profile|reports|samples|security|summary|templates|transfers|workspace|apply|kyc)(\/|$)/;
+const WEB_ALLOWED = /^\/api\/(address|approvals|bank|buyer-invites|companies|deals|friends|groups|invites|link-access|me|plans|policy|posts|profile|reports|samples|security|summary|templates|transfers|workspace|apply|kyc|blocks)(\/|$)/;
 const WEB_BLOCKED = /^\/api\/(admin|auth|cron|device|mock-id|rpc)(\/|$)/;
 
 export type McpSettings = { enabled: boolean; read: boolean; ask: boolean; request: boolean };
 export type McpCall = { at: number; client: string; tool: string; ok: boolean; ms: number; tokens?: number; error?: string };
-export type ChatMessage = { role: "user" | "assistant"; text: string; at: number; steps?: unknown[]; model?: string | null; usage?: { tokens: number; calls: number } | null };
-type Chat = { id: string; title: string; createdAt: number; updatedAt: number; messages: ChatMessage[] };
-const MAX_CHATS = 20;
-const titleOf = (text: string) => {
-  const t = text.replace(/\s+/g, " ").trim();
-  return t.length > 48 ? `${t.slice(0, 47)}…` : t || "Chat";
-};
 
 export type AgentRequest = {
   id: string;
@@ -178,6 +172,8 @@ class Wallet {
     const account = privateKeyToAccount(key);
     const deviceName = (input.deviceName?.trim() || hostname()).slice(0, 60);
     const mode = input.mode ?? "code";
+    // Accounts are made and signed in on the website; the app only links with a code from there.
+    if (mode !== "code") throw new ApiError(400, "Create your account on the website, then link this computer with a code (Profile → Desktop app)");
     let linked: { wallet: Address | null; server: Address; user: string };
     if (mode === "code") {
       const code = (input.code ?? "").trim().toUpperCase();
@@ -441,7 +437,7 @@ class Wallet {
   /** company: undefined follows "Acting as", null is the user's own wallet, an id is that group (the server checks membership). */
   private asPath(path: string, company?: string | null) {
     const id = company === undefined ? this.acting()?.companyId : company;
-    return id ? `${path}?as=${encodeURIComponent(id)}` : path;
+    return id ? `${path}${path.includes("?") ? "&" : "?"}as=${encodeURIComponent(id)}` : path;
   }
 
   /** A deal move, signed here as an intent block; the server runs it once the block is on the chain. */
@@ -564,46 +560,45 @@ class Wallet {
     return this.call<{ balance: number; currency: string; rows: unknown[] }>("GET", this.asPath("/api/device/activity"));
   }
 
-  /**
-   * The AI chats: several saved conversations, all kept on this computer (the last 30 turns of
-   * the open one go with each message). The single chat of older versions becomes the first one.
-   */
-  private chats(): Chat[] {
-    const saved = store.getMeta("chats");
-    if (saved) return JSON.parse(saved);
-    const old: ChatMessage[] = JSON.parse(store.getMeta("chat") ?? "[]");
-    const first = old.find((m) => m.role === "user");
-    const list: Chat[] = old.length ? [{ id: crypto.randomUUID(), title: titleOf(first?.text ?? "Chat"), createdAt: old[0].at, updatedAt: old[old.length - 1].at, messages: old }] : [];
-    store.setMeta("chats", JSON.stringify(list));
-    return list;
-  }
-
-  private saveChats(list: Chat[]) {
-    store.setMeta("chats", JSON.stringify(list.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, MAX_CHATS)));
-  }
-
-  /** The saved chats, newest first, with what each cost in tokens. */
+  /** The saved AI chats of the wallet shown (the same chats the website shows; "Acting as" has its own). */
   chatList() {
-    return {
-      max: MAX_CHATS,
-      chats: this.chats().map((c) => ({
-        id: c.id,
-        title: c.title,
-        updatedAt: c.updatedAt,
-        messages: c.messages.length,
-        tokens: c.messages.reduce((n, m) => n + (m.usage?.tokens ?? 0), 0),
-      })),
-    };
+    return this.call<{ chats: { id: string; title: string; updatedAt: string }[]; max: number }>("GET", this.asPath("/api/device/chats"));
   }
 
-  chatHistory(id?: string | null): ChatMessage[] {
-    if (!id) return [];
-    return this.chats().find((c) => c.id === id)?.messages ?? [];
+  /** One saved chat's messages (user, agent with its steps and token use, errors). */
+  chatHistory(id: string) {
+    return this.call<{ id: string; title: string; messages: unknown[] }>("GET", this.asPath(`/api/device/chats?id=${encodeURIComponent(id)}`));
   }
 
   deleteChat(id: string) {
-    this.saveChats(this.chats().filter((c) => c.id !== id));
-    return this.chatList();
+    return this.call<{ chats: unknown[]; max: number }>("POST", this.asPath("/api/device/chats"), { delete: String(id) });
+  }
+
+  /**
+   * One step of the AI chat, streamed (text/event-stream): a new message, or the continuation of a
+   * reply that paused for the user's MCP tools (resume). The user's own key and MCP tools go along.
+   */
+  chatStream(input: { chatId?: string | null; message?: string; lang?: "en" | "th"; attachment?: unknown; clientTools?: unknown[]; resume?: { state: string; results: unknown[] } }) {
+    const { vault, account } = this.need();
+    const body = {
+      chatId: input.resume ? undefined : input.chatId || "new",
+      message: input.message ?? "",
+      lang: input.lang ?? "en",
+      attachment: input.attachment,
+      byok: this.byok() ?? undefined,
+      clientTools: input.clientTools ?? [],
+      resume: input.resume,
+    };
+    return signedRaw(vault.server, account, "POST", this.asPath("/api/device/chat"), new TextEncoder().encode(JSON.stringify(body)), "application/json", "text/event-stream");
+  }
+
+  /** The MCP servers the user added for MilestonePay's AI (kept on this computer, per account). */
+  mcpServers(): Record<string, ServerConfig> {
+    return JSON.parse(store.getMeta("mcpServers") ?? "{}");
+  }
+
+  saveMcpServers(list: Record<string, ServerConfig>) {
+    store.setMeta("mcpServers", JSON.stringify(list));
   }
 
   // ----------------------------------------------------------------------------------------
@@ -756,33 +751,6 @@ class Wallet {
 
   setInstructions(text: string) {
     return this.call<{ aiInstructions: string }>("POST", "/api/device/preferences", { aiInstructions: String(text ?? "").slice(0, 1000) });
-  }
-
-  async chat(input: { chatId?: string | null; message: string; lang?: "en" | "th"; attachment?: unknown }) {
-    const list = this.chats();
-    let chat = input.chatId ? list.find((c) => c.id === input.chatId) : undefined;
-    if (!chat && list.length >= MAX_CHATS) throw new ApiError(400, `You have ${MAX_CHATS} chats: delete one to start a new chat`);
-    const history = chat?.messages ?? [];
-    const asked: ChatMessage = { role: "user", text: input.message || "(document)", at: Date.now() };
-    const r = await this.call<{ reply: string; steps: unknown[]; flags: unknown[]; model: string | null; usage?: { tokens: number; calls: number } }>("POST", this.asPath("/api/device/chat"), {
-      history: history.slice(-30).map(({ role, text }) => ({ role, text: text.slice(0, 8000) })),
-      message: input.message,
-      lang: input.lang ?? "en",
-      attachment: input.attachment,
-      byok: this.byok() ?? undefined,
-    });
-    const answer: ChatMessage = { role: "assistant", text: r.reply, at: Date.now(), steps: r.steps, model: r.model, usage: r.usage };
-    const fresh = this.chats();
-    chat = fresh.find((c) => c.id === chat?.id);
-    if (chat) {
-      chat.messages = [...chat.messages, asked, answer].slice(-200);
-      chat.updatedAt = Date.now();
-    } else {
-      chat = { id: crypto.randomUUID(), title: titleOf(input.message || "Document"), createdAt: Date.now(), updatedAt: Date.now(), messages: [asked, answer] };
-      fresh.push(chat);
-    }
-    this.saveChats(fresh);
-    return { chatId: chat.id, reply: r.reply, steps: r.steps, flags: r.flags, usage: r.usage ?? null };
   }
 
   // ----------------------------------------------------------------------------------------

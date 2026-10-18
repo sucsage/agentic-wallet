@@ -118,6 +118,14 @@ button .spin { width: 13px; height: 13px; border-width: 2px; border-color: #bbb;
 .acting small { display: block; font-size: 9px; letter-spacing: .08em; text-transform: uppercase; color: #888; margin-bottom: 4px; }
 .acting select { padding: 5px 8px; font-size: 12px; }
 .acting .hint { font-size: 10px; margin-top: 4px; }
+.mainwrap { min-width: 0; display: flex; flex-direction: column; }
+#hdr .topbar { position: relative; display: flex; gap: 8px; align-items: center; padding: 10px 28px 0; }
+#hdr .topbar input { max-width: 420px; }
+#hdr .topbar > button { padding: 6px 10px; }
+.bell-n { background: var(--bad); color: #fff; border-radius: 99px; padding: 0 6px; font-size: 10px; }
+.bell-pop { position: absolute; top: 46px; right: 28px; z-index: 20; width: min(420px, 90vw); max-height: 60vh; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 6px; box-shadow: 0 10px 30px #0008; }
+#x-hits .bell-pop { left: 28px; right: auto; }
+.bell-pop button { display: block; width: 100%; text-align: left; border: 0; white-space: normal; font-weight: 500; }
 /* AI chat: the website's layout (saved chats · conversation · agent rail). */
 main.wide { max-width: none; padding: 20px 22px 24px; }
 .chat-layout { display: grid; grid-template-columns: 230px minmax(0,1fr) 290px; gap: 14px; align-items: start; }
@@ -153,6 +161,7 @@ main.wide { max-width: none; padding: 20px 22px 24px; }
 .badges { display: flex; flex-wrap: wrap; gap: 6px; }
 .badges span { padding: 3px 9px; border-radius: 18px; background: #0c2a1d; color: #16d777; font-size: 11px; font-weight: 600; }
 .badges span:nth-child(2n) { background: #30240b; color: #f1a900; }
+.live-steps { display: flex; flex-direction: column; gap: 3px; font-size: 12px; margin-bottom: 4px; } .live-steps .done { color: var(--ok); } .live-steps .running { color: #9fc2ff; } .live-steps .bad { color: var(--bad); }
 .steps-live { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #9fc2ff; animation: pulse 1.2s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: .45; } }
 .usage-line { margin-top: 10px; padding-top: 8px; border-top: 1px solid #2a2a2a; color: #888; font-size: 11px; display: flex; gap: 10px; flex-wrap: wrap; }
@@ -235,33 +244,32 @@ const busy = (btn, text) => { btn.disabled = true; btn.dataset.label = btn.textC
 const idle = (btn) => { btn.disabled = false; btn.textContent = btn.dataset.label || btn.textContent; };
 function loadingScreen(text) { $("#root").innerHTML = `<div class="center"><div class="loading"><span class="spin"></span>${esc(text)}</div></div>`; }
 
-function renderSetup(tab = "login") {
+function renderSetup(tab = "link") {
   const hasAccounts = (S.info.accounts || []).length > 0;
-  const TABS = [["login", "Sign in"], ["signup", "Create account"], ["link", "Link with code"], ["restore", "Restore"]];
+  const TABS = [["link", "Link with code"], ["signup", "Create account"], ["restore", "Restore"]];
   const serverField = `<label>Server</label><input name="server" value="${esc(S.info.defaultServer)}" />`;
   const pass = `<label>App passphrase</label><input name="passphrase" type="password" minlength="8" required />
         <div class="hint">Encrypts this computer's key. It never leaves the computer; nobody can reset it.</div>
         <label>App passphrase again</label><input name="again" type="password" required />`;
   const computer = `<label>Name of this computer</label><input name="deviceName" value="${esc(S.info.hostname)}" />`;
   const body = {
-    login: `${serverField}<label>Email</label><input name="email" type="email" autocomplete="username" required /><label>Password</label><input name="password" type="password" autocomplete="current-password" required />${computer}${pass}`,
-    signup: `${serverField}<p class="hint" style="margin:12px 0 0">New accounts are made on the MilestonePay website: sign up, verify your identity with the digital ID, and your wallet opens. Then come back here and <b>Sign in</b> with the same email and password.</p>`,
-    link: `${serverField}<label>Link code</label><input name="code" placeholder="ABCD-EFGH" autocomplete="off" required /><div class="hint">On the website: Profile → Desktop app → Make a link code (for accounts with a second factor).</div>${computer}${pass}`,
+    signup: `${serverField}<p class="hint" style="margin:12px 0 0">New accounts are made on the MilestonePay website: sign up, verify your identity with the digital ID, and your wallet opens. Then, on the website, open Profile → Desktop app → <b>Make a link code</b>, and enter it here under <b>Link with code</b>.</p>`,
+    link: `${serverField}<label>Link code</label><input name="code" placeholder="ABCD-EFGH" autocomplete="off" required /><div class="hint">No account yet? Create one on the website first. Then on the website: Profile → Desktop app → Make a link code (valid 10 minutes).</div>${computer}${pass}`,
     restore: `<label>Key backup file</label><input name="file" type="file" accept=".json,application/json" required /><div class="hint">The file you saved from Settings → Save key backup.</div><label>App passphrase</label><input name="passphrase" type="password" required />`,
   }[tab];
-  const label = { login: "Sign in", signup: "Open sign-up on the website", link: "Link this computer", restore: "Restore" }[tab];
-  const working = { login: "Signing in…", signup: "Opening…", link: "Linking…", restore: "Restoring…" }[tab];
+  const label = { signup: "Open sign-up on the website", link: "Link this computer", restore: "Restore" }[tab];
+  const working = { signup: "Opening…", link: "Linking…", restore: "Restoring…" }[tab];
   $("#root").innerHTML = `<div class="center"><div class="card narrow">
     <div class="row space"><div class="brand"><span class="mark"></span>MilestonePay <span class="tag">Desktop</span></div>${hasAccounts ? `<button class="linkbtn" id="back">← Accounts</button>` : ""}</div>
     <p class="hint">${hasAccounts ? "Add another account to this computer." : "Your deals as your own chain on this computer. The website keeps only its latest block, signed by both sides."}</p>
     <div class="tabs" style="flex-wrap:wrap">${TABS.map(([k, l]) => `<button data-t="${k}" class="${tab === k ? "on" : ""}">${l}</button>`).join("")}</div>
     <form id="f">${body}<div class="err" id="e"></div><div class="row" style="margin-top:16px"><button class="primary" id="go">${label}</button></div>
-    ${tab === "signup" ? `<p class="hint" id="opened" style="display:none">The website opened in your browser. Signed up and verified? <button type="button" class="linkbtn" id="tologin">Sign in here</button></p>` : ""}</form>
+    ${tab === "signup" ? `<p class="hint" id="opened" style="display:none">The website opened in your browser. Signed up and verified? Make a link code there, then <button type="button" class="linkbtn" id="tologin">Link with code</button></p>` : ""}</form>
     <div class="demo">Demo · test money · no real funds</div>
   </div></div>`;
   document.querySelectorAll(".tabs button").forEach((b) => (b.onclick = () => renderSetup(b.dataset.t)));
   const back = $("#back"); if (back) back.onclick = () => renderUnlock();
-  const tl = $("#tologin"); if (tl) tl.onclick = () => renderSetup("login");
+  const tl = $("#tologin"); if (tl) tl.onclick = () => renderSetup("link");
   $("#f").onsubmit = async (ev) => {
     ev.preventDefault();
     const f = new FormData(ev.target), e = $("#e"), go = $("#go");
@@ -327,7 +335,7 @@ function renderUnlock() {
     if (b.dataset.acct === S.info.current) return;
     try { S.info = await api("/app/select-account", "POST", { id: b.dataset.acct }); renderUnlock(); } catch (e) { showErr($("#e"), e); }
   }));
-  $("#add").onclick = () => renderSetup("login");
+  $("#add").onclick = () => renderSetup("link");
   $("#f").onsubmit = async (ev) => {
     ev.preventDefault();
     const go = $("#go"), e = $("#e");
@@ -342,10 +350,10 @@ function renderUnlock() {
 }
 
 // ---------------------------------------------------------------- app shell
-const VIEWS = [["overview", "Overview"], ["chat", "AI chat"], ["deals", "Deals"], ["activity", "Money"], ["contacts", "Friends"], ["links", "Private links"], ["groups", "Groups"], ["ai", "AI settings"], ["mcp", "MCP server"], ["chain", "My chain"], ["settings", "Settings"]];
+const VIEWS = [["overview", "Overview"], ["chat", "AI chat"], ["deals", "Deals"], ["activity", "Money"], ["approvals", "Waiting for you"], ["summary", "Summary"], ["templates", "Templates"], ["contacts", "Friends"], ["links", "Private links"], ["groups", "Groups"], ["posts", "Open calls"], ["ai", "AI settings"], ["mcp", "MCP"], ["policy", "Policy & limits"], ["profile", "Profile & privacy"], ["chain", "My chain"], ["settings", "Settings"]];
 function renderApp() {
   const d = S.info.device;
-  const groups = [["Wallet", ["overview", "chat", "deals", "activity"]], ["People", ["contacts", "links", "groups"]], ["AI", ["ai", "mcp"]], ["Security", ["chain", "settings"]]];
+  const groups = [["Wallet", ["overview", "chat", "deals", "activity", "approvals", "summary", "templates"]], ["People", ["contacts", "links", "groups", "posts"]], ["AI", ["ai", "mcp"]], ["Security", ["policy", "profile", "chain", "settings"]]];
   const label = Object.fromEntries(VIEWS);
   const initials = (d.user || "?").split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
   $("#root").innerHTML = `<div class="layout"><nav>
@@ -353,9 +361,10 @@ function renderApp() {
       ${actingSwitch()}
       ${groups.map(([g, ks]) => `<div class="group">${g}</div>${ks.map((k) => `<button data-v="${k}" class="${S.view === k ? "on" : ""}">${label[k]}</button>`).join("")}`).join("")}
       ${updateNudge()}<div class="foot"><div class="avatar">${esc(initials)}</div><div class="who"><b>${esc(d.user)}</b><small>${esc(d.name)}</small></div><button id="lock" title="Lock the app">Lock</button></div>
-    </nav><main id="main"></main></div>`;
+    </nav><div class="mainwrap"><div id="hdr">${headerHtml()}</div><main id="main"></main></div></div>`;
   document.querySelectorAll("nav [data-v]").forEach((b) => (b.onclick = () => { S.view = b.dataset.v; renderApp(); load(); }));
   $("#lock").onclick = async () => { S.info = await api("/app/lock", "POST"); render(); };
+  wireHeader();
   const as = $("#acting");
   if (as) as.onchange = async () => {
     as.disabled = true;
@@ -418,7 +427,7 @@ function renderView() {
     wireChat();
   } else if (S.view === "activity") {
     const a = S.activity, t = S.topup;
-    m.innerHTML = `<div class="row space"><h1>Money</h1><button id="sync">Refresh</button></div>
+    m.innerHTML = `<div class="row space"><h1>Money</h1><div class="row"><button class="primary" id="x-send">⇄ Send money</button><button id="sync">Refresh</button></div></div>
       <div class="grid"><div class="card"><div class="hint">Balance (Mock Bank, test money)</div><div class="stat"><div class="v">${a ? money(a.balance, a.currency) : "…"}</div></div></div>
       <div class="card"><h2>Top up</h2>${t ? `<form id="tf"><div class="row"><input name="amount" type="number" min="1" step="1" placeholder="Amount (${esc(t.currency)})" required style="flex:1"></div>
         <div class="row" style="margin-top:8px">${t.currency === "THB" ? `<button data-m="promptpay" class="primary">PromptPay QR</button>` : ""}<button data-m="card">Card</button>${t.card ? `<button data-m="linked">${esc(t.card.brand)} ··${esc(t.card.last4)}</button>` : ""}${t.counter ? `<button data-m="counter">Counter slip</button>` : ""}</div>
@@ -427,6 +436,9 @@ function renderView() {
       ${a.rows.length ? a.rows.map((r) => `<tr><td class="hint">${when(r.at)}</td><td>${esc(r.label)}${r.txHash ? `<div class="mono hint">${short(r.txHash)}</div>` : ""}</td><td>${esc(r.counterparty)}</td><td style="text-align:right" class="${r.direction}"><b>${r.direction === "in" ? "+" : "−"}${money(r.amount, a.currency)}</b></td></tr>`).join("") : `<tr><td colspan="4" class="hint">Nothing yet.</td></tr>`}
       </tbody></table></div>` : `<div class="card hint">Loading…</div>`}`;
     $("#sync").onclick = () => load();
+    { const sm = $("#x-send"); if (sm) sm.onclick = () => sendMoneyDialog(); }
+    m.insertAdjacentHTML("beforeend", `<div id="x-card"></div>`);
+    cardLinkHtml().then((h) => { const el = $("#x-card"); if (el) { el.innerHTML = h; wireCardLink(); } });
     const tf = $("#tf");
     if (tf) tf.onsubmit = (ev) => ev.preventDefault();
     document.querySelectorAll("#tf [data-m]").forEach((b) => (b.onclick = async (ev) => {
@@ -447,7 +459,7 @@ function renderView() {
   } else if (S.view === "contacts") {
     const fs = S.friends;
     const acc = (fs || []).filter((f) => f.status === "ACCEPTED"), inc = (fs || []).filter((f) => f.direction === "incoming"), out = (fs || []).filter((f) => f.direction === "outgoing");
-    m.innerHTML = `<div class="row space"><h1>Friends</h1><button id="sync">Refresh</button></div>
+    m.innerHTML = `<div class="row space"><h1>Friends</h1><div class="row"><button class="primary" id="x-send">⇄ Send money</button><button id="sync">Refresh</button></div></div>
       <div class="grid" style="grid-template-columns:minmax(0,2fr) minmax(0,1fr);margin-bottom:12px">
         <div class="card"><h2>Add a friend</h2><form id="ff" class="row"><input name="u" id="fq" placeholder="Name, username or email" autocomplete="off" required style="flex:1" value="${esc(S.friendQ || "")}"><button class="primary">Send request</button></form>
           <div id="fres">${friendResults()}</div>
@@ -459,8 +471,10 @@ function renderView() {
       ${inc.length ? `<div class="banner"><b>Friend requests</b>${inc.map((f) => `<div class="req row space"><div><b>${esc(f.name)}</b> <span class="hint">@${esc(f.username)}</span></div><div class="row"><button class="primary" data-acc="${esc(f.friendshipId)}">Accept</button><button data-rm="${esc(f.friendshipId)}">Decline</button></div></div>`).join("")}</div>` : ""}
       <div class="card">${fs ? (acc.length ? `<table><thead><tr><th>Name</th><th>Payee</th><th></th></tr></thead><tbody>${acc.map((c) => `<tr><td><b>${esc(c.name)}</b><div class="hint">@${esc(c.username)}</div></td>
         <td>${c.payee ? `<span class="chip ok">can be paid</span>` : `<span class="chip">not a payee</span>`}</td>
-        <td style="text-align:right"><div class="row" style="justify-content:flex-end">${c.hasWallet ? `<button data-payee="${esc(c.friendshipId)}" data-on="${c.payee ? "0" : "1"}" class="${c.payee ? "danger" : "primary"}">${c.payee ? "Stop paying" : "Make payee"}</button>` : `<span class="hint">no wallet yet</span>`}<button data-rm="${esc(c.friendshipId)}" title="Remove friend">✕</button></div></td></tr>`).join("")}</tbody></table>` : `<p class="hint">No friends yet.</p>`) : `<p class="hint">Loading…</p>`}
-      ${out.length ? `<p class="hint">Waiting for: ${out.map((f) => esc(f.name || f.username)).join(", ")}</p>` : ""}</div>`;
+        <td style="text-align:right"><div class="row" style="justify-content:flex-end">${c.hasWallet ? `<button data-payee="${esc(c.friendshipId)}" data-on="${c.payee ? "0" : "1"}" class="${c.payee ? "danger" : "primary"}">${c.payee ? "Stop paying" : "Make payee"}</button>` : `<span class="hint">no wallet yet</span>`}<button data-report="${esc(c.userId)}" title="Report">Report</button><button data-block="${esc(c.userId)}" title="Block">Block</button><button data-rm="${esc(c.friendshipId)}" title="Remove friend">✕</button></div></td></tr>`).join("")}</tbody></table>` : `<p class="hint">No friends yet.</p>`) : `<p class="hint">Loading…</p>`}
+      ${out.length ? `<p class="hint">Waiting for: ${out.map((f) => esc(f.name || f.username)).join(", ")}</p>` : ""}</div><div id="x-fextras"></div>`;
+    wireFriendsExtras();
+    friendsExtrasHtml().then((h) => { const el = $("#x-fextras"); if (el) { el.innerHTML = h; wireFriendsExtras(); } });
     $("#sync").onclick = () => load();
     const addFriend = async (username) => { try { const r = await api("/app/friends", "POST", { op: "request", username }); S.friends = r.friends; S.friendQ = ""; S.friendFound = null; toast("Request sent"); renderView(); } catch (e) { toast(e.message); } };
     // One match: add that person. Otherwise the text goes as typed (a username, an exact name or an email).
@@ -501,15 +515,15 @@ function renderView() {
   } else if (S.view === "groups") {
     const g = S.groups;
     const friends = (S.friends || []).filter((f) => f.status === "ACCEPTED");
-    m.innerHTML = `<div class="row space"><h1>Groups</h1><button id="sync">Refresh</button></div>
+    m.innerHTML = `<div class="row space"><h1>Groups</h1><div class="row"><button id="x-company">Register a company</button><button id="sync">Refresh</button></div></div>
       ${g && g.votes.length ? `<div class="banner"><b>Payments waiting for your vote</b>${g.votes.map((v) => `<div class="req row space"><div><b>${esc(v.title)}</b><div class="hint">${esc(v.group.name)} · ${v.yes} of ${v.group.threshold} yes so far</div></div><div class="row"><button class="primary" data-vote="${esc(v.proposalId)}" data-yes="1">Approve</button><button data-vote="${esc(v.proposalId)}" data-yes="0">Reject</button></div></div>`).join("")}</div>` : ""}
       ${g && g.invites.length ? `<div class="banner"><b>Invitations</b>${g.invites.map((i) => `<div class="req row space"><div><b>${esc(i.group?.name || i.name || "A group")}</b><div class="hint">${i.canSign ? "as a signer" : "as a member"}</div></div><div class="row"><button class="primary" data-inv="${esc(i.id)}" data-yes="1">Join</button><button data-inv="${esc(i.id)}" data-yes="0">Decline</button></div></div>`).join("")}</div>` : ""}
       <div id="glist">${g ? (g.groups.length ? g.groups.map((x) => `<div class="card deal"><div class="row space"><b>${esc(x.name)}</b><span class="chip">${x.threshold} of ${x.members.filter((mm) => mm.canSign).length} signers</span></div>
-        <div class="hint">${x.members.map((mm) => `${esc(mm.name)}${mm.role === "ADMIN" ? " (admin)" : ""}${mm.canSign ? " ✍" : ""}`).join(" · ")}${x.invited ? ` · ${x.invited} invited` : ""}</div>${x.openProposals ? `<div class="hint">${x.openProposals} open proposal(s)</div>` : ""}${groupWalletHtml(x)}${groupDealsHtml(x)}</div>`).join("") : `<div class="card hint">No groups yet.</div>`) : `<div class="card hint">Loading…</div>`}</div>
+        <div class="hint">${x.members.map((mm) => `${esc(mm.name)}${mm.role === "ADMIN" ? " (admin)" : ""}${mm.canSign ? " ✍" : ""}`).join(" · ")}${x.invited ? ` · ${x.invited} invited` : ""}</div>${x.openProposals ? `<div class="hint">${x.openProposals} open proposal(s)</div>` : ""}${groupWalletHtml(x)}${groupDealsHtml(x)}${groupManageHtml(x)}</div>`).join("") : `<div class="card hint">No groups yet.</div>`) : `<div class="card hint">Loading…</div>`}</div>
       <div class="card" style="margin-top:12px"><h2>New group</h2><form id="gf"><label>Name</label><input name="name" required minlength="2" maxlength="60" placeholder="e.g. Coffee shop partners">
         <label>Members (friends)</label>${friends.length ? friends.map((f) => `<div class="row" style="margin:4px 0"><label style="margin:0;font-weight:400;display:flex;gap:6px;align-items:center"><input type="checkbox" name="mem" value="${esc(f.userId)}" style="width:auto"> ${esc(f.name)}</label><label style="margin:0;font-weight:400;display:flex;gap:6px;align-items:center" class="hint"><input type="checkbox" name="sign" value="${esc(f.userId)}" checked style="width:auto"> can sign</label></div>`).join("") : `<p class="hint">Add friends first.</p>`}
         <label>Votes needed to pay (at least 2)</label><input name="threshold" type="number" min="2" value="2" required style="width:120px">
-        <div class="row" style="margin-top:10px"><button class="primary" ${friends.length ? "" : "disabled"}>Create group</button></div><p class="hint">Group chat: on the website for now.</p></form></div>`;
+        <div class="row" style="margin-top:10px"><button class="primary" ${friends.length ? "" : "disabled"}>Create group</button></div></form></div>`;
     $("#sync").onclick = () => load();
     document.querySelectorAll("[data-vote]").forEach((b) => (b.onclick = async () => {
       const yes = b.dataset.yes === "1";
@@ -519,6 +533,7 @@ function renderView() {
       await load();
     }));
     wireGroupWallets();
+    wireGroupManage();
     wireDrafts();
     document.querySelectorAll("[data-inv]").forEach((b) => (b.onclick = async () => { try { S.groups = await api("/app/groups", "POST", { op: "invite", inviteId: b.dataset.inv, accept: b.dataset.yes === "1" }); renderView(); } catch (e) { toast(e.message); } }));
     $("#gf").onsubmit = async (ev) => {
@@ -544,6 +559,8 @@ function renderView() {
     $("#go-chat").onclick = () => go("chat");
   } else if (S.view === "mcp") {
     m.innerHTML = mcpPageHtml();
+  } else if (EXTRA_VIEWS[S.view]) {
+    EXTRA_VIEWS[S.view].render(m);
   } else if (S.view === "chain") {
     const c = S.chain;
     const linked = new Map((c?.links || []).map((l) => [l.event, l]));
@@ -824,8 +841,8 @@ function chatsPanel() {
   return `<aside class="chats-panel"><header><b>Chats</b>${list ? `<span>${list.length}/${max}</span>` : ""}</header>
     <button class="primary" id="newchat" ${S.chatBusy || full || (!S.chatId && !(S.chatHistory || []).length) ? "disabled" : ""} title="${full ? `${max} chats max: delete one first` : "Start a new chat"}">＋ New chat</button>
     <div class="chat-list">${!S.chatId && (S.chatHistory || []).length ? `<div class="on"><button><b>New chat</b><small>Just now</small></button></div>` : ""}
-    ${list ? list.map((c) => `<div class="${c.id === S.chatId ? "on" : ""}"><button data-chat="${esc(c.id)}" ${S.chatBusy ? "disabled" : ""}><b>${esc(c.title)}</b><small>${new Date(c.updatedAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })} · ${num(c.tokens)} tokens</small></button><button class="del" data-delchat="${esc(c.id)}" title="Delete this chat" ${S.chatBusy ? "disabled" : ""}>✕</button></div>`).join("") : `<div class="loading"><span class="spin"></span>Loading…</div>`}</div>
-    <p>${full ? `${max} chats max: delete one to start another. ` : ""}Chats are kept on this computer only. Deleting one removes the conversation; your deals stay.</p></aside>`;
+    ${list ? list.map((c) => `<div class="${c.id === S.chatId ? "on" : ""}"><button data-chat="${esc(c.id)}" ${S.chatBusy ? "disabled" : ""}><b>${esc(c.title)}</b><small>${new Date(c.updatedAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })}</small></button><button class="del" data-delchat="${esc(c.id)}" title="Delete this chat" ${S.chatBusy ? "disabled" : ""}>✕</button></div>`).join("") : `<div class="loading"><span class="spin"></span>Loading…</div>`}</div>
+    <p>${full ? `${max} chats max: delete one to start another. ` : ""}The same chats as on the website (${S.info.acting ? esc(S.info.acting.name) + "'s" : "your"} wallet). Deleting one removes the conversation; your deals stay.</p></aside>`;
 }
 
 /** company: the group whose preview this is (its card under Groups); undefined follows "Acting as". */
@@ -837,10 +854,14 @@ function draftCard(d, company) {
     <div class="row"><span class="chip">${esc(d.status)}</span><b>${esc(d.total)} ${esc(d.symbol)}</b></div></div>
     ${(d.milestones || []).map((m, i) => `<div class="ms"><div>${i + 1}. ${esc(m.name)} · <b>${esc(m.amount)}</b>${m.deposit ? ` <span class="chip warn">deposit on signing</span>` : ""}${m.due ? ` <span class="chip">due ${esc(m.due)}</span>` : ""}<div class="hint">${esc(m.acceptance)}</div></div><div class="hint">${esc(m.delivery || (m.hasFile ? "file" : "note"))}</div></div>`).join("")}
     ${d.review ? d.review.issues.map((i) => `<div class="issue ${i.level}">${esc(i.text)}</div>`).join("") : ""}
-    <div class="row" style="margin-top:10px">${["PREVIEW", "DRAFT", "FAILED"].includes(d.status) ? `<button class="primary" data-confirm="${esc(d.id)}"${co} ${blocking ? "disabled title=\"Fix the blocking points with the AI first\"" : ""}>Confirm and sign</button><button data-discard="${esc(d.id)}"${co}>Discard</button>` : d.status === "FUNDED" ? `<span class="chip ok">confirmed</span>` : `<span class="hint">The AI still needs details: answer it in the chat.</span>`}</div></div>`;
+    <div class="row" style="margin-top:10px">${["PREVIEW", "DRAFT", "FAILED"].includes(d.status) ? `<button class="primary" data-confirm="${esc(d.id)}"${co} ${blocking ? "disabled title=\"Fix the blocking points with the AI first\"" : ""}>Confirm and sign</button><button data-discard="${esc(d.id)}"${co}>Discard</button><button data-tmpl="${esc(d.id)}">Save as template</button>` : d.status === "FUNDED" ? `<span class="chip ok">confirmed</span>` : `<span class="hint">The AI still needs details: answer it in the chat.</span>`}</div></div>`;
 }
 
+/** A saved chat item from the server ({ kind: user | agent | error }) in the shape the chat draws. */
+const asMsg = (x) => ({ ...x, role: x.role || (x.kind === "agent" ? "assistant" : x.kind), at: typeof x.at === "string" ? Date.parse(x.at) : x.at });
+
 function msgHtml(x) {
+  x = asMsg(x);
   if (x.role === "user") return `<div class="u-msg"><small>You · ${clock(x.at)}</small><p>${esc(x.text)}</p></div>`;
   if (x.role === "error") return `<article class="a-msg"><div class="issue block" style="margin:0">${esc(x.text)}</div></article>`;
   const tools = stepTools(x);
@@ -865,7 +886,7 @@ function convoHtml() {
       <article class="a-msg"><p>Hi ${esc(name)}. Tell me what you want to hire or sell. I draft the deal and check your limits; nothing leaves your wallet until you sign it here with your device key.</p>
         <div class="sugg">${sugg.map((p) => `<button type="button" data-sugg="${esc(p)}">${esc(p)}</button>`).join("")}</div></article>
       ${S.chatLoading ? `<div class="loading"><span class="spin"></span>Opening the chat…</div>` : h.map(msgHtml).join("")}
-      ${S.chatBusy ? `<div class="a-meta">Agent</div><div class="steps-live"><span>◌ Thinking… the agent reads your wallet and runs its tools on the server</span></div>` : ""}
+      <div id="live">${S.chatBusy ? liveHtml() : ""}</div>
     </div>
     <form class="composer2" id="cf">
       <label title="Attach a PDF, image or text file (up to 3 MB)">＋<input type="file" name="f" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.txt,.md,.csv,.json" style="display:none"></label>
@@ -909,7 +930,7 @@ function rememberChat(id) { S.chatId = id; try { id ? localStorage.setItem("awch
 
 async function openChat(id) {
   rememberChat(id); S.chatLoading = true; S.chatHistory = []; renderView();
-  try { S.chatHistory = (await api(`/app/chat?id=${encodeURIComponent(id)}`)).history; } catch (e) { toast(e.message); }
+  try { S.chatHistory = (await api(`/app/chat?id=${encodeURIComponent(id)}`)).messages.map(asMsg); } catch (e) { toast(e.message); }
   S.chatLoading = false; renderView();
 }
 
@@ -937,52 +958,72 @@ function wireChat() {
   if (!S.chatBusy) ta.focus();
 }
 
+function mcpServersHtml() {
+  const v = S.mcpServers;
+  const list = v ? v.servers : null;
+  return `<div class="card" style="margin-bottom:12px"><h2>MCP servers for MilestonePay's AI</h2>
+    <p class="hint" style="margin-top:0">Give the AI chat more tools: add an MCP server and its tools appear to the AI (as <span class="mono">mcp__server__tool</span>). They run on this computer with the app's own runtime (no Node needed), and the app asks you before each call unless you choose "always allow". They cannot sign or pay in the wallet.</p>
+    <form id="mcp-add"><label>GitHub link, npm package, server URL, JSON config, or the server's code</label>
+      <textarea name="source" rows="4" placeholder='https://github.com/owner/some-mcp-server
+@modelcontextprotocol/server-everything
+https://example.com/mcp
+{ "mcpServers": { "files": { "command": "bun", "args": ["x", "@modelcontextprotocol/server-filesystem", "/Users/me/Documents"] } } }' required></textarea>
+      <div class="row" style="margin-top:6px"><input name="name" placeholder="name (optional)" style="width:200px"><button class="primary">Add server</button><span class="hint">Code you paste is saved under this app's data folder and run here: add only what you trust.</span></div></form>
+    ${list === null ? `<div class="loading" style="margin-top:10px"><span class="spin"></span>Starting your servers…</div>` : list.length ? list.map((x) => `<div class="ms" style="grid-template-columns:1fr auto;align-items:start">
+      <div><b>${esc(x.name)}</b> ${!x.enabled ? `<span class="chip">off</span>` : x.error ? `<span class="chip bad" title="${esc(x.log || "")}">not running</span>` : `<span class="chip ok">${x.tools.length} tool${x.tools.length === 1 ? "" : "s"}</span>`} ${x.ask ? `<span class="chip">asks first</span>` : `<span class="chip warn">always allowed</span>`}
+        <div class="mono hint">${x.url ? esc(x.url) : esc([x.command, ...(x.args || [])].join(" "))}</div>
+        ${x.error ? `<div class="issue block">${esc(x.error)}</div>${x.log ? `<pre class="mono hint" style="white-space:pre-wrap;max-height:90px;overflow:auto">${esc(x.log)}</pre>` : ""}` : ""}
+        ${x.tools.length ? `<details style="margin-top:4px"><summary class="hint">Tools</summary>${x.tools.map((t) => `<div class="hint"><b class="mono">${esc(t.name)}</b> ${esc(t.description)}</div>`).join("")}</details>` : ""}
+        <details style="margin-top:4px"><summary class="hint">Edit config (JSON)</summary><textarea data-mcpentry="${esc(x.name)}" rows="4" class="mono">${esc(JSON.stringify(x.url ? { url: x.url } : { command: x.command, args: x.args || [], ...(x.env ? { env: x.env } : {}) }, null, 2))}</textarea><button data-mcpsave="${esc(x.name)}" style="margin-top:4px">Save and restart</button></details></div>
+      <div class="row"><button data-mcpon="${esc(x.name)}" data-v="${x.enabled ? "0" : "1"}">${x.enabled ? "Turn off" : "Turn on"}</button><button data-mcpask="${esc(x.name)}" data-v="${x.ask ? "0" : "1"}">${x.ask ? "Always allow" : "Ask first"}</button><button class="danger" data-mcprm="${esc(x.name)}">Remove</button></div></div>`).join("") : `<p class="hint">No servers yet.</p>`}</div>`;
+}
+
 function mcpPageHtml() {
   const m = S.mcp;
-  if (!m) return `<h1>MCP server</h1><div class="card"><div class="loading"><span class="spin"></span>Loading…</div></div>`;
+  if (!m) return `<h1>MCP server</h1>${mcpServersHtml()}<div class="card"><div class="loading"><span class="spin"></span>Loading…</div></div>`;
   const cfg = JSON.stringify({ mcpServers: { "agentic-wallet": { command: m.command, args: m.args } } }, null, 2);
-  const cli = `claude mcp add agentic-wallet -- ${[m.command, ...m.args].map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(" ")}`;
   const sw = (k, title, text) => `<label class="switch"><input type="checkbox" data-mcpset="${k}" ${m.settings[k] ? "checked" : ""} ${k !== "enabled" && !m.settings.enabled ? "disabled" : ""}><span><b>${title}</b><div class="hint">${text}</div></span></label>`;
   const groupName = { read: "Read", ask: "Ask the AI", request: "Request a signature" };
-  const ar = S.info.agentRequests || [];
   const clients = {};
   m.log.forEach((c) => { const x = (clients[c.client] = clients[c.client] || { calls: 0, last: 0, tokens: 0, errors: 0 }); x.calls++; x.tokens += c.tokens || 0; x.last = Math.max(x.last, c.at); if (!c.ok) x.errors++; });
-  return `<div class="row space"><h1>MCP server</h1><div class="row">${m.settings.enabled ? `<span class="chip ok">On</span>` : `<span class="chip bad">Off</span>`}<button id="mcp-refresh">Refresh</button></div></div>
-    <p class="hint" style="margin-top:-8px">Let Claude Desktop, Cursor or another MCP client read your wallet and ask for moves. Nothing an agent does moves money: signing waits here for you. Keep the app open and unlocked while they use it.</p>
+  return `<div class="row space"><h1>MCP</h1><button id="mcp-refresh">Refresh</button></div>
     ${agentBanner()}
+    ${mcpServersHtml()}
+    <h2 style="margin-top:18px">Let other AI apps use this wallet ${m.settings.enabled ? `<span class="chip ok">on</span>` : `<span class="chip bad">off</span>`}</h2>
+    <p class="hint" style="margin-top:-4px">This app is also an MCP server: any MCP client can read your wallet and ask for moves; signing always waits here for you.</p>
     <div class="grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">
       <div class="card"><h2>Access</h2>
         ${sw("enabled", "MCP server on", "Off: every agent call is refused.")}
         ${sw("read", "Read", "wallet_status, list_deals, list_activity, list_friends, list_drafts")}
         ${sw("ask", "Ask the wallet's AI", "ask_wallet_ai: drafts deals on your token allowance (or your own key)")}
         ${sw("request", "Request your signature", "request_deal_move, request_confirm_draft, request_payee: wait here until you Sign or Reject")}</div>
-      <div class="card"><h2>Connect a client</h2>
-        ${m.clients.map((c) => `<div class="req row space" style="border-bottom:1px solid var(--line-2);padding:8px 0"><div><b>${esc(c.name)}</b><div class="hint">${!c.readable ? "Its config file is not valid JSON: add it by hand" : c.added ? (c.current ? `Added. ${esc(c.restart)}` : "Added, but for another copy of the app: update it") : c.found ? "Installed, not connected" : "Not found on this computer"}</div><div class="mono hint">${esc(c.file)}</div></div>
-          <div class="row">${c.added ? `${c.current ? "" : `<button class="primary" data-mcpclient="${esc(c.id)}" data-on="1">Update</button>`}<button class="danger" data-mcpclient="${esc(c.id)}" data-on="0">Remove</button>` : `<button class="primary" data-mcpclient="${esc(c.id)}" data-on="1" ${c.readable ? "" : "disabled"}>Add</button>`}</div></div>`).join("")}
-        <label>Claude Code</label><pre class="mono" style="white-space:pre-wrap;background:var(--chip);padding:8px;border-radius:8px;margin:0">${esc(cli)}</pre>
-        <label>Any other client (JSON)</label><pre class="mono" style="white-space:pre-wrap;background:var(--chip);padding:8px;border-radius:8px;margin:0">${esc(cfg)}</pre>
-        <div class="row" style="margin-top:8px"><button id="mcp-copy">Copy JSON</button><button id="mcp-copy-cli">Copy command</button></div>
-        <p class="hint">Add/Remove edits that client's config file and keeps a copy next to it (.bak-agentic-wallet).</p></div>
+      <div class="card"><h2>Connect a client</h2><p class="hint" style="margin-top:0">Add this to the client's MCP config (the usual "mcpServers" format):</p>
+        <pre class="mono" style="white-space:pre-wrap;background:var(--chip);padding:8px;border-radius:8px;margin:0">${esc(cfg)}</pre>
+        <div class="row" style="margin-top:8px"><button id="mcp-copy">Copy JSON</button></div></div>
     </div>
     <div class="card" style="margin-bottom:12px"><h2>Clients seen</h2>${Object.keys(clients).length ? `<table><thead><tr><th>Client</th><th>Calls</th><th>Refused/failed</th><th>Tokens</th><th>Last</th></tr></thead><tbody>${Object.entries(clients).map(([n, x]) => `<tr><td><b>${esc(n)}</b></td><td>${x.calls}</td><td>${x.errors}</td><td>${num(x.tokens)}</td><td>${when(x.last)}</td></tr>`).join("")}</tbody></table>` : `<p class="hint">No agent has connected yet.</p>`}</div>
     <div class="card" style="margin-bottom:12px"><div class="row space"><h2 style="margin:0">Call log</h2>${m.log.length ? `<button id="mcp-clear">Clear log</button>` : ""}</div>
-      ${m.log.length ? `<table><thead><tr><th>Time</th><th>Client</th><th>Tool</th><th>Result</th><th>Tokens</th></tr></thead><tbody>${m.log.slice(0, 60).map((c) => `<tr><td class="hint">${when(c.at)}</td><td>${esc(c.client)}</td><td class="mono">${esc(c.tool)}</td><td>${c.ok ? `<span class="chip ok">ok · ${c.ms} ms</span>` : `<span class="chip bad" title="${esc(c.error || "")}">refused</span><div class="hint">${esc(c.error || "")}</div>`}</td><td>${c.tokens ? num(c.tokens) : ""}</td></tr>`).join("")}</tbody></table>` : `<p class="hint">Empty.</p>`}</div>
-    <div class="card"><h2>Tools</h2><table><thead><tr><th>Tool</th><th>Switch</th><th>What it does</th></tr></thead><tbody>${m.tools.map((t) => `<tr><td class="mono">${esc(t.name)}</td><td>${m.settings[t.group] && m.settings.enabled ? `<span class="chip ok">${groupName[t.group]}</span>` : `<span class="chip bad">${groupName[t.group]} · off</span>`}</td><td class="hint">${esc(t.description)}</td></tr>`).join("")}</tbody></table>
-      ${ar.length ? "" : `<p class="hint">Requests waiting for your signature appear at the top of this page and on Overview.</p>`}</div>`;
+      ${m.log.length ? `<table><thead><tr><th>Time</th><th>Client</th><th>Tool</th><th>Result</th><th>Tokens</th></tr></thead><tbody>${m.log.slice(0, 60).map((c) => `<tr><td class="hint">${when(c.at)}</td><td>${esc(c.client)}</td><td class="mono">${esc(c.tool)}</td><td>${c.ok ? `<span class="chip ok">ok · ${c.ms} ms</span>` : `<span class="chip bad">refused</span><div class="hint">${esc(c.error || "")}</div>`}</td><td>${c.tokens ? num(c.tokens) : ""}</td></tr>`).join("")}</tbody></table>` : `<p class="hint">Empty.</p>`}</div>
+    <div class="card"><h2>Tools this app offers</h2><table><thead><tr><th>Tool</th><th>Switch</th><th>What it does</th></tr></thead><tbody>${m.tools.map((t) => `<tr><td class="mono">${esc(t.name)}</td><td>${m.settings[t.group] && m.settings.enabled ? `<span class="chip ok">${groupName[t.group]}</span>` : `<span class="chip bad">${groupName[t.group]} · off</span>`}</td><td class="hint">${esc(t.description)}</td></tr>`).join("")}</tbody></table></div>`;
 }
 
 function wireMcp() {
-  const r = $("#mcp-refresh"); if (r) r.onclick = () => load();
+  const r = $("#mcp-refresh"); if (r) r.onclick = () => { S.mcpServers = null; load(); };
   document.querySelectorAll("[data-mcpset]").forEach((b) => (b.onchange = async () => { try { S.mcp = await api("/app/mcp/settings", "POST", { [b.dataset.mcpset]: b.checked }); renderView(); } catch (e) { toast(e.message); } }));
-  document.querySelectorAll("[data-mcpclient]").forEach((b) => (b.onclick = async () => {
-    const on = b.dataset.on === "1";
-    if (!on && !confirm("Remove MilestonePay from this client's MCP config?")) return;
-    b.disabled = true;
-    try { S.mcp = await api("/app/mcp/client", "POST", { id: b.dataset.mcpclient, on }); const c = S.mcp.clients.find((x) => x.id === b.dataset.mcpclient); toast(on ? `Added to ${c.name}. ${c.restart}` : `Removed from ${c.name}`); renderView(); } catch (e) { toast(e.message); b.disabled = false; }
-  }));
   const cp = $("#mcp-copy"); if (cp) cp.onclick = () => navigator.clipboard.writeText(JSON.stringify({ mcpServers: { "agentic-wallet": { command: S.mcp.command, args: S.mcp.args } } }, null, 2)).then(() => toast("Copied"), () => toast("Copy failed"));
-  const cc = $("#mcp-copy-cli"); if (cc) cc.onclick = () => navigator.clipboard.writeText(`claude mcp add agentic-wallet -- ${[S.mcp.command, ...S.mcp.args].map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(" ")}`).then(() => toast("Copied"), () => toast("Copy failed"));
   const cl = $("#mcp-clear"); if (cl) cl.onclick = async () => { if (!confirm("Clear the call log?")) return; S.mcp = await api("/app/mcp/log/clear", "POST"); renderView(); };
+  const add = $("#mcp-add"); if (add) add.onsubmit = async (ev) => {
+    ev.preventDefault();
+    const fd = new FormData(add), btn = add.querySelector("button.primary");
+    if (!confirm("Add this MCP server? It runs on this computer with your access. Add only servers you trust.")) return;
+    busy(btn, "Adding and starting…");
+    try { S.mcpServers = await api("/app/mcp/servers/add", "POST", { source: fd.get("source"), name: fd.get("name") || undefined }); toast("Server added"); renderView(); } catch (e) { toast(e.message); idle(btn); }
+  };
+  const upd = async (body, b) => { if (b) busy(b, "…"); try { S.mcpServers = await api("/app/mcp/servers/update", "POST", body); renderView(); } catch (e) { toast(e.message); if (b) idle(b); } };
+  document.querySelectorAll("[data-mcpon]").forEach((b) => (b.onclick = () => upd({ name: b.dataset.mcpon, enabled: b.dataset.v === "1" }, b)));
+  document.querySelectorAll("[data-mcpask]").forEach((b) => (b.onclick = () => upd({ name: b.dataset.mcpask, ask: b.dataset.v === "1" }, b)));
+  document.querySelectorAll("[data-mcpsave]").forEach((b) => (b.onclick = () => { const t = document.querySelector(`[data-mcpentry="${CSS.escape(b.dataset.mcpsave)}"]`); try { JSON.parse(t.value); } catch { toast("That JSON does not parse"); return; } upd({ name: b.dataset.mcpsave, entry: t.value }, b); }));
+  document.querySelectorAll("[data-mcprm]").forEach((b) => (b.onclick = async () => { if (!confirm(`Remove ${b.dataset.mcprm}?`)) return; try { S.mcpServers = await api("/app/mcp/servers/remove", "POST", { name: b.dataset.mcprm }); renderView(); } catch (e) { toast(e.message); } }));
   wireRequestButtons();
 }
 
@@ -990,6 +1031,7 @@ function wireDrafts() {
   const allDrafts = () => [...(S.drafts || []), ...Object.values(S.groupDeals || {}).flatMap((g) => (g && g.drafts) || [])];
   // A group's preview (its card under Groups) is confirmed as that group: its purchase goes to the signers' vote.
   const companyOf = (b) => (b.dataset.company === undefined ? undefined : b.dataset.company || null);
+  document.querySelectorAll("[data-tmpl]").forEach((b) => (b.onclick = () => { const d = allDrafts().find((x) => x.id === b.dataset.tmpl); if (d) saveTemplate(d); }));
   document.querySelectorAll("[data-discard]").forEach((b) => (b.onclick = async () => {
     if (!confirm("Discard this preview? Nothing was paid or locked.")) return;
     try { await api("/app/drafts/discard", "POST", { draftId: b.dataset.discard, companyId: companyOf(b) }); toast("Preview discarded"); await refreshDealLists(); } catch (e) { toast(e.message); }
@@ -1030,6 +1072,78 @@ async function fileToAttachment(f) {
   return { kind: "text", name: f.name, text: (await f.text()).slice(0, 60000) };
 }
 
+/** The reply being written: text so far, the tools it ran, and calls to the user's MCP servers. */
+function liveHtml() {
+  const L = S.live || { text: "", steps: [], running: [], mcp: [] };
+  const lines = [
+    ...L.steps.map((t) => `<span class="done">✓ ${esc(TOOL_LABEL[t] || t)}</span>`),
+    ...L.mcp.map((c) => `<span class="${c.status === "running" ? "running" : c.status === "done" ? "done" : "bad"}">${c.status === "running" ? "◌" : c.status === "done" ? "✓" : "✕"} ${esc(c.server)} · ${esc(c.tool)}${c.status === "declined" ? " (declined)" : c.status === "error" ? ` (${esc(c.error || "failed")})` : c.ms ? ` · ${c.ms} ms` : ""}</span>`),
+    ...L.running.map((t) => `<span class="running">◌ ${esc(TOOL_LABEL[t] || t)}…</span>`),
+  ];
+  return `<div class="a-meta">Agent</div>${lines.length ? `<div class="live-steps">${lines.join("")}</div>` : ""}
+    <article class="a-msg">${L.text ? `<div class="md">${window.renderMarkdown(L.text)}</div>` : `<div class="steps-live"><span>◌ Thinking…</span></div>`}</article>`;
+}
+
+function paintLive() {
+  const el = $("#live");
+  if (!el) return;
+  el.innerHTML = S.chatBusy ? liveHtml() : "";
+  const box = $("#msgs"); if (box) box.scrollTop = box.scrollHeight;
+}
+
+/** Streams one chat request (a new message, or the continuation after the user answered about MCP tools). */
+async function streamChat(payload) {
+  const res = await fetch("/app/chat", { method: "POST", headers: { "x-app-token": TOKEN, "content-type": "application/json" }, body: JSON.stringify(payload) });
+  if (!res.ok || !res.body) throw new Error((await res.json().catch(() => ({}))).error || `The app answered ${res.status}`);
+  const reader = res.body.getReader(), dec = new TextDecoder();
+  let buf = "", outcome = null;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let cut;
+    while ((cut = buf.indexOf("\n\n")) >= 0) {
+      const chunk = buf.slice(0, cut); buf = buf.slice(cut + 2);
+      const ev = (/^event: (.*)$/m.exec(chunk) || [])[1], raw = (/^data: (.*)$/m.exec(chunk) || [])[1];
+      if (!ev || !raw) continue;
+      const d = JSON.parse(raw), L = S.live;
+      if (ev === "chat" && d.id) rememberChat(d.id);
+      else if (ev === "turn") L.text = "";
+      else if (ev === "text") L.text += d.delta;
+      else if (ev === "tool") { if (!/^mcp__/.test(d.name)) L.running.push(d.name); }
+      else if (ev === "step") { const t = d.step && d.step.tool; L.running = L.running.filter((x) => x !== t); if (t) L.steps.push(t); }
+      else if (ev === "mcp") { const i = L.mcp.findIndex((x) => x.id === d.id); if (i >= 0) L.mcp[i] = d; else L.mcp.push(d); }
+      else if (ev === "done") { outcome = { done: d }; if (d.chatId) rememberChat(d.chatId); }
+      else if (ev === "approve") outcome = { approve: d };
+      else if (ev === "error") outcome = { error: d.error };
+      paintLive();
+    }
+  }
+  return outcome || { error: "The reply stopped before it finished" };
+}
+
+/** The AI wants to use tools of the user's MCP servers: the user allows (or declines) each call. */
+function approveDialog(a) {
+  return new Promise((resolve) => {
+    const dlg = $("#dlg"), form = $("#dlg-form");
+    const servers = [...new Set(a.calls.map((c) => c.server).filter(Boolean))];
+    form.innerHTML = `<h2>Allow the AI to use your tools?</h2><p class="hint">These run on this computer, with your MCP servers' access. They cannot sign or pay in the wallet.</p>
+      ${a.calls.map((c) => `<label class="switch"><input type="checkbox" name="ok" value="${esc(c.id)}" checked><span><b>${esc(c.server || "?")} · ${esc(c.tool || c.name)}</b><div class="mono hint" style="max-height:90px;overflow:auto">${esc(JSON.stringify(c.input)).slice(0, 600)}</div></span></label>`).join("")}
+      ${servers.map((sv) => `<label class="switch" style="border:0"><input type="checkbox" name="always" value="${esc(sv)}"><span>Always allow <b>${esc(sv)}</b> (no more asking)</span></label>`).join("")}
+      <div class="row" style="justify-content:flex-end;margin-top:12px"><button value="no" formnovalidate>Decline all</button><button class="primary" value="ok">Run allowed</button></div>`;
+    dlg.showModal();
+    form.onsubmit = async (ev) => {
+      ev.preventDefault();
+      const fd = new FormData(form), yes = ev.submitter?.value === "ok";
+      const ok = new Set(yes ? fd.getAll("ok") : []);
+      for (const sv of yes ? fd.getAll("always") : []) await api("/app/mcp/servers/update", "POST", { name: sv, ask: false }).catch(() => undefined);
+      dlg.close();
+      resolve(Object.fromEntries(a.calls.map((c) => [c.id, ok.has(c.id)])));
+    };
+    dlg.addEventListener("cancel", () => resolve(Object.fromEntries(a.calls.map((c) => [c.id, false]))), { once: true });
+  });
+}
+
 async function sendChat(fd) {
   const message = String(fd.get("m") || "").trim();
   const f = fd.get("f");
@@ -1037,20 +1151,26 @@ async function sendChat(fd) {
   let attachment;
   try { attachment = f && f.size ? await fileToAttachment(f) : undefined; } catch (e) { toast(e.message); return; }
   S.chatHistory = [...(S.chatHistory || []), { role: "user", text: message || `📎 ${f.name}`, at: Date.now() }];
-  S.chatBusy = true; S.chatDraft = ""; renderView();
-  let failed = null;
+  S.chatBusy = true; S.chatDraft = ""; S.live = { text: "", steps: [], running: [], mcp: [] }; renderView();
+  let out;
   try {
-    const r = await api("/app/chat", "POST", { chatId: S.chatId, message: message || `Read the attached ${f.name}`, lang: S.lang || "th", attachment });
-    rememberChat(r.chatId);
-  } catch (e) { failed = e.message; }
+    out = await streamChat({ chatId: S.chatId, message: message || `Read the attached ${f.name}`, lang: S.lang || "th", attachment });
+    // A chat deleted elsewhere (or remembered from another account): start a new one with the same message.
+    if (out.error === "Chat not found" && S.chatId) { rememberChat(null); out = await streamChat({ chatId: null, message: message || `Read the attached ${f.name}`, lang: S.lang || "th", attachment }); }
+    // Tools of the user's MCP servers that need asking: ask, then continue the same reply.
+    for (let i = 0; out.approve && i < 6; i++) {
+      const allow = await approveDialog(out.approve);
+      out = await streamChat({ chatId: out.approve.chatId || S.chatId, lang: S.lang || "th", resume: { state: out.approve.state, calls: out.approve.calls, allow } });
+    }
+  } catch (e) { out = { error: e.message }; }
   S.chatBusy = false;
   const [h, d, c, ai] = await Promise.all([
-    S.chatId ? api(`/app/chat?id=${encodeURIComponent(S.chatId)}`).catch(() => ({ history: S.chatHistory })) : Promise.resolve({ history: S.chatHistory }),
+    S.chatId ? api(`/app/chat?id=${encodeURIComponent(S.chatId)}`).then((x) => x.messages.map(asMsg)).catch(() => null) : Promise.resolve(null),
     api("/app/drafts").catch(() => ({ drafts: S.drafts || [] })), api("/app/chats").catch(() => S.chats), api("/app/ai").catch(() => S.ai),
   ]);
-  // Failed: the message was not saved; keep it on screen with the error under it.
-  S.chatHistory = failed ? [...S.chatHistory, { role: "error", text: failed, at: Date.now() }] : h.history;
-  S.drafts = d.drafts; S.chats = c; S.ai = ai;
+  // A reply that failed was not saved: keep the message on screen with the error under it.
+  S.chatHistory = out.error || !h ? [...S.chatHistory, ...(out.error ? [{ role: "error", text: out.error, at: Date.now() }] : [])] : h;
+  S.drafts = d.drafts; S.chats = c; S.ai = ai; S.live = null;
   if (S.view === "chat") renderView();
 }
 
@@ -1151,7 +1271,7 @@ function dealHtml(d) {
   }
   return `<div class="card deal"><div class="row space"><div><b>${esc(d.title)}</b> <span class="hint">D-${d.id}</span>
       <div class="hint">${d.role === "buyer" ? "You buy from" : "You sell to"} ${esc(d.counterpartyLabel)} ${d.counterpartyHasApp ? `<span class="chip ok">their app links to your chain</span>` : ""}</div></div>
-      <div class="row"><span class="chip ${STATUS_CHIP[d.status] || ""}">${esc(d.status)}</span><b>${esc(d.total)}</b>${head.join("")}</div></div>
+      <div class="row"><span class="chip ${STATUS_CHIP[d.status] || ""}">${esc(d.status)}</span><b>${esc(d.total)}</b>${head.join("")}<button data-details="${d.id}">${S.dealOpen && S.dealOpen[d.id] ? "Hide details" : "Details"}</button></div></div>
     ${d.milestones.map((m) => {
       const acts = [];
       if (d.status === "Active") {
@@ -1163,6 +1283,7 @@ function dealHtml(d) {
       }
       return `<div class="ms"><div>${esc(m.name)} · <b>${esc(m.amount)}</b> <span class="chip ${STATUS_CHIP[m.status] || ""}">${esc(m.status)}</span> <span class="hint">${esc(m.delivery || "")}</span>${dueHtml(d, m)}${m.split ? `<span class="hint"> seller ${esc(m.split.toSeller)} / buyer ${esc(m.split.toBuyer)}</span>` : ""}${m.file ? `<div class="hint">📎 ${esc(m.file.name)}</div>` : ""}</div><div class="row">${m.file && m.file.preview ? `<button data-preview="${d.id}" data-i="${m.index}" data-name="${esc(m.file.name)}">Preview</button>` : ""}${acts.join("")}</div></div>`;
     }).join("")}
+    ${S.dealOpen && S.dealOpen[d.id] ? dealDetailHtml(d.id) : ""}
   </div>`;
 }
 
@@ -1203,6 +1324,7 @@ function wireDueButtons() {
 
 function wireDealButtons() {
   wireDueButtons();
+  wireDealDetails();
   document.querySelectorAll("[data-act]").forEach((b) => (b.onclick = () => confirmMove(b.dataset.act, b.dataset.deal, b.dataset.i)));
   document.querySelectorAll("[data-deliver]").forEach((b) => (b.onclick = () => deliverDialog(b.dataset.deliver, b.dataset.i)));
   document.querySelectorAll("[data-preview]").forEach((b) => (b.onclick = () => previewDialog(b.dataset.preview, b.dataset.i, b.dataset.name)));
@@ -1266,14 +1388,16 @@ async function load() {
       const [c, d, ai, mcp] = await Promise.all([api("/app/chats"), api("/app/drafts"), api("/app/ai").catch(() => null), api("/app/mcp").catch(() => null)]);
       S.chats = c; S.drafts = d.drafts; S.ai = ai; S.mcp = mcp;
       if (S.chatId && !c.chats.some((x) => x.id === S.chatId)) rememberChat(null);
-      if (!S.chatBusy) S.chatHistory = S.chatId ? (await api(`/app/chat?id=${encodeURIComponent(S.chatId)}`)).history : (S.chatHistory || []).filter(() => !S.chatId);
+      if (!S.chatBusy) S.chatHistory = S.chatId ? (await api(`/app/chat?id=${encodeURIComponent(S.chatId)}`).catch(() => ({ messages: [] }))).messages.map(asMsg) : (S.chatHistory || []).filter(() => !S.chatId);
     }
     if (S.view === "activity") { const [a, t] = await Promise.all([api("/app/activity"), api("/app/topup").catch(() => null)]); S.activity = a; S.topup = t; }
     if (S.view === "contacts" || S.view === "groups") { const f = await api("/app/friends"); S.friends = f.friends; S.friendsMe = f.me; }
     if (S.view === "links") S.links = (await api("/app/invite-links")).links;
     if (S.view === "ai") S.ai = await api("/app/ai").catch(() => null);
-    if (S.view === "mcp") S.mcp = await api("/app/mcp");
+    if (S.view === "mcp") { S.mcp = await api("/app/mcp"); if (S.mcpServers == null) api("/app/mcp/servers").then((v) => { S.mcpServers = v; if (S.view === "mcp") renderView(); }).catch((e) => toast(e.message)); }
     if (S.view === "groups") { S.groups = await api("/app/groups"); S.actingGroups = S.groups.groups; }
+    if (EXTRA_VIEWS[S.view]) await EXTRA_VIEWS[S.view].load().catch((e) => toast(e.message));
+    if (!S.headerAt || Date.now() - S.headerAt > 60_000) { S.headerAt = Date.now(); loadHeader().then(() => { if (S.info.stage === "ready") { const h = $("#hdr"); if (h) { h.innerHTML = headerHtml(); wireHeader(); } } }).catch(() => undefined); }
   } catch (e) { toast(e.message); }
   if (S.info.stage === "ready") renderApp(); else render();
 }
@@ -1289,5 +1413,6 @@ setInterval(async () => {
 
 boot().then(load).catch((e) => { $("#root").innerHTML = `<div class="center"><div class="card narrow err" style="display:block">${esc(e.message)}</div></div>`; });
 </script>
+<script>/*EXTRAS*/</script>
 </body>
 </html>

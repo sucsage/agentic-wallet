@@ -28,6 +28,8 @@ export function deviceRoute(handler: (device: DeviceRow, body: unknown, req: Req
       const type = req.headers.get("content-type") ?? "";
       const form = () => new Request(req.url, { method: "POST", headers: { "content-type": type }, body: bytes }).formData();
       const out = await handler(device, body, req, { bytes, form });
+      // A handler that streams (the AI chat) returns its own Response.
+      if (out instanceof Response) return out;
       return new Response(JSON.stringify(out, (_k, v) => (typeof v === "bigint" ? v.toString() : v)), { headers: { "content-type": "application/json" } });
     } catch (err) {
       return errorResponse(err);

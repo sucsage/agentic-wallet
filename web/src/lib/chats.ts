@@ -11,14 +11,14 @@ import { db } from "./db";
  * conversation and builds the model's history from it, so a browser cannot rewrite what the agent
  * was told earlier. Stored steps are what the chat shows: tool name, redacted summary, draft card.
  */
-export const MAX_CHATS = 5;
+export const MAX_CHATS = 20;
 
 export class ChatLimitError extends Error {}
 
 export type StoredStep = { tool: string; summary: string; draft?: AgentStep["draft"]; form?: AgentStep["form"]; open?: AgentStep["open"]; payout?: AgentStep["payout"] };
 export type StoredItem =
   | { kind: "user"; text: string; at: string }
-  | { kind: "agent"; text: string; at: string; steps: StoredStep[] }
+  | { kind: "agent"; text: string; at: string; steps: StoredStep[]; usage?: { tokens: number; calls: number }; model?: string | null }
   | { kind: "error"; text: string; at: string };
 
 export const publicStep = (s: AgentStep): StoredStep => ({

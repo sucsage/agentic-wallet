@@ -17,7 +17,7 @@ const Body = z.object({
     .default([]),
   message: z.string().max(4000).default(""),
   lang: z.enum(["en", "th"]).default("en"),
-  /** A saved chat to continue, or "new" to start one (max 5). Without it nothing is saved. */
+  /** A saved chat to continue, or "new" to start one (max 20). Without it nothing is saved. */
   chatId: z.string().max(40).optional(),
   attachment: AttachmentInput.optional(),
 });

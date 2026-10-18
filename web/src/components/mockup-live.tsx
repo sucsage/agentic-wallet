@@ -787,7 +787,7 @@ export function LiveChat() {
   const [items, setItems] = useState<ChatItem[]>([]);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
-  // Saved chats (max 5). chatId null: a new chat, saved when its first message is sent.
+  // Saved chats (max 20, shared with the desktop app). chatId null: a new chat, saved when its first message is sent.
   const [chats, setChats] = useState<SavedChat[] | null>(null);
   const [maxChats, setMaxChats] = useState(5);
   const [chatId, setChatId] = useState<string | null>(null);
