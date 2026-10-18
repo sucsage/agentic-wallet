@@ -554,6 +554,10 @@ class Wallet {
     return this.aiSettings();
   }
 
+  aiUsage() {
+    return this.call<{ today: number; week: number; ownKeyToday: number; perDay: number; perWeek: number; resetsDay: string; resetsWeek: string }>("GET", "/api/device/ai-usage");
+  }
+
   instructions() {
     return this.call<{ aiInstructions: string }>("GET", "/api/device/preferences");
   }

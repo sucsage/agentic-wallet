@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import { setLang, useLang } from "@/lib/i18n";
 
+import { AiUsageBars } from "./ai-usage";
 import { api } from "./app-data";
 import { Card } from "./mockup-ui";
 
@@ -98,6 +99,7 @@ export function PreferencesCard({ currency }: { currency: "THB" | "CNY" }) {
         label="Send messages to the AI"
         hint="Off: the AI chat is disabled and nothing is sent to a model. Names only either way: never addresses or ID numbers."
       />
+      <AiUsageBars />
       {err && <p className="aw-bank-error">{err}</p>}
     </Card>
   );

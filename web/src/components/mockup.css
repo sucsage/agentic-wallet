@@ -1986,3 +1986,11 @@
 .aw-post-reason{color:#b9b0ff;font-size:12px}.aw-post-contact{color:#888;font-size:12px}
 .aw-post-attach{display:flex;flex-wrap:wrap;gap:8px}.aw-post-attach a{padding:3px 9px;border:1px solid #333;border-radius:8px;color:#cfe1ff!important;font-size:12px;text-decoration:none!important}
 .aw-post-app .aw-button{justify-self:start}
+
+.aw-ai-usage{display:grid;gap:6px;margin-top:12px;padding-top:12px;border-top:1px solid #262626}
+.aw-ai-usage>small{color:#888}
+.aw-ai-usage-row{display:grid;gap:4px}
+.aw-ai-usage-head{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:#aaa;flex-wrap:wrap}
+.aw-ai-usage-bar{height:6px;border-radius:99px;background:#222;overflow:hidden}
+.aw-ai-usage-bar i{display:block;height:100%;background:#4c8dff;border-radius:99px}
+.aw-ai-usage-bar i[data-level=high]{background:#f0b545}.aw-ai-usage-bar i[data-level=full]{background:#ff6b5b}

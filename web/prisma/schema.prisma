@@ -1385,3 +1385,28 @@ model ChainAnchorRecord {
   status    String
   createdAt DateTime @default(now())
 }
+
+/// AI tokens a user spent on the team's AI key, per Bangkok day (lib/ai-usage.ts). Calls on the
+/// user's own key (desktop app, bring your own key) are counted apart and never limited.
+model AiUsage {
+  userId       String
+  /// YYYY-MM-DD, Asia/Bangkok
+  day          String
+  tokens       Int      @default(0)
+  ownKeyTokens Int      @default(0)
+  calls        Int      @default(0)
+  updatedAt    DateTime @updatedAt
+
+  @@id([userId, day])
+  @@index([day])
+}
+
+/// A user's own AI allowance, set by an admin (null: the default from AI_TOKENS_PER_DAY / _PER_WEEK).
+model AiAllowance {
+  userId    String   @id
+  perDay    Int?
+  perWeek   Int?
+  note      String?
+  setBy     String?
+  updatedAt DateTime @updatedAt
+}

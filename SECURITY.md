@@ -108,6 +108,7 @@ What a user (or an attacker on their computer) can and cannot do with the chain 
 - Escrow money still moves only by FileEscrow's rules; the chain on the computer records and signs, it does not hold money. A move signed in the app runs through the same checks as the website (KYC limits, group votes, offer expiry, guarantors).
 - The app's local server is reachable only from 127.0.0.1 with the per-launch token, Host-checked, no CORS; other web pages cannot drive it. Its one page without the token, `/topup-done`, only confirms a Stripe session that belongs to the signed-in device's user (idempotent per session).
 - Sign-in from the app: the password is checked by Better Auth, the device must sign the email with its key, sign-in is rate-limited, and accounts with a second factor must link with a website code. Identity checks started in the app keep their OIDC state server-side (single use, 10 minutes).
+- AI cost abuse: tokens per user per day and per week on the team's key (TECHNICAL §3.21), checked before every agent turn, so a runaway loop or one heavy user cannot spend everyone's budget; admins can lower or raise one user's limit.
 - AI boundaries in the app: custom instructions are fenced data after the rules; outside agents (MCP) hold a token that can read and queue only; a user's own AI key is sealed on their computer and used per request; the agent's tools only read or make previews, so neither a prompt nor an instruction can pay.
 
 **Tests** (re-run before each release):

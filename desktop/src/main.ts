@@ -103,7 +103,7 @@ async function route(req: Request, path: string, port: number): Promise<Response
     const b = await body<{ id: string; sign: boolean }>(req);
     return json(await wallet.decideAgentRequest(String(b.id ?? ""), b.sign === true));
   }
-  if (m === "GET" && path === "/app/ai") return json({ ...wallet.aiSettings(), ...(await wallet.instructions()) });
+  if (m === "GET" && path === "/app/ai") return json({ ...wallet.aiSettings(), ...(await wallet.instructions()), usage: await wallet.aiUsage().catch(() => null) });
   if (m === "POST" && path === "/app/ai/key") return json(wallet.setByok(await body(req)));
   if (m === "POST" && path === "/app/ai/key/remove") return json(wallet.setByok(null));
   if (m === "POST" && path === "/app/ai/instructions") return json(await wallet.setInstructions((await body<{ text: string }>(req)).text));

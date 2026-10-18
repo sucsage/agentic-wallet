@@ -9,6 +9,7 @@ import { z } from "zod";
 import { Prisma } from "@/generated/prisma/client";
 
 import { llm } from "./agent";
+import { aiUser, checkAllowance, recordUsage, withAiUser } from "./ai-usage";
 import { type DraftMilestone, createDraft } from "./bank/drafts";
 import { db } from "./db";
 
@@ -199,8 +200,14 @@ export async function recommend(userId: string, postId: string) {
       ].join("\n"),
     ),
   ].join("\n\n");
-  const { client, model } = llm();
-  const res = await client.beta.messages.stream({ model, max_tokens: 3000, system: RECOMMEND, messages: [{ role: "user", content: doc }] }).finalMessage();
+  const res = await (aiUser() ? rank() : withAiUser(userId, rank));
+  async function rank() {
+    await checkAllowance();
+    const { client, model } = llm();
+    const r = await client.beta.messages.stream({ model, max_tokens: 3000, system: RECOMMEND, messages: [{ role: "user", content: doc }] }).finalMessage();
+    await recordUsage(r.usage);
+    return r;
+  }
   const text = res.content
     .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
     .map((b) => b.text)

@@ -412,7 +412,10 @@ function renderView() {
 function aiHtml() {
   const a = S.ai;
   if (!a) return `<p class="hint">Loading…</p>`;
-  return `<label>Your instructions for the AI</label><textarea id="ins" rows="3" maxlength="1000" placeholder="e.g. Always answer in Thai. Suggest 2 milestones by default.">${esc(a.aiInstructions || "")}</textarea>
+  const u = a.usage;
+  const bar = (label, used, limit, resets) => { const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 100; return `<div style="margin:6px 0"><div class="row space hint"><span>${label}</span><span>${used.toLocaleString()} / ${limit.toLocaleString()} tokens · resets ${new Date(resets).toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" })}</span></div><div style="height:6px;border-radius:99px;background:var(--chip);overflow:hidden"><i style="display:block;height:100%;width:${pct}%;background:${pct >= 100 ? "var(--bad)" : pct >= 80 ? "var(--warn)" : "var(--accent)"}"></i></div></div>`; };
+  const usage = u ? `<label>AI allowance (Agentic Wallet's AI)</label>${bar("Today", u.today, u.perDay, u.resetsDay)}${bar("This week", u.week, u.perWeek, u.resetsWeek)}<div class="hint">${a.own ? "You use your own key now: it is not counted." : "Use your own key below when the allowance runs out."}${u.ownKeyToday ? ` Your own key today: ${u.ownKeyToday.toLocaleString()} tokens.` : ""}</div>` : "";
+  return `${usage}<label>Your instructions for the AI</label><textarea id="ins" rows="3" maxlength="1000" placeholder="e.g. Always answer in Thai. Suggest 2 milestones by default.">${esc(a.aiInstructions || "")}</textarea>
     <div class="hint">Shapes tone, language and defaults, here and on the website. They never override the rules: payees, limits, terms review and your signature always apply.</div>
     <div class="row" style="margin-top:6px"><button id="ins-save">Save instructions</button></div>
     <label style="margin-top:16px">Model</label>

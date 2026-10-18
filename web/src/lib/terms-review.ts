@@ -4,6 +4,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 
 import { llm } from "./agent";
+import { recordUsage } from "./ai-usage";
 
 /**
  * Before a deal can be confirmed, its terms are reviewed for the person making it (the deal's
@@ -74,6 +75,7 @@ export async function reviewTerms(t: ReviewInput): Promise<TermsReview> {
       `<written_rules>\n${t.rules?.slice(0, 8000) || "(none)"}\n</written_rules>`,
     ].join("\n");
     const res = await client.beta.messages.stream({ model, max_tokens: 1200, system: SYSTEM, messages: [{ role: "user", content: doc }] }).finalMessage();
+    await recordUsage(res.usage);
     const text = res.content
       .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
       .map((b) => b.text)

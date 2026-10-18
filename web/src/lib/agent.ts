@@ -28,6 +28,7 @@ import { db } from "./db";
 import { LIMITS, kycOf } from "./kyc";
 import { type WalletState, readWallet, walletUnits } from "./state";
 import { TemplateError, listTemplates, saveTemplate, takeTemplate } from "./templates";
+import { AiLimitError, aiUser, checkAllowance, recordUsage, withAiUser } from "./ai-usage";
 
 const MAX_TURNS = 12;
 
@@ -75,6 +76,9 @@ export const runWithUserLlm = <T,>(l: Llm, fn: () => Promise<T>) => userLlm.run(
 export function llm(): Llm {
   return userLlm.getStore() ?? serverLlm();
 }
+
+/** True inside a request running on the user's own key (not counted against the AI allowance). */
+export const usingOwnKey = () => userLlm.getStore() !== undefined;
 
 /** Claude reads image blocks itself; other models get the image as text (vision.ts). */
 export function readsImagesNatively() {
@@ -1539,7 +1543,10 @@ export async function runAgent(
   onEvent?: (e: AgentEvent) => void,
   /** Extra context for the system prompt, e.g. that this is a group chat and who is in it. */
   extraSystem?: string,
-) {
+): Promise<{ reply: string; steps: AgentStep[] }> {
+  // The run counts against this user's AI allowance (lib/ai-usage), unless it is on their own key.
+  if (userId && aiUser()?.userId !== userId) return withAiUser(userId, () => runAgent(wallet, history, message, attachment, attachmentText, lang, userId, onEvent, extraSystem), usingOwnKey());
+  await checkAllowance();
   const { client, model, direct } = llm();
   const bankWallet = (await walletUnits(wallet)).currency !== null;
   const tools = bankWallet ? BANK_TOOLS : TOOLS;
@@ -1599,6 +1606,11 @@ export async function runAgent(
   const steps: AgentStep[] = [];
 
   for (let turn = 0; turn < MAX_TURNS; turn++) {
+    // A long run that reaches the allowance stops politely instead of spending more.
+    if (turn > 0) {
+      const over = await checkAllowance().then(() => null, (e: unknown) => (e instanceof AiLimitError ? e.message : Promise.reject(e)));
+      if (over) return { reply: over, steps };
+    }
     onEvent?.({ type: "turn", turn });
     // Streaming: required by some gateways for non-Claude models, and avoids HTTP timeouts.
     const stream = client.beta.messages
@@ -1636,6 +1648,7 @@ export async function runAgent(
       });
     }
     const response = await stream.finalMessage();
+    await recordUsage(response.usage);
     flush(true);
 
     if (response.stop_reason === "refusal") {
@@ -1680,6 +1693,7 @@ export async function runAgent(
  * titles the user wrote: no names, account numbers or addresses (PDPA: minimum data to the LLM).
  */
 export async function explainSummary(aggregates: unknown, lang: "en" | "th" = "en"): Promise<string> {
+  await checkAllowance();
   const { client, model } = llm();
   const response = await client.beta.messages
     .stream({
@@ -1693,6 +1707,7 @@ export async function explainSummary(aggregates: unknown, lang: "en" | "th" = "e
       messages: [{ role: "user", content: JSON.stringify(aggregates) }],
     })
     .finalMessage();
+  await recordUsage(response.usage);
   return response.content
     .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
     .map((b) => b.text)

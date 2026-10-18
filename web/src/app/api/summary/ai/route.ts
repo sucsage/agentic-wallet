@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { explainSummary, llmConfigured } from "@/lib/agent";
+import { withAiUser } from "@/lib/ai-usage";
 import { HttpError, errorResponse, rateLimit, requireActingCustomer } from "@/lib/guard";
 import { buildSummary, range, summaryWallet } from "@/lib/summary";
 
@@ -15,9 +16,9 @@ export async function POST(req: Request) {
     const body = z.object({ lang: z.enum(["en", "th"]).default("en") }).safeParse(await req.json().catch(() => ({})));
     const { from, to } = range(req);
     const s = await buildSummary(user.id, customer, from, to, await summaryWallet(user.id, company));
-    const text = await explainSummary(
-      { currency: s.currency, period: { from: s.from, to: s.to }, totals: s.totals, months: s.months, deals: s.deals, tax: s.tax },
-      body.success ? body.data.lang : "en",
+    // Counts against the user's AI allowance (lib/ai-usage).
+    const text = await withAiUser(user.id, () =>
+      explainSummary({ currency: s.currency, period: { from: s.from, to: s.to }, totals: s.totals, months: s.months, deals: s.deals, tax: s.tax }, body.success ? body.data.lang : "en"),
     );
     return Response.json({ summary: text, numbers: s });
   } catch (err) {
