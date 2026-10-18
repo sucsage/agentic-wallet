@@ -19,4 +19,4 @@ export const POST = deviceRoute(async (device, body) => {
     throw e instanceof NoteError ? new HttpError(e.status, e.message) : e;
   });
   return { id: note.id };
-});
+}, { acting: true });

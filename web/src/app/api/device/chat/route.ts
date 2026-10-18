@@ -61,4 +61,4 @@ export const POST = deviceRoute(async (device, body) => {
     if (byok && status === 429) throw new HttpError(429, `Your ${byok.provider} account is out of credit or rate-limited`);
     throw e;
   }
-});
+}, { acting: true });

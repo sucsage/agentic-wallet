@@ -176,6 +176,7 @@ async function route(req: Request, path: string, port: number): Promise<Response
     const { jpeg, pages } = await wallet.preview(Number(q.get("deal")), Number(q.get("index")), Number(q.get("page") ?? 1));
     return new Response(new Uint8Array(jpeg), { headers: { "content-type": "image/jpeg", "cache-control": "no-store", "x-preview-pages": String(pages) } });
   }
+  if (m === "POST" && path === "/app/acting") return json(await wallet.setActing((await body<{ groupId: string | null }>(req)).groupId ?? null));
   if (m === "GET" && path === "/app/chats") return json(wallet.chatList());
   if (m === "GET" && path === "/app/chat") return json({ history: wallet.chatHistory(new URL(req.url).searchParams.get("id")) });
   if (m === "POST" && path === "/app/chat") return json(await wallet.chat(await body(req)));

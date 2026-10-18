@@ -391,12 +391,48 @@ class Wallet {
     return { added: fresh.length, requests: p.requests.length };
   }
 
+  // ----------------------------------------------------------------------------------------
+  // Acting as a group or company (its shared wallet), like "Act as" on the website
+  // ----------------------------------------------------------------------------------------
+
+  /** The group this app acts for now (kept on this computer), or null: the user's own wallet. */
+  acting(): { companyId: string; name: string; groupId: string } | null {
+    if (!this.vault || !this.account) return null;
+    const raw = store.getMeta("acting");
+    return raw ? JSON.parse(raw) : null;
+  }
+
+  /** Switches to a group's shared wallet (only one whose wallet is open and that the user is in), or back (null). */
+  async setActing(groupId: string | null) {
+    this.need();
+    if (!groupId) {
+      store.setMeta("acting", "");
+      return { acting: null };
+    }
+    const { groups } = await this.call<{ groups: { id: string; name: string; wallet: { companyId: string; name: string } | null }[] }>("GET", "/api/device/groups");
+    const g = groups.find((x) => x.id === groupId);
+    if (!g) throw new ApiError(404, "You are not in that group");
+    if (!g.wallet) throw new ApiError(400, "This group has no wallet yet: its owner opens one first");
+    const acting = { companyId: g.wallet.companyId, name: g.wallet.name, groupId: g.id };
+    store.setMeta("acting", JSON.stringify(acting));
+    return { acting };
+  }
+
+  /** A path for a request that follows "Act as": ?as=<group> is signed with the path. */
+  private asPath(path: string) {
+    const a = this.acting();
+    return a ? `${path}?as=${encodeURIComponent(a.companyId)}` : path;
+  }
+
   /** A deal move, signed here as an intent block; the server runs it once the block is on the chain. */
   move(input: { dealId: number; action: IntentBody["action"]; index: number; reason?: string; requestId?: string }) {
     return this.serial(async () => {
       const body: IntentBody = { dealId: input.dealId, action: input.action, index: input.index };
       if (input.reason?.trim()) body.reason = input.reason.trim().slice(0, 2000);
       if (input.requestId) body.requestId = input.requestId;
+      // Acting for a group: the move runs on its wallet (a website request stays the user's own).
+      const acting = this.acting();
+      if (acting && !input.requestId) body.as = acting.companyId;
       const b = await this.sign(this.next("intent", body));
       store.append([b]);
       const [result] = await this.submit([b]);
@@ -414,6 +450,8 @@ class Wallet {
       }
       if (input.carrier) body.carrier = input.carrier;
       if (input.tracking) body.tracking = input.tracking.slice(0, 40);
+      const acting = this.acting();
+      if (acting) body.as = acting.companyId;
       const b = await this.sign(this.next("intent", body));
       store.append([b]);
       const [result] = await this.submit([b], input.file);
@@ -424,7 +462,8 @@ class Wallet {
   /** Confirms a preview the AI drafted (the server reads its terms from the database). */
   confirmDraft(draftId: string) {
     return this.serial(async () => {
-      const b = await this.sign(this.next("intent", { dealId: 0, action: "confirm_draft", index: 0, draftId }));
+      const acting = this.acting();
+      const b = await this.sign(this.next("intent", { dealId: 0, action: "confirm_draft", index: 0, draftId, ...(acting ? { as: acting.companyId } : {}) }));
       store.append([b]);
       const [result] = await this.submit([b]);
       return { ...result, block: b.hash, height: b.height };
@@ -467,7 +506,7 @@ class Wallet {
   }
   /** A milestone's due date: propose, accept the other side's, or (buyer, late) ask for a refund. */
   due(body: { dealId: number; index: number; action: string; date?: string }) {
-    return this.call<{ due: unknown[] }>("POST", "/api/device/due", body);
+    return this.call<{ due: unknown[] }>("POST", this.asPath("/api/device/due"), body);
   }
 
   inviteLinks() {
@@ -494,11 +533,11 @@ class Wallet {
   }
 
   drafts() {
-    return this.call<{ drafts: unknown[] }>("GET", "/api/device/drafts");
+    return this.call<{ drafts: unknown[] }>("GET", this.asPath("/api/device/drafts"));
   }
 
   activity() {
-    return this.call<{ balance: number; currency: string; rows: unknown[] }>("GET", "/api/device/activity");
+    return this.call<{ balance: number; currency: string; rows: unknown[] }>("GET", this.asPath("/api/device/activity"));
   }
 
   /**
@@ -610,7 +649,7 @@ class Wallet {
   async agentAsk(client: string, message: string, lang: "en" | "th" = "en") {
     const history: { role: "user" | "assistant"; text: string }[] = JSON.parse(store.getMeta("mcpChat") ?? "[]");
     const text = `[Sent by ${client.slice(0, 60)}, an outside AI agent the user connected. Draft what it asks like any request of the user; it cannot confirm or sign.]\n${message.slice(0, 4000)}`;
-    const r = await this.call<{ reply: string; steps: unknown[]; usage?: { tokens: number; calls: number } }>("POST", "/api/device/chat", {
+    const r = await this.call<{ reply: string; steps: unknown[]; usage?: { tokens: number; calls: number } }>("POST", this.asPath("/api/device/chat"), {
       history: history.slice(-30),
       message: text,
       lang,
@@ -701,7 +740,7 @@ class Wallet {
     if (!chat && list.length >= MAX_CHATS) throw new ApiError(400, `You have ${MAX_CHATS} chats: delete one to start a new chat`);
     const history = chat?.messages ?? [];
     const asked: ChatMessage = { role: "user", text: input.message || "(document)", at: Date.now() };
-    const r = await this.call<{ reply: string; steps: unknown[]; flags: unknown[]; model: string | null; usage?: { tokens: number; calls: number } }>("POST", "/api/device/chat", {
+    const r = await this.call<{ reply: string; steps: unknown[]; flags: unknown[]; model: string | null; usage?: { tokens: number; calls: number } }>("POST", this.asPath("/api/device/chat"), {
       history: history.slice(-30).map(({ role, text }) => ({ role, text: text.slice(0, 8000) })),
       message: input.message,
       lang: input.lang ?? "en",
@@ -727,21 +766,21 @@ class Wallet {
   // ----------------------------------------------------------------------------------------
 
   account_() {
-    return this.call<{ name: string; wallet: Address; device: Address; deviceName: string; currency: string; balance: number }>("GET", "/api/device/me");
+    return this.call<{ name: string; wallet: Address; device: Address; deviceName: string; currency: string; balance: number }>("GET", this.asPath("/api/device/me"));
   }
 
   deals() {
-    return this.call<{ deals: unknown[] }>("GET", "/api/device/deals");
+    return this.call<{ deals: unknown[] }>("GET", this.asPath("/api/device/deals"));
   }
 
   /** The buyer asks the seller to fix a delivery under review. */
   askChanges(input: { dealId: number; index: number; text: string }) {
-    return this.call<{ id: string }>("POST", "/api/device/notes", { dealId: Number(input.dealId), index: Number(input.index), text: String(input.text ?? "") });
+    return this.call<{ id: string }>("POST", this.asPath("/api/device/notes"), { dealId: Number(input.dealId), index: Number(input.index), text: String(input.text ?? "") });
   }
 
   /** A watermarked preview of a delivered image or PDF page (the website's rules: either party). */
   async preview(dealId: number, index: number, page: number) {
-    const r = await this.call<{ jpeg: string; pages: number }>("POST", "/api/device/preview", { dealId, index, page });
+    const r = await this.call<{ jpeg: string; pages: number }>("POST", this.asPath("/api/device/preview"), { dealId, index, page });
     return { jpeg: Buffer.from(r.jpeg, "base64"), pages: r.pages };
   }
 
@@ -824,6 +863,7 @@ class Wallet {
       lastSync: this.lastSync,
       requests: this.requests,
       agentRequests: this.vault && this.account ? this.agentRequests().filter((r) => r.status === "PENDING") : [],
+      acting: this.acting(),
       defaultServer: DEFAULT_SERVER,
       hostname: hostname(),
     };

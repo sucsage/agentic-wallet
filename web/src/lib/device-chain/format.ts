@@ -48,6 +48,8 @@ export type IntentBody = {
   /** vote: a group payment proposal and the signer's answer. */
   proposalId?: string;
   approve?: boolean;
+  /** Acting for a group or company the user belongs to (its id): the move runs on that shared wallet. */
+  as?: string;
 };
 
 export type Block =

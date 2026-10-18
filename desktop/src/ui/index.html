@@ -113,6 +113,11 @@ button .spin { width: 13px; height: 13px; border-width: 2px; border-color: #bbb;
 .issue { font-size: 12px; padding: 5px 9px; border-radius: 9px; margin-top: 5px; }
 .issue.block { background: var(--bad-bg); color: var(--bad); } .issue.warn { background: var(--warn-bg); color: var(--warn); }
 .in { color: var(--ok); } .out { color: var(--bad); }
+.acting { margin: 0 4px 10px; padding: 8px; border: 1px solid var(--line-2); border-radius: 10px; }
+.acting.on { border-color: #6657a9; background: #1a1530; }
+.acting small { display: block; font-size: 9px; letter-spacing: .08em; text-transform: uppercase; color: #888; margin-bottom: 4px; }
+.acting select { padding: 5px 8px; font-size: 12px; }
+.acting .hint { font-size: 10px; margin-top: 4px; }
 /* AI chat: the website's layout (saved chats · conversation · agent rail). */
 main.wide { max-width: none; padding: 20px 22px 24px; }
 .chat-layout { display: grid; grid-template-columns: 230px minmax(0,1fr) 290px; gap: 14px; align-items: start; }
@@ -345,11 +350,24 @@ function renderApp() {
   const initials = (d.user || "?").split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
   $("#root").innerHTML = `<div class="layout"><nav>
       <div class="brand"><span class="mark"></span>MilestonePay</div>
+      ${actingSwitch()}
       ${groups.map(([g, ks]) => `<div class="group">${g}</div>${ks.map((k) => `<button data-v="${k}" class="${S.view === k ? "on" : ""}">${label[k]}</button>`).join("")}`).join("")}
       ${updateNudge()}<div class="foot"><div class="avatar">${esc(initials)}</div><div class="who"><b>${esc(d.user)}</b><small>${esc(d.name)}</small></div><button id="lock" title="Lock the app">Lock</button></div>
     </nav><main id="main"></main></div>`;
   document.querySelectorAll("nav [data-v]").forEach((b) => (b.onclick = () => { S.view = b.dataset.v; renderApp(); load(); }));
   $("#lock").onclick = async () => { S.info = await api("/app/lock", "POST"); render(); };
+  const as = $("#acting");
+  if (as) as.onchange = async () => {
+    as.disabled = true;
+    try {
+      const r = await api("/app/acting", "POST", { groupId: as.value || null });
+      S.info = { ...S.info, acting: r.acting };
+      // Everything shown belongs to the other wallet now: reload the view.
+      S.deals = null; S.account = null; S.activity = null; S.drafts = null;
+      toast(r.acting ? `Acting as ${r.acting.name}` : "Back to your own wallet");
+      renderApp(); load();
+    } catch (e) { toast(e.message); as.disabled = false; }
+  };
   renderView();
 }
 
@@ -384,12 +402,12 @@ function renderView() {
     const a = S.account;
     m.innerHTML = `${requestsBanner()}<div class="row space"><h1>Overview</h1><div class="row">${syncLine()}<button id="sync">Sync now</button></div></div>
       <div class="grid">
-        <div class="card stat"><div class="hint">Balance (Mock Bank)</div><div class="v">${a ? money(a.balance, a.currency) : "…"}</div></div>
+        <div class="card stat"><div class="hint">${S.info.acting ? `${esc(S.info.acting.name)} balance (group wallet)` : "Balance (Mock Bank)"}</div><div class="v">${a ? money(a.balance, a.currency) : "…"}</div></div>
         <div class="card stat"><div class="hint">Blocks on this computer</div><div class="v">${S.info.height === null ? "…" : S.info.height + 1}</div></div>
         <div class="card stat"><div class="hint">Deals</div><div class="v">${S.deals ? S.deals.length : "…"}</div></div>
       </div>
       <div class="card"><h2>How this works</h2>
-        <p class="hint" style="margin:0">Every deal event (offer, payment locked, delivery, approval, dispute, ruling) is signed by the server and added as a block to your chain here. Each block names the hash of the one before it and is signed by your device key, so changing any old block breaks every hash after it. The website keeps only your latest block, countersigned. When the other side of a deal also uses the app, the same event sits in both chains: that links them. Everything you do here (new deals with the AI, delivering, approving, disputing) is a block you sign; the server carries it out, and the money itself stays locked in the escrow contract on the blockchain.</p>
+        <p class="hint" style="margin:0">Every deal event (offer, payment locked, delivery, approval, refund) is signed by the server and added as a block to your chain here. Each block names the hash of the one before it and is signed by your device key, so changing any old block breaks every hash after it. The website keeps only your latest block, countersigned. When the other side of a deal also uses the app, the same event sits in both chains: that links them. Everything you do here (new deals with the AI, delivering, approving, asking for changes) is a block you sign; the server carries it out, and the money itself stays locked in the escrow contract on the blockchain.</p>
       </div>
       <div class="card" style="margin-top:12px"><div class="row space"><h2 style="margin:0">Integrity check</h2><button id="verify">Verify now</button></div><div id="vres">${verifyHtml()}</div></div>`;
     $("#sync").onclick = () => doSync();
@@ -617,10 +635,18 @@ function groupWalletHtml(x) {
   }
   return `<div class="ms" style="grid-template-columns:1fr auto"><div><b>${w.kind === "GROUP" ? "Group" : "Company"} wallet</b> · <b>${money(w.balance, x.currency)}</b>
       <div class="hint">Account ${esc(w.accountNo || "-")} · payments and payouts need ${x.threshold} signers' votes</div></div>
-    <div class="row"><button data-gwfund="${esc(w.companyId)}" data-name="${esc(x.name)}" data-cur="${esc(x.currency)}">Add money</button>${x.iSign ? `<button data-gwpay="${esc(x.id)}">Pay out to members</button>` : ""}</div></div>`;
+    <div class="row">${S.info.acting && S.info.acting.groupId === x.id ? `<button data-actas="">Back to my own wallet</button>` : `<button class="primary" data-actas="${esc(x.id)}">Act as ${esc(w.name)}</button>`}<button data-gwfund="${esc(w.companyId)}" data-name="${esc(x.name)}" data-cur="${esc(x.currency)}">Add money</button>${x.iSign ? `<button data-gwpay="${esc(x.id)}">Pay out to members</button>` : ""}</div></div>`;
 }
 
 function wireGroupWallets() {
+  document.querySelectorAll("[data-actas]").forEach((b) => (b.onclick = async () => {
+    try {
+      const r = await api("/app/acting", "POST", { groupId: b.dataset.actas || null });
+      S.info = { ...S.info, acting: r.acting }; S.deals = null; S.account = null; S.activity = null; S.drafts = null;
+      toast(r.acting ? `Acting as ${r.acting.name}: AI chat, deals and money now use its wallet` : "Back to your own wallet");
+      renderApp(); load();
+    } catch (e) { toast(e.message); }
+  }));
   document.querySelectorAll("[data-gwopen]").forEach((b) => (b.onclick = async () => {
     if (!confirm(`Open a shared wallet for "${b.dataset.name}"? The group can then hire and sell in its own name; its money moves only after ${b.dataset.th} signers approve.`)) return;
     busy(b, "Opening (about 10 s)…");
@@ -659,6 +685,18 @@ function wireGroupWallets() {
       catch (e) { showErr($("#pe"), e); idle(ok); }
     };
   }));
+}
+
+/** "Acting as": your own wallet, or a group's shared wallet (AI chat, deals, money and previews follow it). */
+function actingSwitch() {
+  const a = S.info.acting;
+  const opts = (S.actingGroups || []).filter((g) => g.wallet);
+  if (!a && !opts.length) return "";
+  return `<div class="acting${a ? " on" : ""}"><small>Acting as</small><select id="acting">
+    <option value="">${esc(S.info.device.user)} (personal)</option>
+    ${opts.map((g) => `<option value="${esc(g.id)}" ${a && a.groupId === g.id ? "selected" : ""}>${esc(g.wallet.name)} (group)</option>`).join("")}
+    ${a && !opts.some((g) => g.id === a.groupId) ? `<option value="${esc(a.groupId)}" selected>${esc(a.name)} (group)</option>` : ""}
+  </select>${a ? `<div class="hint">Payments from it wait for its signers' vote</div>` : ""}</div>`;
 }
 
 function friendResults() {
@@ -1151,6 +1189,7 @@ function wireRepair() {
 
 async function load() {
   if (S.info.stage !== "ready") return;
+  if (S.actingGroups === undefined) { S.actingGroups = []; api("/app/groups").then((g) => { S.actingGroups = g.groups; if (S.info.stage === "ready") renderApp(); }).catch(() => undefined); }
   if (S.update === undefined) { S.update = null; api("/app/update").then((u) => { S.update = u; if (S.info.stage === "ready") renderApp(); }).catch(() => undefined); }
   try {
     S.info = await api("/app/state");
@@ -1169,7 +1208,7 @@ async function load() {
     if (S.view === "links") S.links = (await api("/app/invite-links")).links;
     if (S.view === "ai") S.ai = await api("/app/ai").catch(() => null);
     if (S.view === "mcp") S.mcp = await api("/app/mcp");
-    if (S.view === "groups") S.groups = await api("/app/groups");
+    if (S.view === "groups") { S.groups = await api("/app/groups"); S.actingGroups = S.groups.groups; }
   } catch (e) { toast(e.message); }
   if (S.info.stage === "ready") renderApp(); else render();
 }

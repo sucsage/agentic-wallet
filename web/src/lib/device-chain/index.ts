@@ -20,6 +20,7 @@ import { DealError, dealTerms, deliver, syncDeal } from "../bank/deals";
 import { type DraftMilestone, deliveryOf, draftView, listDrafts } from "../bank/drafts";
 import { CARRIERS, type Carrier } from "../post";
 import { send } from "../chain";
+import { actingCompany } from "../company";
 import { db } from "../db";
 import { HttpError } from "../guard";
 import { hmac } from "../kyc";
@@ -145,7 +146,9 @@ export async function authDevice(req: Request, body: string | Uint8Array) {
   if (!isAddress(address) || !Number.isFinite(time) || !isHex(sig)) throw new DeviceError(401, "Unsigned request");
   if (Math.abs(Date.now() - time) > MAX_SKEW_MS) throw new DeviceError(401, "Your computer's clock is off by more than 5 minutes");
   const device = getAddress(address);
-  const path = new URL(req.url).pathname;
+  // The query is signed too (e.g. ?as=<group>); requests without one sign the path alone, as before.
+  const u = new URL(req.url);
+  const path = u.pathname + u.search;
   if ((await signerOf(requestMessage(req.method, path, time, body), sig as Hex).catch(() => null)) !== device) throw new DeviceError(401, "Bad device signature");
   const row = await db.device.findUnique({ where: { address: device } });
   if (!row || row.revokedAt) throw new DeviceError(401, "This device is not linked (or was removed on the website)");
@@ -163,6 +166,19 @@ export async function authDevice(req: Request, body: string | Uint8Array) {
 export type DeviceRow = Awaited<ReturnType<typeof authDevice>>;
 
 /** The device's wallet; an account made in the app has none until its identity check and wallet are done. */
+/**
+ * Acting for a group or company (the desktop app's "Act as"): the same device, with the shared
+ * wallet in place of the user's own for this one request or move. Only a member gets it; what the
+ * shared wallet pays still waits for its signers' vote (runDealMove, confirmDraft).
+ */
+export async function actingDevice<T extends { userId: string; walletAddress: string }>(device: T, companyId: string | null | undefined): Promise<T> {
+  if (!companyId) return device;
+  if (companyId.length > 40) throw new DeviceError(400, "Unknown group");
+  const company = await actingCompany(device.userId, companyId);
+  if (!company) throw new DeviceError(404, "You are not in that group (or it has no wallet)");
+  return { ...device, walletAddress: company.walletAddress };
+}
+
 export function deviceWallet(device: { walletAddress: string }): Address {
   if (!device.walletAddress) throw new DeviceError(409, "Finish setting up your account first (identity check, then the wallet)");
   return getAddress(device.walletAddress);
@@ -267,6 +283,7 @@ export async function submitBlocks(device: DeviceRow, blocks: SignedBlock[], upl
         if ((i.fileName?.length ?? 0) > 200 || (i.tracking?.length ?? 0) > 40) throw new DeviceError(400, `Block ${b.height}: too long`);
       }
       if (i.action === "confirm_draft" && (typeof i.draftId !== "string" || i.draftId.length > 40)) throw new DeviceError(400, `Block ${b.height}: which preview?`);
+      if (i.as !== undefined && (typeof i.as !== "string" || i.as.length > 40 || i.action === "payee" || i.action === "vote")) throw new DeviceError(400, `Block ${b.height}: acting for a group is for deal moves and previews only`);
       if (i.action === "vote" && (typeof i.proposalId !== "string" || i.proposalId.length > 40 || typeof i.approve !== "boolean")) throw new DeviceError(400, `Block ${b.height}: which proposal?`);
       if (i.action === "payee" && (typeof i.friendshipId !== "string" || i.friendshipId.length > 40 || typeof i.allowed !== "boolean")) throw new DeviceError(400, `Block ${b.height}: which contact?`);
       if (Math.abs(Date.now() - b.time) > MAX_SKEW_MS) throw new DeviceError(400, `Block ${b.height}: a deal move must be sent when it is signed`);
@@ -336,7 +353,9 @@ async function runIntent(device: DeviceRow, b: Block & { kind: "intent"; hash: H
   try {
     const customer = await customerOfUser(device.userId);
     if (!customer) throw new DeviceError(403, "Sign in through the Mock Bank on the website first");
-    const wallet = deviceWallet(device);
+    // A move signed "as" a group runs on the group's wallet (checked: the user is a member).
+    const acting = await actingDevice(device, i.as);
+    const wallet = deviceWallet(acting);
     if (i.action === "deliver") {
       const result = await deliver(device.userId, wallet, i.dealId, i.index, {
         note: i.note ?? "",
@@ -370,7 +389,7 @@ async function runIntent(device: DeviceRow, b: Block & { kind: "intent"; hash: H
       return { block: b.hash, ok: true, result: jsonSafe(result) };
     }
     const result = await runDealMove(
-      { userId: device.userId, currency: customer.currency, wallet: deviceWallet(device) },
+      { userId: device.userId, currency: customer.currency, wallet },
       i.dealId,
       i.action as DealMove,
       i.index,

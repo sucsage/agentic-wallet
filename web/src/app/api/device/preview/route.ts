@@ -14,4 +14,4 @@ export const POST = deviceRoute(async (device, body) => {
     throw e instanceof DealError ? new HttpError(404, e.message) : e;
   });
   return { jpeg: jpeg.toString("base64"), pages };
-});
+}, { acting: true });
