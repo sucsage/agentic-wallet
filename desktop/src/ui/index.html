@@ -117,34 +117,30 @@ function render() {
   const st = S.info.stage;
   if (st === "setup") return renderSetup();
   if (st === "locked") return renderUnlock();
+  if (st === "onboarding") return renderOnboarding();
   renderApp();
 }
 
 // ---------------------------------------------------------------- setup / restore / unlock
-function renderSetup(tab = "link") {
+function renderSetup(tab = "login") {
+  const TABS = [["login", "Sign in"], ["signup", "Create account"], ["link", "Link with code"], ["restore", "Restore"]];
+  const serverField = `<label>Server</label><input name="server" value="${esc(S.info.defaultServer)}" />`;
+  const pass = `<label>App passphrase</label><input name="passphrase" type="password" minlength="8" required />
+        <div class="hint">Encrypts this computer's key. It never leaves the computer; nobody can reset it.</div>
+        <label>App passphrase again</label><input name="again" type="password" required />`;
+  const computer = `<label>Name of this computer</label><input name="deviceName" value="${esc(S.info.hostname)}" />`;
+  const body = {
+    login: `${serverField}<label>Email</label><input name="email" type="email" autocomplete="username" required /><label>Password</label><input name="password" type="password" autocomplete="current-password" required />${computer}${pass}`,
+    signup: `${serverField}<label>Your name</label><input name="name" autocomplete="name" required minlength="2" /><label>Email</label><input name="email" type="email" autocomplete="username" required /><label>Account password</label><input name="password" type="password" minlength="8" autocomplete="new-password" required /><div class="hint">For signing in to Agentic Wallet (at least 8 characters).</div>${computer}${pass}`,
+    link: `${serverField}<label>Link code</label><input name="code" placeholder="ABCD-EFGH" autocomplete="off" required /><div class="hint">On the website: Profile → Desktop app → Make a link code (for accounts with a second factor).</div>${computer}${pass}`,
+    restore: `<label>Key backup file</label><input name="file" type="file" accept=".json,application/json" required /><div class="hint">The file you saved from Settings → Save key backup.</div><label>App passphrase</label><input name="passphrase" type="password" required />`,
+  }[tab];
+  const label = { login: "Sign in and create my chain", signup: "Create account", link: "Link and create my chain", restore: "Restore" }[tab];
   $("#root").innerHTML = `<div class="center"><div class="card narrow">
     <div class="brand"><div class="logo">A</div>Agentic Wallet Desktop</div>
     <p class="hint">Your deals as your own chain on this computer. The website keeps only its latest block, signed by both sides.</p>
-    <div class="tabs"><button data-t="link" class="${tab === "link" ? "on" : ""}">Link this computer</button><button data-t="restore" class="${tab === "restore" ? "on" : ""}">Restore from backup</button></div>
-    ${tab === "link" ? `
-      <form id="f">
-        <label>Server</label><input name="server" value="${esc(S.info.defaultServer)}" />
-        <label>Link code</label><input name="code" placeholder="ABCD-EFGH" autocomplete="off" required />
-        <div class="hint">On the website: Profile → Desktop app → Make a link code.</div>
-        <label>Name of this computer</label><input name="deviceName" value="${esc(S.info.hostname)}" />
-        <label>Passphrase</label><input name="passphrase" type="password" minlength="8" required />
-        <div class="hint">Encrypts your device key on this computer. It is never sent anywhere; nobody can reset it.</div>
-        <label>Passphrase again</label><input name="again" type="password" required />
-        <div class="err" id="e"></div>
-        <div class="row" style="margin-top:16px"><button class="primary" id="go">Link and create my chain</button></div>
-      </form>` : `
-      <form id="f">
-        <label>Key backup file</label><input name="file" type="file" accept=".json,application/json" required />
-        <div class="hint">The file you saved from Settings → Save key backup.</div>
-        <label>Passphrase</label><input name="passphrase" type="password" required />
-        <div class="err" id="e"></div>
-        <div class="row" style="margin-top:16px"><button class="primary" id="go">Restore</button></div>
-      </form>`}
+    <div class="tabs" style="flex-wrap:wrap">${TABS.map(([k, l]) => `<button data-t="${k}" class="${tab === k ? "on" : ""}">${l}</button>`).join("")}</div>
+    <form id="f">${body}<div class="err" id="e"></div><div class="row" style="margin-top:16px"><button class="primary" id="go">${label}</button></div></form>
     <div class="demo">Test mode demo · Mock Bank money only</div>
   </div></div>`;
   document.querySelectorAll(".tabs button").forEach((b) => (b.onclick = () => renderSetup(b.dataset.t)));
@@ -154,17 +150,41 @@ function renderSetup(tab = "link") {
     e.style.display = "none";
     try {
       go.disabled = true; go.textContent = "Working…";
-      if (tab === "link") {
-        if (f.get("passphrase") !== f.get("again")) throw new Error("The passphrases differ");
-        await api("/app/setup", "POST", { server: f.get("server"), code: f.get("code"), passphrase: f.get("passphrase"), deviceName: f.get("deviceName") });
+      if (tab === "restore") {
+        await api("/app/restore", "POST", { keyBackup: await f.get("file").text(), passphrase: f.get("passphrase") });
       } else {
-        const text = await f.get("file").text();
-        await api("/app/restore", "POST", { keyBackup: text, passphrase: f.get("passphrase") });
+        if (f.get("passphrase") !== f.get("again")) throw new Error("The app passphrases differ");
+        await api("/app/setup", "POST", { mode: tab === "link" ? "code" : tab, server: f.get("server"), code: f.get("code"), email: f.get("email"), password: f.get("password"), name: f.get("name"), passphrase: f.get("passphrase"), deviceName: f.get("deviceName") });
       }
       S.info = await api("/app/state");
-      render();
-    } catch (err) { showErr(e, err); go.disabled = false; go.textContent = tab === "link" ? "Link and create my chain" : "Restore"; }
+      render(); load();
+    } catch (err) { showErr(e, err); go.disabled = false; go.textContent = label; }
   };
+}
+
+let onboardTimer;
+async function renderOnboarding() {
+  const d = S.info.device;
+  let st = { identity: "NONE", lastCheck: null, account: null, wallet: null };
+  try { st = await api("/app/onboarding"); } catch (e) { toast(e.message); }
+  const verified = st.identity === "VERIFIED" || st.account;
+  $("#root").innerHTML = `<div class="center"><div class="card narrow">
+    <div class="brand"><div class="logo">A</div>Welcome, ${esc(d.user)}</div>
+    <p class="hint">Two steps open your wallet. Test mode: the digital ID is a demo.</p>
+    <div class="check"><div>${verified ? "✅" : "1"}</div><div><b>Verify your identity</b>
+      <div class="hint">${verified ? "Verified · your wallet account is open." : st.identity === "PENDING" ? "Waiting for a reviewer." : "With your national digital ID (mock ThaID for Thailand, mock 国家网络身份认证 for China). It opens in your browser."}</div>
+      ${st.lastCheck && !verified && st.lastCheck !== "ok" ? `<div class="issue block">${esc(st.lastCheck)}</div>` : ""}
+      ${verified ? "" : `<div class="row" style="margin-top:8px"><select id="country" style="width:auto"><option value="TH">Thailand · ThaID</option><option value="CN">China · 网号</option></select><button class="primary" id="kyc">Verify in my browser</button></div>`}</div></div>
+    <div class="check"><div>${st.wallet ? "✅" : "2"}</div><div><b>Create my wallet</b><div class="hint">Your agent wallet on the chain and your own deal chain on this computer (about 10 seconds).</div>
+      ${verified ? `<button class="primary" id="fin" style="margin-top:8px">Create my wallet</button>` : ""}</div></div>
+    <div class="err" id="e"></div>
+    <div class="row space" style="margin-top:12px"><span class="hint">This page checks every few seconds.</span><button id="lock">Lock</button></div>
+  </div></div>`;
+  $("#lock").onclick = async () => { clearInterval(onboardTimer); S.info = await api("/app/lock", "POST"); render(); };
+  const k = $("#kyc"); if (k) k.onclick = async () => { k.disabled = true; try { await api("/app/kyc-start", "POST", { country: $("#country").value }); k.textContent = "Finish in your browser…"; } catch (e) { showErr($("#e"), e); k.disabled = false; } };
+  const fin = $("#fin"); if (fin) fin.onclick = async () => { fin.disabled = true; fin.textContent = "Creating…"; try { await api("/app/setup-finish", "POST"); clearInterval(onboardTimer); S.info = await api("/app/state"); render(); load(); } catch (e) { showErr($("#e"), e); fin.disabled = false; fin.textContent = "Create my wallet"; } };
+  clearInterval(onboardTimer);
+  if (!verified) onboardTimer = setInterval(async () => { try { const n = await api("/app/onboarding"); if (n.identity === "VERIFIED" || n.account || n.lastCheck !== st.lastCheck) { clearInterval(onboardTimer); renderOnboarding(); } } catch {} }, 4000);
 }
 
 function renderUnlock() {
@@ -177,13 +197,13 @@ function renderUnlock() {
     <div class="demo">Test mode demo · Mock Bank money only</div></div></div>`;
   $("#f").onsubmit = async (ev) => {
     ev.preventDefault();
-    try { S.info = await api("/app/unlock", "POST", { passphrase: new FormData(ev.target).get("p") }); S.view = "overview"; render(); load(); }
+    try { S.info = await api("/app/unlock", "POST", { passphrase: new FormData(ev.target).get("p") }); S.view = "overview"; render(); if (S.info.stage === "ready") load(); }
     catch (err) { showErr($("#e"), err); }
   };
 }
 
 // ---------------------------------------------------------------- app shell
-const VIEWS = [["overview", "Overview"], ["chat", "AI chat"], ["deals", "Deals"], ["activity", "Activity"], ["contacts", "Contacts"], ["chain", "My chain"], ["settings", "Settings"]];
+const VIEWS = [["overview", "Overview"], ["chat", "AI chat"], ["deals", "Deals"], ["activity", "Money"], ["contacts", "Friends"], ["links", "Private links"], ["groups", "Groups"], ["chain", "My chain"], ["settings", "Settings"]];
 function renderApp() {
   const d = S.info.device;
   $("#root").innerHTML = `<div class="layout"><nav>
@@ -245,29 +265,97 @@ function renderView() {
     wireDrafts();
     const box = $("#msgs"); box.lastElementChild?.scrollIntoView({ block: "end" });
   } else if (S.view === "activity") {
-    const a = S.activity;
-    m.innerHTML = `<div class="row space"><h1>Activity</h1><button id="sync">Refresh</button></div>
-      ${a ? `<div class="card" style="margin-bottom:12px"><div class="hint">Balance (Mock Bank)</div><div class="stat"><div class="v">${money(a.balance, a.currency)}</div></div><p class="hint" style="margin:6px 0 0">Top up on the website ("+ Top up"): PromptPay QR or a test card.</p></div>
-      <div class="card"><table><thead><tr><th>When</th><th>What</th><th>With</th><th style="text-align:right">Amount</th></tr></thead><tbody>
+    const a = S.activity, t = S.topup;
+    m.innerHTML = `<div class="row space"><h1>Money</h1><button id="sync">Refresh</button></div>
+      <div class="grid"><div class="card"><div class="hint">Balance (Mock Bank, test money)</div><div class="stat"><div class="v">${a ? money(a.balance, a.currency) : "…"}</div></div></div>
+      <div class="card"><h2>Top up</h2>${t ? `<form id="tf"><div class="row"><input name="amount" type="number" min="1" step="1" placeholder="Amount (${esc(t.currency)})" required style="flex:1"></div>
+        <div class="row" style="margin-top:8px">${t.currency === "THB" ? `<button data-m="promptpay" class="primary">PromptPay QR</button>` : ""}<button data-m="card">Card</button>${t.card ? `<button data-m="linked">${esc(t.card.brand)} ··${esc(t.card.last4)}</button>` : ""}${t.counter ? `<button data-m="counter">Counter slip</button>` : ""}</div>
+        <div class="hint" style="margin-top:6px">Up to ${money(t.limit, t.currency)}. PromptPay and card open Stripe (test mode) in your browser, then come back here. Test card 4242 4242 4242 4242.</div></form><div id="tres"></div>` : `<p class="hint">Loading…</p>`}</div></div>
+      ${a ? `<div class="card"><table><thead><tr><th>When</th><th>What</th><th>With</th><th style="text-align:right">Amount</th></tr></thead><tbody>
       ${a.rows.length ? a.rows.map((r) => `<tr><td class="hint">${when(r.at)}</td><td>${esc(r.label)}${r.txHash ? `<div class="mono hint">${short(r.txHash)}</div>` : ""}</td><td>${esc(r.counterparty)}</td><td style="text-align:right" class="${r.direction}"><b>${r.direction === "in" ? "+" : "−"}${money(r.amount, a.currency)}</b></td></tr>`).join("") : `<tr><td colspan="4" class="hint">Nothing yet.</td></tr>`}
       </tbody></table></div>` : `<div class="card hint">Loading…</div>`}`;
     $("#sync").onclick = () => load();
+    const tf = $("#tf");
+    if (tf) tf.onsubmit = (ev) => ev.preventDefault();
+    document.querySelectorAll("#tf [data-m]").forEach((b) => (b.onclick = async (ev) => {
+      ev.preventDefault();
+      const amount = Number(new FormData(tf).get("amount"));
+      if (!(amount > 0)) return toast("Enter an amount");
+      b.disabled = true;
+      try {
+        const r = await api("/app/topup", "POST", { amount, method: b.dataset.m });
+        if (r.url) $("#tres").innerHTML = `<div class="ok-box" style="margin-top:8px">Finish the payment in your browser; your balance updates when you come back.</div>`;
+        else if (r.slip) {
+          $("#tres").innerHTML = `<div class="card" style="margin-top:8px"><b>Counter-service slip (demo)</b><div class="mono">${esc(r.slip.ref)}</div><div class="hint">${money(r.slip.amount, r.slip.currency)} · valid 24 h</div><button id="cash" style="margin-top:8px">Demo cashier: pay this slip</button></div>`;
+          $("#cash").onclick = async () => { try { await api("/app/counter-pay", "POST", { slip: r.slip.slip }); toast("Paid at the counter"); await load(); } catch (e) { toast(e.message); } };
+        } else { toast("Topped up from your linked card"); await load(); }
+      } catch (e) { toast(e.message); }
+      b.disabled = false;
+    }));
   } else if (S.view === "contacts") {
-    const cs = S.contacts;
-    m.innerHTML = `<div class="row space"><h1>Contacts</h1><button id="sync">Refresh</button></div>
-      <p class="hint">Your wallet only pays people you made a payee. Turning it on or off is a block you sign; the server sets it on your wallet contract. Adding friends: on the website (Contacts).</p>
-      <div class="card">${cs ? (cs.length ? `<table><thead><tr><th>Name</th><th>Payee</th><th></th></tr></thead><tbody>${cs.map((c) => `<tr><td><b>${esc(c.name)}</b><div class="hint">@${esc(c.username)}</div></td>
+    const fs = S.friends;
+    const acc = (fs || []).filter((f) => f.status === "ACCEPTED"), inc = (fs || []).filter((f) => f.direction === "incoming"), out = (fs || []).filter((f) => f.direction === "outgoing");
+    m.innerHTML = `<div class="row space"><h1>Friends</h1><button id="sync">Refresh</button></div>
+      <div class="card" style="margin-bottom:12px"><form id="ff" class="row"><input name="u" placeholder="Their username, e.g. seller_t1" required style="flex:1"><button class="primary">Add friend</button></form>
+        <div class="hint" style="margin-top:6px">Your wallet only pays friends you made a payee. Making or removing a payee is a block you sign; the server sets it on your wallet contract.</div></div>
+      ${inc.length ? `<div class="banner"><b>Friend requests</b>${inc.map((f) => `<div class="req row space"><div><b>${esc(f.name)}</b> <span class="hint">@${esc(f.username)}</span></div><div class="row"><button class="primary" data-acc="${esc(f.friendshipId)}">Accept</button><button data-rm="${esc(f.friendshipId)}">Decline</button></div></div>`).join("")}</div>` : ""}
+      <div class="card">${fs ? (acc.length ? `<table><thead><tr><th>Name</th><th>Payee</th><th></th></tr></thead><tbody>${acc.map((c) => `<tr><td><b>${esc(c.name)}</b><div class="hint">@${esc(c.username)}</div></td>
         <td>${c.payee ? `<span class="chip ok">can be paid</span>` : `<span class="chip">not a payee</span>`}</td>
-        <td style="text-align:right">${c.hasWallet ? `<button data-payee="${esc(c.friendshipId)}" data-on="${c.payee ? "0" : "1"}" class="${c.payee ? "danger" : "primary"}">${c.payee ? "Stop paying" : "Make payee"}</button>` : `<span class="hint">no wallet yet</span>`}</td></tr>`).join("")}</tbody></table>` : `<p class="hint">No friends yet.</p>`) : `<p class="hint">Loading…</p>`}</div>`;
+        <td style="text-align:right"><div class="row" style="justify-content:flex-end">${c.hasWallet ? `<button data-payee="${esc(c.friendshipId)}" data-on="${c.payee ? "0" : "1"}" class="${c.payee ? "danger" : "primary"}">${c.payee ? "Stop paying" : "Make payee"}</button>` : `<span class="hint">no wallet yet</span>`}<button data-rm="${esc(c.friendshipId)}" title="Remove friend">✕</button></div></td></tr>`).join("")}</tbody></table>` : `<p class="hint">No friends yet.</p>`) : `<p class="hint">Loading…</p>`}
+      ${out.length ? `<p class="hint">Waiting for: ${out.map((f) => esc(f.name || f.username)).join(", ")}</p>` : ""}</div>`;
     $("#sync").onclick = () => load();
+    $("#ff").onsubmit = async (ev) => { ev.preventDefault(); try { S.friends = (await api("/app/friends", "POST", { op: "request", username: new FormData(ev.target).get("u") })).friends; toast("Request sent"); renderView(); } catch (e) { toast(e.message); } };
+    document.querySelectorAll("[data-acc]").forEach((b) => (b.onclick = async () => { try { S.friends = (await api("/app/friends", "POST", { op: "accept", friendshipId: b.dataset.acc })).friends; renderView(); } catch (e) { toast(e.message); } }));
+    document.querySelectorAll("[data-rm]").forEach((b) => (b.onclick = async () => { if (!confirm("Remove (or decline)? A payee stays until you stop paying them.")) return; try { S.friends = (await api("/app/friends", "POST", { op: "remove", friendshipId: b.dataset.rm })).friends; renderView(); } catch (e) { toast(e.message); } }));
     document.querySelectorAll("[data-payee]").forEach((b) => (b.onclick = async () => {
       const on = b.dataset.on === "1";
-      const c = S.contacts.find((x) => x.friendshipId === b.dataset.payee);
+      const c = S.friends.find((x) => x.friendshipId === b.dataset.payee);
       if (!confirm(`${on ? "Let your wallet pay" : "Stop paying"} ${c.name}? This adds a block signed by your device key.`)) return;
       b.disabled = true; b.textContent = "Signing…";
       try { const r = await api("/app/payee", "POST", { friendshipId: c.friendshipId, allowed: on }); if (!r.ok) throw new Error(r.error || "Not done"); toast("Signed and done"); } catch (e) { toast(e.message); }
       await load();
     }));
+  } else if (S.view === "links") {
+    const ls = S.links;
+    m.innerHTML = `<div class="row space"><h1>Private links</h1><button id="sync">Refresh</button></div>
+      <p class="hint">Links you made for people without an account (they open them on any phone or browser). Send the one-time code separately from the link.</p>
+      ${ls ? (ls.length ? ls.map((l) => `<div class="card deal"><div class="row space"><div><b>${esc(l.name)}</b> <span class="hint">${l.kind === "seller" ? "works for you" : "buys from you"} · D-${esc(l.dealId)} ${esc(l.title)}</div>
+          <div class="mono hint" style="margin-top:4px">${l.link ? esc(l.link) : "(link hidden: make a new one)"}</div></div><span class="chip ${l.linked ? "ok" : ""}">${l.linked ? "joined" : esc(l.status)}</span></div>
+        <div class="hint" style="margin-top:6px">${!l.access.required ? "Open link (made before one-time codes)" : l.access.passwordSet ? "They set a password." : l.access.otp ? `One-time code: <b class="mono">${esc(l.access.otp)}</b> (until ${when(l.access.otpExpiresAt)})` : "No live code: make a new one."}</div>
+        <div class="row" style="margin-top:8px">${l.link ? `<button data-copy="${esc(l.link)}">Copy link</button>` : ""}${l.access.required && !l.access.passwordSet ? `<button data-otp="${l.dealId}">New one-time code</button>` : ""}${l.access.passwordSet ? `<button data-reset="${l.dealId}">They lost the password…</button>` : ""}<button data-rot="${l.dealId}" class="danger">New link (old stops)</button></div></div>`).join("") : `<div class="card hint">No private links yet. Ask the AI to hire or sell to someone without an account.</div>`) : `<div class="card hint">Loading…</div>`}`;
+    $("#sync").onclick = () => load();
+    const act = async (dealId, action, code) => { try { const r = await api("/app/invite-links", "POST", { dealId: Number(dealId), action, code }); if (r.link) toast("New link made"); else if (r.otp) toast(`New code: ${r.otp}`); else toast("Done"); await load(); } catch (e) { toast(e.message); } };
+    document.querySelectorAll("[data-copy]").forEach((b) => (b.onclick = () => navigator.clipboard.writeText(b.dataset.copy).then(() => toast("Copied"), () => toast("Copy failed"))));
+    document.querySelectorAll("[data-otp]").forEach((b) => (b.onclick = () => act(b.dataset.otp, "otp")));
+    document.querySelectorAll("[data-rot]").forEach((b) => (b.onclick = () => confirm("Make a new link? The old one stops working.") && act(b.dataset.rot, "rotate")));
+    document.querySelectorAll("[data-reset]").forEach((b) => (b.onclick = () => { const code = prompt("The reset code they sent you (from “Forgot password” on their link):"); if (code) act(b.dataset.reset, "reset", code.trim()); }));
+  } else if (S.view === "groups") {
+    const g = S.groups;
+    const friends = (S.friends || []).filter((f) => f.status === "ACCEPTED");
+    m.innerHTML = `<div class="row space"><h1>Groups</h1><button id="sync">Refresh</button></div>
+      ${g && g.votes.length ? `<div class="banner"><b>Payments waiting for your vote</b>${g.votes.map((v) => `<div class="req row space"><div><b>${esc(v.title)}</b><div class="hint">${esc(v.group.name)} · ${v.yes} of ${v.group.threshold} yes so far</div></div><div class="row"><button class="primary" data-vote="${esc(v.proposalId)}" data-yes="1">Approve</button><button data-vote="${esc(v.proposalId)}" data-yes="0">Reject</button></div></div>`).join("")}</div>` : ""}
+      ${g && g.invites.length ? `<div class="banner"><b>Invitations</b>${g.invites.map((i) => `<div class="req row space"><div><b>${esc(i.group?.name || i.name || "A group")}</b><div class="hint">${i.canSign ? "as a signer" : "as a member"}</div></div><div class="row"><button class="primary" data-inv="${esc(i.id)}" data-yes="1">Join</button><button data-inv="${esc(i.id)}" data-yes="0">Decline</button></div></div>`).join("")}</div>` : ""}
+      <div id="glist">${g ? (g.groups.length ? g.groups.map((x) => `<div class="card deal"><div class="row space"><b>${esc(x.name)}</b><span class="chip">${x.threshold} of ${x.members.filter((mm) => mm.canSign).length} signers</span></div>
+        <div class="hint">${x.members.map((mm) => `${esc(mm.name)}${mm.role === "ADMIN" ? " (admin)" : ""}${mm.canSign ? " ✍" : ""}`).join(" · ")}${x.invited ? ` · ${x.invited} invited` : ""}</div>${x.openProposals ? `<div class="hint">${x.openProposals} open proposal(s)</div>` : ""}</div>`).join("") : `<div class="card hint">No groups yet.</div>`) : `<div class="card hint">Loading…</div>`}</div>
+      <div class="card" style="margin-top:12px"><h2>New group</h2><form id="gf"><label>Name</label><input name="name" required minlength="2" maxlength="60" placeholder="e.g. Coffee shop partners">
+        <label>Members (friends)</label>${friends.length ? friends.map((f) => `<div class="row" style="margin:4px 0"><label style="margin:0;font-weight:400;display:flex;gap:6px;align-items:center"><input type="checkbox" name="mem" value="${esc(f.userId)}" style="width:auto"> ${esc(f.name)}</label><label style="margin:0;font-weight:400;display:flex;gap:6px;align-items:center" class="hint"><input type="checkbox" name="sign" value="${esc(f.userId)}" checked style="width:auto"> can sign</label></div>`).join("") : `<p class="hint">Add friends first.</p>`}
+        <label>Votes needed to pay (at least 2)</label><input name="threshold" type="number" min="2" value="2" required style="width:120px">
+        <div class="row" style="margin-top:10px"><button class="primary" ${friends.length ? "" : "disabled"}>Create group</button></div><p class="hint">Group chat and payouts to members: on the website for now.</p></form></div>`;
+    $("#sync").onclick = () => load();
+    document.querySelectorAll("[data-vote]").forEach((b) => (b.onclick = async () => {
+      const yes = b.dataset.yes === "1";
+      if (!confirm(`${yes ? "Approve" : "Reject"} this payment? Your vote is a block signed by your device key.`)) return;
+      b.disabled = true;
+      try { const r = await api("/app/vote", "POST", { proposalId: b.dataset.vote, approve: yes }); if (!r.ok) throw new Error(r.error || "Not done"); toast("Vote signed"); } catch (e) { toast(e.message); }
+      await load();
+    }));
+    document.querySelectorAll("[data-inv]").forEach((b) => (b.onclick = async () => { try { S.groups = await api("/app/groups", "POST", { op: "invite", inviteId: b.dataset.inv, accept: b.dataset.yes === "1" }); renderView(); } catch (e) { toast(e.message); } }));
+    $("#gf").onsubmit = async (ev) => {
+      ev.preventDefault();
+      const fd = new FormData(ev.target), signers = new Set(fd.getAll("sign"));
+      const members = fd.getAll("mem").map((id) => ({ userId: id, canSign: signers.has(id) }));
+      try { S.groups = await api("/app/groups", "POST", { op: "create", name: fd.get("name"), members, threshold: Number(fd.get("threshold")) }); toast("Group created: invitations sent"); renderView(); } catch (e) { toast(e.message); }
+    };
   } else if (S.view === "deals") {
     m.innerHTML = `${requestsBanner()}<div class="row space"><h1>Deals</h1><button id="sync">Refresh</button></div>
       <p class="hint">Every move here (deliver, approve, dispute, accept, refund) is a block signed by your device key. New deals: AI chat.</p>
@@ -310,6 +398,7 @@ function verifyHtml() {
 
 function blockText(b) {
   if (b.kind === "genesis") return `<b>Genesis</b> · wallet <span class="mono">${short(b.body.wallet)}</span>`;
+  if (b.kind === "intent" && b.body.action === "vote") return `<b>You signed: ${b.body.approve ? "approve" : "reject"} a group payment</b> <span class="hint">proposal ${esc(b.body.proposalId)}</span>`;
   if (b.kind === "intent" && b.body.action === "payee") return `<b>You signed: ${b.body.allowed ? "make payee" : "stop paying"}</b> <span class="hint">contact ${esc(b.body.friendshipId)}</span>`;
   if (b.kind === "intent" && b.body.action === "confirm_draft") return `<b>You signed: confirm deal</b> <span class="hint">preview ${esc(b.body.draftId)}</span>`;
   if (b.kind === "intent" && b.body.action === "deliver") return `<b>You signed: deliver</b> · D-${esc(b.body.dealId)} milestone ${Number(b.body.index) + 1}${b.body.fileName ? `<div class="hint">${esc(b.body.fileName)} · sha256 ${esc(String(b.body.fileSha256 || "").slice(0, 12))}…</div>` : ""}${b.body.carrier ? `<div class="hint">${esc(b.body.carrier)} ${esc(b.body.tracking || "")}</div>` : ""}`;
@@ -509,11 +598,15 @@ async function load() {
     if (S.view === "deals") S.deals = (await api("/app/deals")).deals;
     if (S.view === "chain") S.chain = await api("/app/chain");
     if (S.view === "chat") { const [h, d] = await Promise.all([api("/app/chat"), api("/app/drafts")]); S.chatHistory = h.history; S.drafts = d.drafts; }
-    if (S.view === "activity") S.activity = await api("/app/activity");
-    if (S.view === "contacts") S.contacts = (await api("/app/contacts")).contacts;
+    if (S.view === "activity") { const [a, t] = await Promise.all([api("/app/activity"), api("/app/topup").catch(() => null)]); S.activity = a; S.topup = t; }
+    if (S.view === "contacts" || S.view === "groups") S.friends = (await api("/app/friends")).friends;
+    if (S.view === "links") S.links = (await api("/app/invite-links")).links;
+    if (S.view === "groups") S.groups = await api("/app/groups");
   } catch (e) { toast(e.message); }
   if (S.info.stage === "ready") renderApp(); else render();
 }
+// The money view refreshes when the browser comes back from a Stripe payment.
+window.addEventListener("focus", () => { if (S.info && S.info.stage === "ready" && S.view === "activity") load(); });
 
 setInterval(async () => {
   if (!S.info || S.info.stage !== "ready" || S.chatBusy || document.querySelector("dialog[open]") || document.querySelector("#cf textarea")?.value) return;

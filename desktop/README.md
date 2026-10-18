@@ -9,8 +9,9 @@ opens its screen in your browser at `127.0.0.1`. Test mode demo: Mock Bank money
 - When the other side of a deal also uses the app, the same event is in both chains: they link.
 - Everything day to day happens here, each move a block you sign: new deals with the AI chat and
   Confirm, delivering (the block signs the file's SHA-256), approve, dispute, accept, cancel, claim,
-  refund, and payees. Activity shows money in and out. The website is for sign-up and identity,
-  top-ups, friends and groups. The money itself stays locked in the escrow contract on the chain.
+  refund, payees and group votes. Sign up or sign in, verify your identity, top up, add friends,
+  manage the private links you sent, and run groups here too. The website stays for the pages
+  people without an account open. The money itself stays locked in the escrow contract on the chain.
 - Every hour the server puts one Merkle root of all heads on the private chain (ChainAnchor);
   "Verify now" checks your proof and the transaction receipt.
 
@@ -19,11 +20,12 @@ server: `web/src/lib/device-chain/format.ts`.
 
 ## Use
 
-1. Website: Profile → Desktop app → **Make a link code**.
-2. Run the app for your computer. First time only: Windows "More info → Run anyway"; macOS
+1. Run the app for your computer. First time only: Windows "More info → Run anyway"; macOS
    right-click → Open (or `xattr -d com.apple.quarantine <file>`); Linux `chmod +x <file>`.
-3. Type the code, name the computer, choose a passphrase.
-4. Settings → **Save key backup** and keep the file. A new computer: **Restore from backup**.
+2. **Sign in** (or **Create account**, then verify your identity with the demo digital ID and
+   create your wallet), name the computer and choose an app passphrase. Accounts with a second
+   factor use **Link with code** (website: Profile → Desktop app → Make a link code).
+3. Settings → **Save key backup** and keep the file. A new computer: **Restore from backup**.
 
 Options: `--no-open` (print the URL instead of opening the browser). `AGENTIC_WALLET_DATA=<dir>`
 moves the data folder (default: `~/Library/Application Support/AgenticWallet`,

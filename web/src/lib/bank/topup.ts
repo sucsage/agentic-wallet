@@ -64,7 +64,7 @@ export async function checkTopup(userId: string, amount: number) {
 
 export type TopupMethod = "card" | "promptpay";
 
-export async function startTopup(userId: string, amount: number, origin: string, method: TopupMethod = "card"): Promise<string> {
+export async function startTopup(userId: string, amount: number, origin: string, method: TopupMethod = "card", back?: { success: string; cancel: string }): Promise<string> {
   const { account, currency, minor } = await checkTopup(userId, amount);
   if (method === "promptpay" && currency !== "THB") throw new TopupError("PromptPay is for baht accounts");
   const session = await stripe<{ url: string }>(
@@ -80,8 +80,9 @@ export async function startTopup(userId: string, amount: number, origin: string,
       "line_items[0][price_data][unit_amount]": String(minor),
       "line_items[0][price_data][product_data][name]": `Mock Bank top-up · account ··${(account.accountNo ?? "").replace(/\D/g, "").slice(-4)}`,
       "line_items[0][price_data][product_data][description]": "Demo money for Agentic Wallet (Stripe test mode)",
-      success_url: `${origin}/chat?topup={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${origin}/chat?topup=cancelled`,
+      // The desktop app gets the browser back on its own local page (back), the website on /chat.
+      success_url: back?.success ?? `${origin}/chat?topup={CHECKOUT_SESSION_ID}`,
+      cancel_url: back?.cancel ?? `${origin}/chat?topup=cancelled`,
     }),
   );
   return session.url;

@@ -29,7 +29,7 @@ export type EventBlockBody = { event: DealEventBody; serverSig: Hex };
 export type IntentBody = {
   /** 0 for a move that is not on a deal yet (confirm_draft). */
   dealId: number;
-  action: "approve" | "dispute" | "accept" | "cancel" | "claim" | "refund" | "reclaim" | "reject" | "deliver" | "confirm_draft" | "payee";
+  action: "approve" | "dispute" | "accept" | "cancel" | "claim" | "refund" | "reclaim" | "reject" | "deliver" | "confirm_draft" | "payee" | "vote";
   index: number;
   reason?: string;
   /** A move started on the website that the app signs (DeviceRequest id). */
@@ -45,6 +45,9 @@ export type IntentBody = {
   /** payee: let the wallet pay this contact (true) or stop it (false). */
   friendshipId?: string;
   allowed?: boolean;
+  /** vote: a group payment proposal and the signer's answer. */
+  proposalId?: string;
+  approve?: boolean;
 };
 
 export type Block =
@@ -79,6 +82,8 @@ export const headMessage = (owner: Address, height: number, hash: Hex) => `Agent
 export const eventMessage = (id: Hex) => `Agentic Wallet deal event\n${id}`;
 /** What a device signs to link itself with a one-time code. */
 export const linkMessage = (code: string, device: Address) => `Agentic Wallet link device\n${code.toUpperCase()}\n${getAddress(device)}`;
+/** What a device signs to make an account (or sign in) and link itself in one step. */
+export const accountMessage = (kind: "signup" | "login", email: string, device: Address) => `Agentic Wallet ${kind} device\n${email.trim().toLowerCase()}\n${getAddress(device)}`;
 /** What a device signs for every request (method, path, time and the hash of the body's bytes). */
 export const requestMessage = (method: string, path: string, time: number, body: string | Uint8Array) =>
   `Agentic Wallet device request\n${method.toUpperCase()}\n${path}\n${time}\n${keccak256(typeof body === "string" ? toHex(body) : body)}`;

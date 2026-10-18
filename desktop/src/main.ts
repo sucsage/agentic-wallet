@@ -54,7 +54,7 @@ async function body<T>(req: Request): Promise<T> {
   return (await req.json().catch(() => ({}))) as T;
 }
 
-async function route(req: Request, path: string): Promise<Response> {
+async function route(req: Request, path: string, port: number): Promise<Response> {
   const m = req.method;
   if (m === "GET" && path === "/app/state") return json(wallet.info());
   if (m === "POST" && path === "/app/setup") return json(await wallet.setup(await body(req)));
@@ -89,6 +89,31 @@ async function route(req: Request, path: string): Promise<Response> {
     );
   }
   if (m === "POST" && path === "/app/confirm-draft") return json(await wallet.confirmDraft(String((await body<{ draftId: string }>(req)).draftId ?? "")));
+  if (m === "GET" && path === "/app/onboarding") return json(await wallet.setupStatus());
+  if (m === "POST" && path === "/app/kyc-start") {
+    const r = await wallet.kycStart((await body<{ country?: string }>(req)).country === "CN" ? "CN" : "TH");
+    openBrowser(r.url);
+    return json(r);
+  }
+  if (m === "POST" && path === "/app/setup-finish") return json(await wallet.finishSetup());
+  if (m === "GET" && path === "/app/friends") return json(await wallet.friends());
+  if (m === "POST" && path === "/app/friends") return json(await wallet.friendAction(await body(req)));
+  if (m === "GET" && path === "/app/topup") return json(await wallet.topupInfo());
+  if (m === "POST" && path === "/app/topup") {
+    const b = await body<{ amount: number; method: string }>(req);
+    const r = await wallet.topupStart({ amount: Number(b.amount), method: b.method, returnTo: `http://127.0.0.1:${port}/topup-done` });
+    if (r.url) openBrowser(r.url);
+    return json(r);
+  }
+  if (m === "POST" && path === "/app/counter-pay") return json(await wallet.counterPay(String((await body<{ slip: string }>(req)).slip ?? "")));
+  if (m === "GET" && path === "/app/invite-links") return json(await wallet.inviteLinks());
+  if (m === "POST" && path === "/app/invite-links") return json(await wallet.inviteLinkAction(await body(req)));
+  if (m === "GET" && path === "/app/groups") return json(await wallet.groups());
+  if (m === "POST" && path === "/app/groups") return json(await wallet.groupAction(await body(req)));
+  if (m === "POST" && path === "/app/vote") {
+    const b = await body<{ proposalId: string; approve: boolean }>(req);
+    return json(await wallet.vote(String(b.proposalId ?? ""), b.approve === true));
+  }
   if (m === "GET" && path === "/app/contacts") return json(await wallet.contacts());
   if (m === "POST" && path === "/app/payee") {
     const b = await body<{ friendshipId: string; allowed: boolean }>(req);
@@ -125,11 +150,28 @@ async function main() {
           "referrer-policy": "no-referrer",
         },
       });
+    if (url.pathname === "/topup-done" && req.method === "GET") {
+      // The browser back from Stripe Checkout (no app token here): credit a paid session of this user.
+      const session = url.searchParams.get("session");
+      let text = "Top-up cancelled.";
+      if (session && wallet.stage() === "ready") {
+        try {
+          const r = await wallet.topupConfirm(session);
+          text = r.status === "paid" ? `Top-up done: ${r.amount.toLocaleString()} ${r.currency} added to your wallet.` : `Payment ${r.status}: it is added when it clears.`;
+        } catch (e) {
+          text = e instanceof Error ? e.message : String(e);
+        }
+      } else if (session) text = "Unlock the app, then the top-up is added on its next check.";
+      return new Response(
+        `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Top-up</title><body style="font:15px system-ui;background:#0f1216;color:#e8ebef;display:grid;place-items:center;min-height:100vh;margin:0"><div style="max-width:420px;padding:22px;border:1px solid #272d36;border-radius:14px;background:#171b21"><h1 style="font-size:18px;margin:0 0 8px">Agentic Wallet</h1><p>${text.replace(/[&<>"']/g, "")}</p><p style="color:#98a1ad;font-size:13px">You can close this tab and go back to the app. (Test mode)</p></div></body>`,
+        { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'" } },
+      );
+    }
     if (url.pathname.startsWith("/app/")) {
       const given = req.headers.get("x-app-token") ?? url.searchParams.get("t");
       if (given !== token) return json({ error: "Open the app from the link it printed (the token is missing)" }, 401);
       try {
-        return await route(req, url.pathname);
+        return await route(req, url.pathname, port);
       } catch (e) {
         return fail(e);
       }

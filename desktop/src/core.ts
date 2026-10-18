@@ -16,6 +16,7 @@ import {
   eventMessage,
   headLeaf,
   headMessage,
+  accountMessage,
   linkMessage,
   signerOf,
   verifyBlocks,
@@ -52,8 +53,8 @@ class Wallet {
     return run;
   }
 
-  stage(): "setup" | "locked" | "ready" {
-    return !this.vault ? "setup" : !this.account ? "locked" : "ready";
+  stage(): "setup" | "locked" | "onboarding" | "ready" {
+    return !this.vault ? "setup" : !this.account ? "locked" : !this.vault.wallet ? "onboarding" : "ready";
   }
 
   private need() {
@@ -81,27 +82,33 @@ class Wallet {
   // Setup, unlock, restore
   // ----------------------------------------------------------------------------------------
 
-  async setup(input: { server: string; code: string; passphrase: string; deviceName?: string }) {
+  /**
+   * A new computer: makes the device key here, links it (a code from the website, or signing in /
+   * making an account right here), encrypts the key with the passphrase and starts the chain.
+   */
+  async setup(input: { mode?: "code" | "login" | "signup"; server: string; code?: string; email?: string; password?: string; name?: string; passphrase: string; deviceName?: string }) {
     if (this.vault) throw new ApiError(409, "This computer is already set up");
     if (input.passphrase.length < 8) throw new ApiError(400, "Use a passphrase of at least 8 characters");
     const server = new URL(input.server.trim() || DEFAULT_SERVER).origin;
     const key = generatePrivateKey();
     const account = privateKeyToAccount(key);
-    const code = input.code.trim().toUpperCase();
     const deviceName = (input.deviceName?.trim() || hostname()).slice(0, 60);
-    const sig = await account.signMessage({ message: linkMessage(code.replace(/[^A-Z0-9]/g, ""), account.address) });
-    const linked = await plain<{ device: Address; wallet: Address; server: Address; user: string }>(server, "/api/device/link", {
-      code,
-      address: account.address,
-      name: deviceName,
-      os: osName(),
-      sig,
-    });
+    const mode = input.mode ?? "code";
+    let linked: { wallet: Address | null; server: Address; user: string };
+    if (mode === "code") {
+      const code = (input.code ?? "").trim().toUpperCase();
+      const sig = await account.signMessage({ message: linkMessage(code.replace(/[^A-Z0-9]/g, ""), account.address) });
+      linked = await plain(server, "/api/device/link", { code, address: account.address, name: deviceName, os: osName(), sig });
+    } else {
+      const email = (input.email ?? "").trim();
+      const sig = await account.signMessage({ message: accountMessage(mode, email, account.address) });
+      linked = await plain(server, `/api/device/${mode}`, { email, password: input.password ?? "", name: input.name, address: account.address, deviceName, os: osName(), sig });
+    }
     const vault = sealKey(key, input.passphrase, {
       address: account.address,
       server,
       serverSigner: linked.server,
-      wallet: linked.wallet,
+      wallet: linked.wallet ?? "",
       user: linked.user,
       deviceName,
       linkedAt: Date.now(),
@@ -111,12 +118,42 @@ class Wallet {
     this.vault = vault;
     this.account = account;
     this.key = key;
+    if (!vault.wallet) return { onboarding: true };
+    return this.startChain();
+  }
+
+  /** The first block (once the wallet exists), then a sync. */
+  private async startChain() {
+    const vault = this.need().vault;
     await this.serial(async () => {
-      const genesis = await this.sign(this.next("genesis", { wallet: linked.wallet, server: linked.server, linkedAt: vault.linkedAt }));
+      if (store.head()) return;
+      const genesis = await this.sign(this.next("genesis", { wallet: vault.wallet, server: vault.serverSigner, linkedAt: vault.linkedAt }));
       store.append([genesis]);
       await this.submit([genesis]);
     });
     return this.sync();
+  }
+
+  // ----------------------------------------------------------------------------------------
+  // Onboarding (an account made in the app): identity check, then the wallet
+  // ----------------------------------------------------------------------------------------
+
+  setupStatus() {
+    return this.call<{ identity: string; lastCheck: string | null; account: string | null; wallet: string | null }>("GET", "/api/device/setup");
+  }
+
+  kycStart(country: "TH" | "CN") {
+    return this.call<{ url: string }>("POST", "/api/device/kyc/start", { country });
+  }
+
+  async finishSetup() {
+    const { vault } = this.need();
+    const status = await this.setupStatus();
+    const wallet = status.wallet ?? (await this.call<{ wallet: string }>("POST", "/api/device/setup/finish")).wallet;
+    const next = { ...vault, wallet };
+    writeVault(next);
+    this.vault = next;
+    return this.startChain();
   }
 
   unlock(passphrase: string) {
@@ -237,6 +274,7 @@ class Wallet {
 
   private async syncOnce() {
     const { vault, key } = this.need();
+    if (!vault.wallet) return { added: 0, requests: 0 };
     const p = await this.call<Pending>("GET", "/api/device/sync");
     if (getAddress(p.server) !== getAddress(vault.serverSigner)) throw new ApiError(502, "The server's signing key changed since this app was linked");
     const local = store.head();
@@ -331,6 +369,47 @@ class Wallet {
 
   contacts() {
     return this.call<{ contacts: unknown[] }>("GET", "/api/device/contacts");
+  }
+
+  friends() {
+    return this.call<{ friends: unknown[] }>("GET", "/api/device/friends");
+  }
+  friendAction(body: unknown) {
+    return this.call<{ friends: unknown[] }>("POST", "/api/device/friends", body);
+  }
+  topupInfo() {
+    return this.call<unknown>("GET", "/api/device/topup");
+  }
+  topupStart(body: { amount: number; method: string; returnTo?: string }) {
+    return this.call<{ url?: string; slip?: unknown; linked?: unknown }>("POST", "/api/device/topup", body);
+  }
+  topupConfirm(sessionId: string) {
+    return this.call<{ status: string; amount: number; currency: string }>("POST", "/api/device/topup/confirm", { sessionId });
+  }
+  counterPay(slip: string) {
+    return this.call<unknown>("POST", "/api/device/topup/counter", { slip });
+  }
+  inviteLinks() {
+    return this.call<{ links: unknown[] }>("GET", "/api/device/invite-links");
+  }
+  inviteLinkAction(body: unknown) {
+    return this.call<unknown>("POST", "/api/device/invite-links", body);
+  }
+  groups() {
+    return this.call<unknown>("GET", "/api/device/groups");
+  }
+  groupAction(body: unknown) {
+    return this.call<unknown>("POST", "/api/device/groups", body);
+  }
+
+  /** A signer's vote on a group payment: a block signed here. */
+  vote(proposalId: string, approve: boolean) {
+    return this.serial(async () => {
+      const b = await this.sign(this.next("intent", { dealId: 0, action: "vote", index: 0, proposalId, approve }));
+      store.append([b]);
+      const [result] = await this.submit([b]);
+      return { ...result, block: b.hash, height: b.height };
+    }).finally(() => this.sync().catch(() => undefined));
   }
 
   drafts() {

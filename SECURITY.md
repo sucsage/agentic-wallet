@@ -106,7 +106,8 @@ What a user (or an attacker on their computer) can and cannot do with the chain 
 | The server quietly swaps a user's head | The device holds every block and the server's countersignature; heads are anchored on-chain hourly, so an earlier anchor would no longer match. |
 
 - Escrow money still moves only by FileEscrow's rules; the chain on the computer records and signs, it does not hold money. A move signed in the app runs through the same checks as the website (KYC limits, group votes, offer expiry, guarantors).
-- The app's local server is reachable only from 127.0.0.1 with the per-launch token, Host-checked, no CORS; other web pages cannot drive it.
+- The app's local server is reachable only from 127.0.0.1 with the per-launch token, Host-checked, no CORS; other web pages cannot drive it. Its one page without the token, `/topup-done`, only confirms a Stripe session that belongs to the signed-in device's user (idempotent per session).
+- Sign-in from the app: the password is checked by Better Auth, the device must sign the email with its key, sign-in is rate-limited, and accounts with a second factor must link with a website code. Identity checks started in the app keep their OIDC state server-side (single use, 10 minutes).
 - Known limits: the executables are not code-signed (Windows SmartScreen and macOS Gatekeeper warn once); a forgotten passphrase cannot be reset (link the computer again; deal history stays on the server and in the escrow); the anchor proves the head existed, not who was right in a deal.
 
 ## 5. Application security

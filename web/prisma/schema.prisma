@@ -1245,7 +1245,8 @@ model BuyerInvite {
 model Device {
   address       String         @id
   userId        String
-  /// The wallet whose deals this device records (the user's own wallet when it was linked).
+  /// The wallet whose deals this device records (the user's own wallet when it was linked). Empty
+  /// while an account made in the app is still being set up (identity check, then the wallet).
   walletAddress String
   name          String
   os            String
@@ -1274,6 +1275,23 @@ model DeviceRequestSeen {
   at      DateTime @default(now())
 
   @@index([at])
+}
+
+/// Identity verification started from the desktop app (OIDC code + PKCE): kept here instead of a
+/// browser cookie, since the app (not a signed-in browser) started it. Single use, 10 minutes.
+model DeviceKycFlow {
+  state         String    @id
+  deviceAddress String
+  userId        String
+  provider      String
+  nonce         String
+  verifier      String
+  expiresAt     DateTime
+  result        String?
+  doneAt        DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([deviceAddress])
 }
 
 /// A one-time code from Profile -> Desktop app that links a new device to the signed-in user.

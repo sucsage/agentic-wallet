@@ -21,7 +21,7 @@ import { send } from "../chain";
 import { db } from "../db";
 import { HttpError } from "../guard";
 import { hmac } from "../kyc";
-import { SocialError, listFriends, setFriendPayee } from "../social";
+import { SocialError, listFriends, setFriendPayee, vote } from "../social";
 import { readFileDeals } from "../state";
 import { primaryWalletAddress } from "../user-wallets";
 import {
@@ -160,6 +160,12 @@ export async function authDevice(req: Request, body: string | Uint8Array) {
 
 export type DeviceRow = Awaited<ReturnType<typeof authDevice>>;
 
+/** The device's wallet; an account made in the app has none until its identity check and wallet are done. */
+export function deviceWallet(device: { walletAddress: string }): Address {
+  if (!device.walletAddress) throw new DeviceError(409, "Finish setting up your account first (identity check, then the wallet)");
+  return getAddress(device.walletAddress);
+}
+
 // ------------------------------------------------------------------------------------------
 // Deal events
 // ------------------------------------------------------------------------------------------
@@ -198,7 +204,7 @@ function eventBody(e: { id: string; dealId: number; type: string; index: number 
 
 /** Deal events this device has not recorded yet, oldest first, and website moves waiting for its signature. */
 export async function pendingFor(device: DeviceRow) {
-  await refreshEvents(getAddress(device.walletAddress)).catch((e) => console.error("refreshEvents", e));
+  if (device.walletAddress) await refreshEvents(deviceWallet(device)).catch((e) => console.error("refreshEvents", e));
   const events = await db.dealEvent.findMany({
     where: { parties: { has: device.walletAddress.toLowerCase() }, acks: { none: { deviceAddress: device.address } } },
     orderBy: [{ createdAt: "asc" }, { dealId: "asc" }, { index: "asc" }],
@@ -222,7 +228,7 @@ const headOf = (d: { headHeight: number | null; headHash: string | null; headSer
 // Blocks
 // ------------------------------------------------------------------------------------------
 
-const Moves = new Set<string>([...DEAL_MOVES, "reject", "deliver", "confirm_draft", "payee"]);
+const Moves = new Set<string>([...DEAL_MOVES, "reject", "deliver", "confirm_draft", "payee", "vote"]);
 
 export type Upload = { name: string; mime: string; bytes: Buffer };
 
@@ -244,7 +250,7 @@ export async function submitBlocks(device: DeviceRow, blocks: SignedBlock[], upl
   const intents: (Block & { kind: "intent"; hash: Hex })[] = [];
   for (const b of blocks) {
     if (b.kind === "genesis") {
-      if (getAddress(b.body.wallet) !== getAddress(device.walletAddress) || getAddress(b.body.server) !== serverSigner()) throw new DeviceError(409, "The genesis block names another wallet or server");
+      if (getAddress(b.body.wallet) !== deviceWallet(device) || getAddress(b.body.server) !== serverSigner()) throw new DeviceError(409, "The genesis block names another wallet or server");
     } else if (b.kind === "event") {
       if (!b.body.event.parties.includes(wallet)) throw new DeviceError(409, `Block ${b.height}: that deal is not yours`);
       eventIds.push(b.body.event.id);
@@ -259,6 +265,7 @@ export async function submitBlocks(device: DeviceRow, blocks: SignedBlock[], upl
         if ((i.fileName?.length ?? 0) > 200 || (i.tracking?.length ?? 0) > 40) throw new DeviceError(400, `Block ${b.height}: too long`);
       }
       if (i.action === "confirm_draft" && (typeof i.draftId !== "string" || i.draftId.length > 40)) throw new DeviceError(400, `Block ${b.height}: which preview?`);
+      if (i.action === "vote" && (typeof i.proposalId !== "string" || i.proposalId.length > 40 || typeof i.approve !== "boolean")) throw new DeviceError(400, `Block ${b.height}: which proposal?`);
       if (i.action === "payee" && (typeof i.friendshipId !== "string" || i.friendshipId.length > 40 || typeof i.allowed !== "boolean")) throw new DeviceError(400, `Block ${b.height}: which contact?`);
       if (Math.abs(Date.now() - b.time) > MAX_SKEW_MS) throw new DeviceError(400, `Block ${b.height}: a deal move must be sent when it is signed`);
       intents.push(b as Block & { kind: "intent"; hash: Hex });
@@ -327,7 +334,7 @@ async function runIntent(device: DeviceRow, b: Block & { kind: "intent"; hash: H
   try {
     const customer = await customerOfUser(device.userId);
     if (!customer) throw new DeviceError(403, "Sign in through the Mock Bank on the website first");
-    const wallet = getAddress(device.walletAddress);
+    const wallet = deviceWallet(device);
     if (i.action === "deliver") {
       const result = await deliver(device.userId, wallet, i.dealId, i.index, {
         note: i.note ?? "",
@@ -339,6 +346,13 @@ async function runIntent(device: DeviceRow, b: Block & { kind: "intent"; hash: H
       after(() => syncDeal(wallet, i.dealId).catch((e) => console.error("syncDeal", i.dealId, e)));
       await record("done", result);
       return { block: b.hash, ok: true, result: jsonSafe(result) };
+    }
+    if (i.action === "vote") {
+      const r = await vote(device.userId, i.proposalId!, i.approve!).catch((e) => {
+        throw e instanceof SocialError ? new DeviceError(400, e.message) : e;
+      });
+      await record("done", r);
+      return { block: b.hash, ok: true, result: jsonSafe(r) };
     }
     if (i.action === "payee") {
       const outcome = await setFriendPayee(device.userId, i.friendshipId!, i.allowed!, wallet).catch((e) => {
@@ -354,7 +368,7 @@ async function runIntent(device: DeviceRow, b: Block & { kind: "intent"; hash: H
       return { block: b.hash, ok: true, result: jsonSafe(result) };
     }
     const result = await runDealMove(
-      { userId: device.userId, currency: customer.currency, wallet: getAddress(device.walletAddress) },
+      { userId: device.userId, currency: customer.currency, wallet: deviceWallet(device) },
       i.dealId,
       i.action as DealMove,
       i.index,
@@ -408,7 +422,7 @@ export async function deviceSettings(userId: string) {
 // ------------------------------------------------------------------------------------------
 
 export async function deviceAccount(device: DeviceRow) {
-  const wallet = getAddress(device.walletAddress);
+  const wallet = deviceWallet(device);
   const [user, account] = await Promise.all([db.user.findUnique({ where: { id: device.userId }, select: { name: true } }), accountOf(wallet)]);
   return {
     name: user?.name ?? "",
@@ -423,7 +437,7 @@ export async function deviceAccount(device: DeviceRow) {
 
 /** The wallet's deals with titles and which side's chains recorded each event. */
 export async function deviceDeals(device: DeviceRow) {
-  const wallet = getAddress(device.walletAddress);
+  const wallet = deviceWallet(device);
   const deals = await readFileDeals(wallet);
   const terms = await Promise.all(deals.map((d) => dealTerms(d.id, d.role === "buyer" ? wallet : d.counterparty, d.role === "seller" ? wallet : d.counterparty)));
   const counterDevices = await db.device.findMany({ where: { walletAddress: { in: [...new Set(deals.map((d) => d.counterparty))] }, revokedAt: null }, select: { walletAddress: true } });
@@ -472,13 +486,13 @@ export async function eventLinks(device: DeviceRow, ids: string[]) {
 
 /** Friends and whether the wallet may pay each (payee). */
 export async function deviceContacts(device: DeviceRow) {
-  const friends = await listFriends(device.userId, getAddress(device.walletAddress));
+  const friends = await listFriends(device.userId, deviceWallet(device));
   return friends.filter((f) => f.status === "ACCEPTED").map((f) => ({ friendshipId: f.friendshipId, name: f.name, username: f.username, hasWallet: Boolean(f.wallet), payee: f.allowlisted }));
 }
 
 /** Previews and drafts not locked yet (what the AI drafted): the app confirms them with a signed block. */
 export async function deviceDrafts(device: DeviceRow) {
-  const drafts = await listDrafts(device.userId, getAddress(device.walletAddress));
+  const drafts = await listDrafts(device.userId, deviceWallet(device));
   const open = drafts.filter((d) => ["PREVIEW", "DRAFT", "FAILED", "NEED_INFO"].includes(d.status));
   const views = await Promise.all(open.map((d) => draftView(d)));
   return JSON.parse(JSON.stringify(views, (_k, v) => (typeof v === "bigint" ? v.toString() : v)));
@@ -497,7 +511,7 @@ const KIND_LABEL: Record<string, string> = {
 
 /** The wallet's money in and out (the Mock Bank statement), newest first. */
 export async function deviceActivity(device: DeviceRow) {
-  const account = await accountOf(getAddress(device.walletAddress));
+  const account = await accountOf(deviceWallet(device));
   if (!account) return { balance: 0, currency: "THB", rows: [] };
   const rows = await db.bankTransfer.findMany({
     where: { OR: [{ fromId: account.id }, { toId: account.id }] },

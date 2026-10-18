@@ -39,7 +39,8 @@ export async function POST(req: Request, ctx: RouteContext<"/api/mock-id/[provid
     const b = parsed.data;
     const redirect = new URL(b.redirect_uri);
     // Registered redirect URI: this app's callback only.
-    if (redirect.origin !== new URL(req.url).origin || redirect.pathname !== "/api/kyc/callback") throw new HttpError(400, "redirect_uri is not registered");
+    // Registered: the website's callback and the desktop app's (lib/device-chain/account.ts).
+    if (redirect.origin !== new URL(req.url).origin || !["/api/kyc/callback", "/api/device/kyc/callback"].includes(redirect.pathname)) throw new HttpError(400, "redirect_uri is not registered");
     const back = (params: Record<string, string>) => {
       for (const [k, v] of Object.entries(params)) redirect.searchParams.set(k, v);
       redirect.searchParams.set("state", b.state);
