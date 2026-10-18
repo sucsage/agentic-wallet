@@ -6,7 +6,7 @@
 > - **Prerequisite:** `FileEscrow.refund` must refuse `Split` (DC-H-02, draft PR #2). A timeout adds one more way to settle a milestone, so every settling path must refuse every settled status, ideally by allowing only the states that still hold money. The FileEscrow property test now checks this by trying every move on settled milestones.
 > - The `FileEscrow` constructor now takes `firstDealId`; a timeout change means another redeploy and an ABI refresh (`export-abis.mjs`).
 
-Status: draft for discussion. Not implemented. A contract-level matrix of every exit from `Disputed` has been produced (below) and refines the details.
+Status: **implemented in `FileEscrow` on 2026-10-18** (option A, 7-day constant; see FINDINGS-2026-10-16.md, DC-M-01). Needs a redeploy. The rest of this page is the original proposal. A contract-level matrix of every exit from `Disputed` has been produced (below) and refines the details.
 
 ## Problem
 

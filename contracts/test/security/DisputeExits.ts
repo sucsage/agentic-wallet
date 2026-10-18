@@ -77,14 +77,14 @@ describe("Disputed funds: who can move them, and what happens when nobody rules"
       await assert.rejects(c.fArbiter.write.resolve([0n, 0n, false]));
     });
 
-    it("KNOWN GAP (DC-M-01): if the arbiter never rules, the money stays locked for ever", async () => {
+    it("DC-M-01 fixed: a silent arbiter cannot lock the money for ever (timeoutResolve after 7 days)", async () => {
       const c = await disputedFileDeal();
       await networkHelpers.time.increase(YEAR);
       assert.equal((await c.fileEscrow.read.getMilestone([0n, 0n])).status, STATUS.Disputed);
-      assert.equal(await c.usdc.read.balanceOf([c.fileEscrow.address]), usd(1_000));
-      // Neither party has an exit of their own except the seller's voluntary refund.
-      await assert.rejects(c.fBuyer.write.reclaim([0n, 0n]));
-      await assert.rejects(c.fSeller.write.claim([0n, 0n]));
+      await c.fStranger.write.timeoutResolve([0n, 0n]);
+      assert.equal((await c.fileEscrow.read.getMilestone([0n, 0n])).status, STATUS.Refunded);
+      assert.equal(await c.usdc.read.balanceOf([c.fileEscrow.address]), 0n);
+      assert.equal(await c.usdc.read.balanceOf([buyer.account.address]), usd(10_000));
     });
 
     it("KNOWN GAP (DC-L-01): the seller's refund pre-empts the arbiter, who can then no longer rule", async () => {
@@ -163,7 +163,7 @@ describe("Disputed funds: who can move them, and what happens when nobody rules"
       assert.equal(await c.usdc.read.balanceOf([c.milestone.address]), usd(1_000));
     });
 
-    it("KNOWN GAP (DC-M-01): with a silent arbiter the money is locked permanently and no party has an exit", async () => {
+    it("KNOWN GAP (DC-M-01, legacy MilestoneEscrow only): with a silent arbiter the money is locked permanently and no party has an exit", async () => {
       const c = await disputedDeal();
       await networkHelpers.time.increase(YEAR);
       await assert.rejects(c.mBuyer.write.release([0n, 0n]));
