@@ -7,7 +7,9 @@
   "scripts": {
     "dev": "bun run src/main.ts",
     "build": "bun run scripts/build.ts",
-    "check": "tsc --noEmit -p ."
+    "check": "tsc --noEmit -p .",
+    "test": "bun test",
+    "security": "bun run scripts/security-check.ts"
   },
   "dependencies": {
     "viem": "2.57.3"

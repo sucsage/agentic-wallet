@@ -61,8 +61,24 @@ export function writeVault(file: VaultFile) {
   }
 }
 
-/** The chain backup's key: derived from the device key, so only this key can read the backup. */
-const backupKey = (privateKey: Hex) => Buffer.from(keccak256(concat([privateKey, toHex("agentic-wallet chain backup v1")])).slice(2), "hex");
+/** Keys derived from the device key, one per purpose: only this device key can read what they seal. */
+const derived = (privateKey: Hex, purpose: string) => Buffer.from(keccak256(concat([privateKey, toHex(purpose)])).slice(2), "hex");
+const backupKey = (privateKey: Hex) => derived(privateKey, "agentic-wallet chain backup v1");
+
+/** A secret kept on this computer (the user's own AI key), sealed with a key derived from the device key. */
+export function sealLocal(privateKey: Hex, data: string): string {
+  const iv = randomBytes(12);
+  const c = createCipheriv("aes-256-gcm", derived(privateKey, "agentic-wallet local secret v1"), iv);
+  const ct = Buffer.concat([c.update(Buffer.from(data, "utf8")), c.final()]);
+  return Buffer.concat([iv, c.getAuthTag(), ct]).toString("base64");
+}
+
+export function openLocal(privateKey: Hex, sealed: string): string {
+  const b = Buffer.from(sealed, "base64");
+  const d = createDecipheriv("aes-256-gcm", derived(privateKey, "agentic-wallet local secret v1"), b.subarray(0, 12));
+  d.setAuthTag(b.subarray(12, 28));
+  return Buffer.concat([d.update(b.subarray(28)), d.final()]).toString("utf8");
+}
 
 export function sealBackup(privateKey: Hex, data: string): string {
   const iv = randomBytes(12);

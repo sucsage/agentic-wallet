@@ -10,7 +10,7 @@ import { z } from "zod";
 import type { DealDispute } from "@/generated/prisma/client";
 
 import { fileEscrowAbi } from "../abis";
-import { llm, llmConfigured } from "../agent";
+import { serverLlm, llmConfigured } from "../agent";
 import { type TxOutcome, account, atFreshBlock, publicClient, send } from "../chain";
 import { config } from "../config";
 import { db } from "../db";
@@ -259,7 +259,7 @@ function modelSigner(model: string) {
 
 /** Asks one model for a split and signs its answer (exported for the dispute test cases). */
 export async function rule(model: string, role: "mediator" | "judge", file: string, ctx: { dealId: number; index: number; stage: string }): Promise<Vote> {
-  const { client } = llm();
+  const { client } = serverLlm();
   for (let attempt = 0; attempt < 2; attempt++) {
     const res = await client.beta.messages.stream({ model, max_tokens: 4000, system: SPLIT_SYSTEM(role), messages: [{ role: "user", content: file }] }).finalMessage();
     const text = res.content
@@ -473,7 +473,7 @@ Reply with ONLY a JSON object, no prose around it:
 {"decision":"seller"|"buyer","confidence":0.0-1.0,"rationale":"2-4 sentences","findings":[{"criterion":"...","met":true|false,"evidence":"..."}]}`;
 
 async function aiRuling(file: string): Promise<{ ruling: Ruling; model: string }> {
-  const { client, model } = llm();
+  const { client, model } = serverLlm();
   for (let attempt = 0; attempt < 2; attempt++) {
     const res = await client.beta.messages.stream({ model, max_tokens: 2000, system: ARBITER_SYSTEM, messages: [{ role: "user", content: file }] }).finalMessage();
     const text = res.content

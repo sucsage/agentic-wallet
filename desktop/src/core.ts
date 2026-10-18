@@ -24,12 +24,30 @@ import {
 } from "../../web/src/lib/device-chain/format";
 import { ApiError, plain, signed, signedForm } from "./api";
 import * as store from "./store";
-import { type VaultFile, WrongPassphrase, hasVault, openBackup, openKey, readVault, sealBackup, sealKey, writeVault } from "./vault";
+import { type VaultFile, WrongPassphrase, hasVault, openBackup, openKey, openLocal, readVault, sealBackup, sealKey, sealLocal, writeVault } from "./vault";
 
 export const DEFAULT_SERVER = "https://agentic-wallet-inky.vercel.app";
 
 type Head = { height: number; hash: Hex; serverSig: Hex; block: SignedBlock } | null;
 type Pending = { head: Head; server: Address; events: { event: DealEventBody; serverSig: Hex }[]; requests: WebRequest[] };
+export type AgentRequest = {
+  id: string;
+  client: string;
+  kind: "move" | "confirm_draft" | "payee";
+  dealId?: number;
+  action?: string;
+  index?: number;
+  reason?: string;
+  draftId?: string;
+  friendshipId?: string;
+  allowed?: boolean;
+  why?: string;
+  status: "PENDING" | "SIGNED" | "REJECTED" | "FAILED";
+  error?: string;
+  block?: string;
+  createdAt: number;
+  answeredAt?: number;
+};
 export type WebRequest = { id: string; dealId: number; action: string; index: number; reason: string | null; createdAt: string };
 type IntentResult = { block: Hex; ok: boolean; result?: unknown; error?: string };
 
@@ -421,20 +439,140 @@ class Wallet {
   }
 
   /** The AI chat. Its history stays on this computer (the last 30 turns go with each message). */
-  chatHistory(): { role: "user" | "assistant"; text: string; at: number; steps?: unknown[] }[] {
+  chatHistory(): { role: "user" | "assistant"; text: string; at: number; steps?: unknown[]; model?: string | null }[] {
     return JSON.parse(store.getMeta("chat") ?? "[]");
+  }
+
+  // ----------------------------------------------------------------------------------------
+  // Requests from outside AI agents (MCP): queued here until the user signs or rejects them
+  // ----------------------------------------------------------------------------------------
+
+  agentRequests(): AgentRequest[] {
+    return JSON.parse(store.getMeta("agentRequests") ?? "[]");
+  }
+
+  private saveAgentRequests(list: AgentRequest[]) {
+    // Keep every pending one and the latest 50 answered.
+    const pending = list.filter((r) => r.status === "PENDING");
+    const done = list.filter((r) => r.status !== "PENDING").slice(-50);
+    store.setMeta("agentRequests", JSON.stringify([...done, ...pending]));
+  }
+
+  addAgentRequest(client: string, input: Record<string, unknown>): AgentRequest {
+    this.need();
+    const kind = input.kind;
+    const MOVES = ["approve", "dispute", "accept", "cancel", "claim", "refund", "reclaim"];
+    const r: AgentRequest = { id: crypto.randomUUID(), client: client.slice(0, 60) || "an AI agent", kind: "move", status: "PENDING", createdAt: Date.now(), why: typeof input.why === "string" ? input.why.slice(0, 300) : undefined };
+    if (kind === "move") {
+      if (!MOVES.includes(String(input.action))) throw new ApiError(400, `action must be one of ${MOVES.join(", ")}`);
+      const dealId = Number(input.dealId), index = Number(input.index ?? 0);
+      if (!Number.isInteger(dealId) || dealId < 0 || !Number.isInteger(index) || index < 0 || index > 20) throw new ApiError(400, "dealId and index must be whole numbers");
+      Object.assign(r, { kind: "move", dealId, action: String(input.action), index, reason: typeof input.reason === "string" ? input.reason.slice(0, 2000) : undefined });
+    } else if (kind === "confirm_draft") {
+      if (typeof input.draftId !== "string" || input.draftId.length > 40) throw new ApiError(400, "draftId is needed");
+      Object.assign(r, { kind: "confirm_draft", draftId: input.draftId });
+    } else if (kind === "payee") {
+      if (typeof input.friendshipId !== "string" || input.friendshipId.length > 40 || typeof input.allowed !== "boolean") throw new ApiError(400, "friendshipId and allowed are needed");
+      Object.assign(r, { kind: "payee", friendshipId: input.friendshipId, allowed: input.allowed });
+    } else throw new ApiError(400, "Unknown request kind");
+    const list = this.agentRequests();
+    if (list.filter((x) => x.status === "PENDING").length >= 20) throw new ApiError(429, "20 requests already wait for the user: ask them to answer those first");
+    list.push(r);
+    this.saveAgentRequests(list);
+    return r;
+  }
+
+  /** The user's answer to an agent's request: Sign runs it as a signed block, Reject drops it. */
+  async decideAgentRequest(id: string, sign: boolean) {
+    const list = this.agentRequests();
+    const r = list.find((x) => x.id === id && x.status === "PENDING");
+    if (!r) throw new ApiError(404, "That request is gone or already answered");
+    if (!sign) {
+      r.status = "REJECTED";
+    } else {
+      const out =
+        r.kind === "move"
+          ? await this.move({ dealId: r.dealId!, action: r.action as IntentBody["action"], index: r.index ?? 0, reason: r.reason })
+          : r.kind === "confirm_draft"
+            ? await this.confirmDraft(r.draftId!)
+            : await this.payee(r.friendshipId!, r.allowed!);
+      r.status = out.ok ? "SIGNED" : "FAILED";
+      r.error = out.ok ? undefined : out.error;
+      r.block = out.block;
+    }
+    r.answeredAt = Date.now();
+    this.saveAgentRequests(list);
+    return r;
+  }
+
+  /** An outside agent asks the wallet's own AI (its own history, kept apart from the user's chat). */
+  async agentAsk(client: string, message: string, lang: "en" | "th" = "en") {
+    const history: { role: "user" | "assistant"; text: string }[] = JSON.parse(store.getMeta("mcpChat") ?? "[]");
+    const text = `[Sent by ${client.slice(0, 60)}, an outside AI agent the user connected. Draft what it asks like any request of the user; it cannot confirm or sign.]\n${message.slice(0, 4000)}`;
+    const r = await this.call<{ reply: string; steps: unknown[] }>("POST", "/api/device/chat", {
+      history: history.slice(-30),
+      message: text,
+      lang,
+      byok: this.byok() ?? undefined,
+    });
+    store.setMeta("mcpChat", JSON.stringify([...history, { role: "user", text }, { role: "assistant", text: r.reply }].slice(-60)));
+    return { reply: r.reply, previews: "Previews it made wait in the app (list_drafts); the user confirms them." };
+  }
+
+  // ----------------------------------------------------------------------------------------
+  // AI settings: the user's own key (kept here, sealed) and instructions (kept on the server)
+  // ----------------------------------------------------------------------------------------
+
+  private byok(): { provider: "anthropic" | "openrouter"; apiKey: string; model: string } | null {
+    const sealed = store.getMeta("byok");
+    if (!sealed) return null;
+    try {
+      return JSON.parse(openLocal(this.need().key, sealed));
+    } catch {
+      return null;
+    }
+  }
+
+  aiSettings() {
+    const b = this.byok();
+    return { own: b ? { provider: b.provider, model: b.model, key: `${b.apiKey.slice(0, 6)}…${b.apiKey.slice(-4)}` } : null };
+  }
+
+  setByok(input: { provider?: string; apiKey?: string; model?: string } | null) {
+    const { key } = this.need();
+    if (!input) {
+      store.setMeta("byok", "");
+      return this.aiSettings();
+    }
+    const provider = input.provider === "anthropic" ? "anthropic" : input.provider === "openrouter" ? "openrouter" : null;
+    const apiKey = (input.apiKey ?? "").trim();
+    const model = (input.model ?? "").trim();
+    if (!provider) throw new ApiError(400, "Choose Anthropic or OpenRouter");
+    if (apiKey.length < 20) throw new ApiError(400, "Paste the whole API key");
+    if (!/^[\w.:/-]{2,120}$/.test(model)) throw new ApiError(400, "Enter a model name, e.g. claude-sonnet-5-5 or openai/gpt-5.5");
+    store.setMeta("byok", sealLocal(key, JSON.stringify({ provider, apiKey, model })));
+    return this.aiSettings();
+  }
+
+  instructions() {
+    return this.call<{ aiInstructions: string }>("GET", "/api/device/preferences");
+  }
+
+  setInstructions(text: string) {
+    return this.call<{ aiInstructions: string }>("POST", "/api/device/preferences", { aiInstructions: String(text ?? "").slice(0, 1000) });
   }
 
   async chat(input: { message: string; lang?: "en" | "th"; attachment?: unknown }) {
     const history = this.chatHistory();
     const asked = { role: "user" as const, text: input.message || "(document)", at: Date.now() };
-    const r = await this.call<{ reply: string; steps: unknown[]; flags: unknown[] }>("POST", "/api/device/chat", {
+    const r = await this.call<{ reply: string; steps: unknown[]; flags: unknown[]; model: string | null }>("POST", "/api/device/chat", {
       history: history.slice(-30).map(({ role, text }) => ({ role, text: text.slice(0, 8000) })),
       message: input.message,
       lang: input.lang ?? "en",
       attachment: input.attachment,
+      byok: this.byok() ?? undefined,
     });
-    const next = [...history, asked, { role: "assistant" as const, text: r.reply, at: Date.now(), steps: r.steps }].slice(-200);
+    const next = [...history, asked, { role: "assistant" as const, text: r.reply, at: Date.now(), steps: r.steps, model: r.model }].slice(-200);
     store.setMeta("chat", JSON.stringify(next));
     return { reply: r.reply, steps: r.steps, flags: r.flags };
   }
@@ -531,6 +669,7 @@ class Wallet {
       height: store.head()?.height ?? null,
       lastSync: this.lastSync,
       requests: this.requests,
+      agentRequests: this.vault && this.account ? this.agentRequests().filter((r) => r.status === "PENDING") : [],
       defaultServer: DEFAULT_SERVER,
       hostname: hostname(),
     };

@@ -3,8 +3,13 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
 import { ApiError } from "./api";
 import { wallet } from "./core";
+import { runMcp } from "./mcp";
 import { dataDir, sessionPath } from "./paths";
 import indexHtml from "./ui/index.html" with { type: "text" };
+import markdownJs from "./ui/markdown.js" with { type: "text" };
+
+/** The page with the markdown renderer inlined (one file, no extra request). */
+const PAGE = (indexHtml as unknown as string).replace("/*MARKDOWN*/", () => markdownJs as unknown as string);
 
 /**
  * Agentic Wallet desktop app. One file per OS (bun build --compile): it serves its screen on
@@ -89,6 +94,19 @@ async function route(req: Request, path: string, port: number): Promise<Response
     );
   }
   if (m === "POST" && path === "/app/confirm-draft") return json(await wallet.confirmDraft(String((await body<{ draftId: string }>(req)).draftId ?? "")));
+  if (m === "GET" && path === "/app/mcp") {
+    // How to start the MCP server: this executable with --mcp (from source: bun run main.ts --mcp).
+    const compiled = !/\bbun(\.exe)?$/i.test(process.execPath);
+    return json({ command: process.execPath, args: compiled ? ["--mcp"] : ["run", process.argv[1], "--mcp"], calls: agentCalls });
+  }
+  if (m === "POST" && path === "/app/agent-requests") {
+    const b = await body<{ id: string; sign: boolean }>(req);
+    return json(await wallet.decideAgentRequest(String(b.id ?? ""), b.sign === true));
+  }
+  if (m === "GET" && path === "/app/ai") return json({ ...wallet.aiSettings(), ...(await wallet.instructions()) });
+  if (m === "POST" && path === "/app/ai/key") return json(wallet.setByok(await body(req)));
+  if (m === "POST" && path === "/app/ai/key/remove") return json(wallet.setByok(null));
+  if (m === "POST" && path === "/app/ai/instructions") return json(await wallet.setInstructions((await body<{ text: string }>(req)).text));
   if (m === "GET" && path === "/app/onboarding") return json(await wallet.setupStatus());
   if (m === "POST" && path === "/app/kyc-start") {
     const r = await wallet.kycStart((await body<{ country?: string }>(req)).country === "CN" ? "CN" : "TH");
@@ -131,9 +149,49 @@ async function route(req: Request, path: string, port: number): Promise<Response
   return json({ error: "Not found" }, 404);
 }
 
+let agentCalls = 0;
+
+/**
+ * What outside AI agents (the MCP server, `--mcp`) may do, with the agent token: read, ask the
+ * wallet's AI, and queue requests. Nothing here signs or moves money: the user does that in the app.
+ */
+async function agentRoute(req: Request, path: string): Promise<Response> {
+  agentCalls++;
+  const client = (req.headers.get("x-agent-client") ?? "an AI agent").slice(0, 60);
+  const m = req.method;
+  if (wallet.stage() !== "ready") return json({ error: "The Agentic Wallet app is locked: ask the user to open and unlock it" }, 423);
+  if (m === "GET" && path === "/agent/status") {
+    const a = await wallet.account_();
+    const info = wallet.info();
+    return json({ name: a.name, balance: a.balance, currency: a.currency, chainHeight: info.height, waitingForSignature: (info.agentRequests ?? []).length + info.requests.length, mode: "test (Mock Bank money)" });
+  }
+  if (m === "GET" && path === "/agent/deals") return json(await wallet.deals());
+  if (m === "GET" && path === "/agent/activity") return json(await wallet.activity());
+  if (m === "GET" && path === "/agent/friends") return json(await wallet.friends());
+  if (m === "GET" && path === "/agent/drafts") return json(await wallet.drafts());
+  if (m === "POST" && path === "/agent/ask") {
+    const b = await body<{ message?: string; lang?: string }>(req);
+    if (!b.message?.trim()) return json({ error: "Send a message" }, 400);
+    return json(await wallet.agentAsk(client, b.message, b.lang === "th" ? "th" : "en"));
+  }
+  if (m === "POST" && path === "/agent/request") {
+    const r = wallet.addAgentRequest(client, await body(req));
+    return json({ requestId: r.id, status: r.status, note: "Waiting for the user to press Sign in the Agentic Wallet app. Check with request_status." });
+  }
+  if (m === "GET" && path.startsWith("/agent/request/")) {
+    const r = wallet.agentRequests().find((x) => x.id === decodeURIComponent(path.slice("/agent/request/".length)));
+    if (!r) return json({ error: "No such request" }, 404);
+    return json({ requestId: r.id, status: r.status, error: r.error, block: r.block });
+  }
+  return json({ error: "Not found" }, 404);
+}
+
 async function main() {
+  if (process.argv.includes("--mcp")) return runMcp();
   if (await alreadyRunning()) return;
   const token = randomBytes(24).toString("base64url");
+  // A second, weaker token for MCP agents (read and queue only), kept in the same private file.
+  const agentToken = randomBytes(24).toString("base64url");
   const handler = async (req: Request, port: number) => {
     const url = new URL(req.url);
     // DNS rebinding: only our own host name.
@@ -141,7 +199,7 @@ async function main() {
     if (host !== `127.0.0.1:${port}` && host !== `localhost:${port}`) return new Response("Forbidden", { status: 403 });
     if (url.pathname === "/ping") return json({ app: "agentic-wallet", version: VERSION });
     if (url.pathname === "/" && req.method === "GET")
-      return new Response(indexHtml as unknown as string, {
+      return new Response(PAGE, {
         headers: {
           "content-type": "text/html; charset=utf-8",
           "cache-control": "no-store",
@@ -167,6 +225,14 @@ async function main() {
         { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'" } },
       );
     }
+    if (url.pathname.startsWith("/agent/")) {
+      if (req.headers.get("x-agent-token") !== agentToken) return json({ error: "Agent token missing" }, 401);
+      try {
+        return await agentRoute(req, url.pathname);
+      } catch (e) {
+        return fail(e);
+      }
+    }
     if (url.pathname.startsWith("/app/")) {
       const given = req.headers.get("x-app-token") ?? url.searchParams.get("t");
       if (given !== token) return json({ error: "Open the app from the link it printed (the token is missing)" }, 401);
@@ -185,7 +251,7 @@ async function main() {
   } catch {
     server = serve(0);
   }
-  writeFileSync(sessionPath(), JSON.stringify({ port: server.port, token, pid: process.pid }), { mode: 0o600 });
+  writeFileSync(sessionPath(), JSON.stringify({ port: server.port, token, agentToken, pid: process.pid }), { mode: 0o600 });
   const url = `http://127.0.0.1:${server.port}/#t=${token}`;
   console.log(`Agentic Wallet desktop ${VERSION}`);
   console.log(`Data: ${dataDir()}`);

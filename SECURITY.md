@@ -108,6 +108,16 @@ What a user (or an attacker on their computer) can and cannot do with the chain 
 - Escrow money still moves only by FileEscrow's rules; the chain on the computer records and signs, it does not hold money. A move signed in the app runs through the same checks as the website (KYC limits, group votes, offer expiry, guarantors).
 - The app's local server is reachable only from 127.0.0.1 with the per-launch token, Host-checked, no CORS; other web pages cannot drive it. Its one page without the token, `/topup-done`, only confirms a Stripe session that belongs to the signed-in device's user (idempotent per session).
 - Sign-in from the app: the password is checked by Better Auth, the device must sign the email with its key, sign-in is rate-limited, and accounts with a second factor must link with a website code. Identity checks started in the app keep their OIDC state server-side (single use, 10 minutes).
+- AI boundaries in the app: custom instructions are fenced data after the rules; outside agents (MCP) hold a token that can read and queue only; a user's own AI key is sealed on their computer and used per request; the agent's tools only read or make previews, so neither a prompt nor an instruction can pay.
+
+**Tests** (re-run before each release):
+
+| Suite | Command | What it checks | Last result |
+|---|---|---|---|
+| Chain format, sanitizer, vault (unit) | `cd desktop && bun test` | edited / re-hashed / foreign-key / gap / fork blocks, forged or altered deal events, genesis rules, canonical hashing, request signatures over method+path+time+body, Merkle proofs and swapped heads; 12 XSS payloads against the Markdown renderer (only allowlisted tags, `<a>` with http(s) href only); passphrase, tamper and per-purpose keys of the vault | 32/32 pass (2026-10-18) |
+| Live app + server | `AGENTIC_WALLET_DATA=… AW_PASS=… bun run security` | local server: token, Host (DNS rebinding), no CORS, agent token cannot sign, CSP; MCP: tools read, a move stays PENDING and the balance does not change; server: unsigned, foreign-signed, replayed and stale requests, forged events, history rewrite, foreign-key and edited blocks, a swapped delivery file, a refused BYOK key not echoed, a prompt-injection custom instruction that tries to make the AI pay | 17/17 pass (2026-10-18) |
+| Contracts | `cd contracts && npx hardhat test nodejs` | includes `ChainAnchor` (anchorer only, no empty root) | pass |
+
 - Known limits: the executables are not code-signed (Windows SmartScreen and macOS Gatekeeper warn once); a forgotten passphrase cannot be reset (link the computer again; deal history stays on the server and in the escrow); the anchor proves the head existed, not who was right in a deal.
 
 ## 5. Application security

@@ -1199,6 +1199,8 @@ model UserPreference {
   emailNotify  Boolean  @default(false)
   /// A linked card covers a short balance when a deal is approved.
   cardCover    Boolean  @default(true)
+  /// The user's own instructions for the AI (tone, language, defaults); appended after the rules, never above them.
+  aiInstructions String?
   /// On: deal moves started on the website wait for the desktop app to sign them (DeviceRequest).
   deviceSigns  Boolean  @default(false)
   updatedAt    DateTime @updatedAt

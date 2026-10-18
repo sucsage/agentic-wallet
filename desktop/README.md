@@ -27,6 +27,27 @@ server: `web/src/lib/device-chain/format.ts`.
    factor use **Link with code** (website: Profile → Desktop app → Make a link code).
 3. Settings → **Save key backup** and keep the file. A new computer: **Restore from backup**.
 
+## AI
+
+- Replies in the AI chat render as Markdown (sanitized).
+- Settings → AI: your own instructions (tone, language, defaults; never above the rules) and,
+  optionally, your own Anthropic or OpenRouter key and model (sealed on this computer, sent only
+  with your chat messages, never stored by the server).
+- Settings → Connect other AI agents: an MCP server for Claude Desktop, Cursor and others. Add to
+  the client's config (the app shows the exact path):
+
+  ```json
+  { "mcpServers": { "agentic-wallet": { "command": "/path/to/AgenticWallet", "args": ["--mcp"] } } }
+  ```
+
+  Agents can read your wallet, deals and money, ask the wallet's AI to draft, and ask you to sign.
+  Every move waits under "Requests from AI agents" until you press Sign.
+
+## Tests
+
+`bun test` (unit) and `AGENTIC_WALLET_DATA=<dir> AW_PASS=<passphrase> bun run security` (live,
+against a running app and server). Results: `SECURITY.md` §4c.
+
 Options: `--no-open` (print the URL instead of opening the browser). `AGENTIC_WALLET_DATA=<dir>`
 moves the data folder (default: `~/Library/Application Support/AgenticWallet`,
 `%APPDATA%\AgenticWallet`, `~/.local/share/agentic-wallet`).

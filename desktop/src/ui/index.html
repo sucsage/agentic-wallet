@@ -64,6 +64,15 @@ dialog::backdrop { background: rgba(0,0,0,.35); }
 .msg.user { align-self: flex-end; background: var(--accent); color: var(--accent-ink); }
 .msg.assistant { align-self: flex-start; background: var(--panel); border: 1px solid var(--line); }
 .msg .tools { margin-top: 6px; display: flex; gap: 4px; flex-wrap: wrap; }
+.msg.assistant { white-space: normal; }
+.md > :first-child { margin-top: 0; } .md > :last-child { margin-bottom: 0; }
+.md p, .md ul, .md ol, .md pre, .md blockquote, .md table { margin: 6px 0; }
+.md ul, .md ol { padding-left: 20px; } .md h3, .md h4, .md h5, .md h6 { margin: 10px 0 4px; font-size: 14.5px; }
+.md code { font-family: var(--mono); font-size: 12.5px; background: var(--chip); padding: 1px 5px; border-radius: 5px; }
+.md pre { background: var(--chip); padding: 10px; border-radius: 8px; overflow-x: auto; } .md pre code { background: none; padding: 0; }
+.md blockquote { border-left: 3px solid var(--line); padding-left: 10px; color: var(--muted); }
+.md table { border-collapse: collapse; font-size: 13px; display: block; overflow-x: auto; } .md th, .md td { border: 1px solid var(--line); padding: 4px 8px; }
+.md a { color: var(--accent); } .md hr { border: 0; border-top: 1px solid var(--line); }
 .composer { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: end; position: sticky; bottom: 0; background: var(--bg); padding: 10px 0; }
 .composer textarea { resize: vertical; min-height: 44px; max-height: 200px; }
 .issue { font-size: 12.5px; padding: 4px 8px; border-radius: 8px; margin-top: 4px; }
@@ -82,6 +91,7 @@ dialog::backdrop { background: rgba(0,0,0,.35); }
 <body>
 <div id="root"></div>
 <dialog id="dlg"><form method="dialog" id="dlg-form"></form></dialog>
+<script>/*MARKDOWN*/</script>
 <script>
 "use strict";
 // The token from the URL the app opened (#t=...): every call to the local app carries it.
@@ -216,10 +226,19 @@ function renderApp() {
   renderView();
 }
 
+function agentBanner() {
+  const ar = S.info.agentRequests || [];
+  if (!ar.length) return "";
+  const what = (r) => r.kind === "move" ? `${esc(r.action)} · deal D-${esc(r.dealId)}${["accept", "cancel"].includes(r.action) ? "" : ` milestone ${Number(r.index) + 1}`}` : r.kind === "confirm_draft" ? `confirm preview ${esc(r.draftId)}` : `${r.allowed ? "make payee" : "stop paying"} (contact ${esc(r.friendshipId)})`;
+  return `<div class="banner"><b>Requests from AI agents</b> · they cannot sign; you decide
+    ${ar.map((r) => `<div class="req row space"><div><b>${what(r)}</b><div class="hint">from ${esc(r.client)} · ${when(r.createdAt)}</div>${r.why ? `<div class="hint">“${esc(r.why)}”</div>` : ""}${r.reason ? `<div class="hint">reason: ${esc(r.reason)}</div>` : ""}</div>
+      <div class="row"><button class="primary" data-asign="${esc(r.id)}">Sign</button><button data-areject="${esc(r.id)}">Reject</button></div></div>`).join("")}</div>`;
+}
+
 function requestsBanner() {
   const reqs = S.info.requests || [];
-  if (!reqs.length) return "";
-  return `<div class="banner"><b>Waiting for your signature</b> · moves started on the website
+  if (!reqs.length) return agentBanner();
+  return agentBanner() + `<div class="banner"><b>Waiting for your signature</b> · moves started on the website
     ${reqs.map((r) => `<div class="req row space"><div><b>${esc(r.action)}</b> · deal D-${esc(r.dealId)} · milestone ${Number(r.index) + 1}${r.reason ? `<div class="hint">${esc(r.reason)}</div>` : ""}<div class="hint">${when(r.createdAt)}</div></div>
       <div class="row"><button class="primary" data-sign="${esc(r.id)}">Sign</button><button data-reject="${esc(r.id)}">Reject</button></div></div>`).join("")}</div>`;
 }
@@ -378,6 +397,8 @@ function renderView() {
         <table><tr><th>Account</th><td>${esc(d.user)}</td></tr><tr><th>Computer</th><td>${esc(d.name)}</td></tr>
         <tr><th>Device key</th><td class="mono">${esc(d.address)}</td></tr><tr><th>Wallet</th><td class="mono">${esc(d.wallet)}</td></tr>
         <tr><th>Server</th><td>${esc(d.server)}</td></tr><tr><th>Linked</th><td>${when(d.linkedAt)}</td></tr></table></div>
+      <div class="card" style="margin-top:12px"><h2>AI</h2>${aiHtml()}</div>
+      <div class="card" style="margin-top:12px"><h2>Connect other AI agents (MCP)</h2>${mcpHtml()}</div>
       <div class="card" style="margin-top:12px"><h2>Backups</h2>
         <p class="hint">Your chain is backed up to the server after every sync, encrypted with a key only your device key can make: the server cannot read it. To move to a new computer you need the <b>key backup file</b> and your passphrase.</p>
         <a href="/app/key-backup?t=${encodeURIComponent(TOKEN)}" download><button class="primary">Save key backup</button></a>
@@ -385,6 +406,38 @@ function renderView() {
   }
   wireDealButtons();
   wireRequestButtons();
+  if (S.view === "settings") wireSettings();
+}
+
+function aiHtml() {
+  const a = S.ai;
+  if (!a) return `<p class="hint">Loading…</p>`;
+  return `<label>Your instructions for the AI</label><textarea id="ins" rows="3" maxlength="1000" placeholder="e.g. Always answer in Thai. Suggest 2 milestones by default.">${esc(a.aiInstructions || "")}</textarea>
+    <div class="hint">Shapes tone, language and defaults, here and on the website. They never override the rules: payees, limits, terms review and your signature always apply.</div>
+    <div class="row" style="margin-top:6px"><button id="ins-save">Save instructions</button></div>
+    <label style="margin-top:16px">Model</label>
+    ${a.own ? `<div class="row space"><div>Your own key · <b>${esc(a.own.provider)}</b> · ${esc(a.own.model)} <span class="mono hint">${esc(a.own.key)}</span></div><button id="key-rm" class="danger">Use Agentic Wallet's AI</button></div>`
+      : `<p class="hint" style="margin:0 0 6px">Now: Agentic Wallet's AI. Or bring your own key: it is sealed on this computer with your device key and sent only with your chat messages, for that request (never stored by the server).</p>
+      <form id="kf"><div class="row"><select name="provider" style="width:auto"><option value="openrouter">OpenRouter (OpenAI, Google, Anthropic…)</option><option value="anthropic">Anthropic</option></select>
+      <input name="model" placeholder="model, e.g. openai/gpt-5.5 or claude-sonnet-5-5" required style="flex:1;min-width:200px"></div>
+      <input name="apiKey" type="password" placeholder="API key" autocomplete="off" required style="margin-top:6px">
+      <div class="row" style="margin-top:6px"><button class="primary">Use my key</button></div></form>`}`;
+}
+
+function mcpHtml() {
+  const m = S.mcp;
+  if (!m) return `<p class="hint">Loading…</p>`;
+  const cfg = JSON.stringify({ mcpServers: { "agentic-wallet": { command: m.command, args: m.args } } }, null, 2);
+  return `<p class="hint" style="margin-top:0">Let Claude Desktop, Cursor or another MCP client read your wallet and ask for moves. They can look (balance, deals, money, friends) and draft; anything that moves money or signs waits here for you to <b>Sign</b> with your device key. Keep this app open and unlocked while they use it.</p>
+    <label>Add to the client's MCP config</label><pre class="mono" style="white-space:pre-wrap;background:var(--chip);padding:10px;border-radius:8px">${esc(cfg)}</pre>
+    <div class="row"><button id="mcp-copy">Copy config</button><span class="hint">${m.calls ? `${m.calls} tool call(s) this session` : "No agent connected yet"}</span></div>`;
+}
+
+function wireSettings() {
+  const save = $("#ins-save"); if (save) save.onclick = async () => { try { S.ai = { ...S.ai, ...(await api("/app/ai/instructions", "POST", { text: $("#ins").value })) }; toast("Saved"); } catch (e) { toast(e.message); } };
+  const kf = $("#kf"); if (kf) kf.onsubmit = async (ev) => { ev.preventDefault(); const f = new FormData(kf); try { S.ai = { ...S.ai, ...(await api("/app/ai/key", "POST", { provider: f.get("provider"), model: f.get("model"), apiKey: f.get("apiKey") })) }; toast("Your key is set (sealed on this computer)"); renderView(); } catch (e) { toast(e.message); } };
+  const rm = $("#key-rm"); if (rm) rm.onclick = async () => { S.ai = { ...S.ai, ...(await api("/app/ai/key/remove", "POST")) }; toast("Your key is removed"); renderView(); };
+  const cp = $("#mcp-copy"); if (cp) cp.onclick = () => navigator.clipboard.writeText(JSON.stringify({ mcpServers: { "agentic-wallet": { command: S.mcp.command, args: S.mcp.args } } }, null, 2)).then(() => toast("Copied"), () => toast("Copy failed"));
 }
 
 function verifyHtml() {
@@ -409,7 +462,8 @@ function blockText(b) {
 
 function msgHtml(x) {
   const tools = (x.steps || []).map((st) => st && (st.tool || st.name)).filter(Boolean);
-  return `<div class="msg ${x.role}">${esc(x.text)}${tools.length ? `<div class="tools">${tools.map((t) => `<span class="chip">${esc(t)}</span>`).join("")}</div>` : ""}</div>`;
+  const body = x.role === "assistant" ? `<div class="md">${window.renderMarkdown(x.text)}</div>${x.model ? `<div class="hint" style="margin-top:4px">your key · ${esc(x.model)}</div>` : ""}` : esc(x.text);
+  return `<div class="msg ${x.role}">${body}${tools.length ? `<div class="tools">${tools.map((t) => `<span class="chip">${esc(t)}</span>`).join("")}</div>` : ""}</div>`;
 }
 
 function draftsHtml() {
@@ -558,7 +612,19 @@ function wireDealButtons() {
   document.querySelectorAll("[data-act]").forEach((b) => (b.onclick = () => confirmMove(b.dataset.act, b.dataset.deal, b.dataset.i)));
   document.querySelectorAll("[data-deliver]").forEach((b) => (b.onclick = () => deliverDialog(b.dataset.deliver, b.dataset.i)));
 }
+function wireAgentButtons() {
+  document.querySelectorAll("[data-asign]").forEach((b) => (b.onclick = async () => {
+    const r = (S.info.agentRequests || []).find((x) => x.id === b.dataset.asign);
+    if (!confirm(`Sign this request from ${r.client}? It adds a block signed by your device key and the server carries it out.`)) return;
+    b.disabled = true; b.textContent = "Signing…";
+    try { const out = await api("/app/agent-requests", "POST", { id: r.id, sign: true }); toast(out.status === "SIGNED" ? "Signed and done" : `Not done: ${out.error || out.status}`); } catch (e) { toast(e.message); }
+    await load();
+  }));
+  document.querySelectorAll("[data-areject]").forEach((b) => (b.onclick = async () => { try { await api("/app/agent-requests", "POST", { id: b.dataset.areject, sign: false }); toast("Rejected"); } catch (e) { toast(e.message); } await load(); }));
+}
+
 function wireRequestButtons() {
+  wireAgentButtons();
   const reqs = S.info.requests || [];
   document.querySelectorAll("[data-sign]").forEach((b) => (b.onclick = () => { const r = reqs.find((x) => x.id === b.dataset.sign); confirmMove(r.action, r.dealId, r.index, r.id); }));
   document.querySelectorAll("[data-reject]").forEach((b) => (b.onclick = async () => {
@@ -601,6 +667,7 @@ async function load() {
     if (S.view === "activity") { const [a, t] = await Promise.all([api("/app/activity"), api("/app/topup").catch(() => null)]); S.activity = a; S.topup = t; }
     if (S.view === "contacts" || S.view === "groups") S.friends = (await api("/app/friends")).friends;
     if (S.view === "links") S.links = (await api("/app/invite-links")).links;
+    if (S.view === "settings") { const [ai, mcp] = await Promise.all([api("/app/ai").catch(() => null), api("/app/mcp").catch(() => null)]); S.ai = ai; S.mcp = mcp; }
     if (S.view === "groups") S.groups = await api("/app/groups");
   } catch (e) { toast(e.message); }
   if (S.info.stage === "ready") renderApp(); else render();
@@ -610,9 +677,9 @@ window.addEventListener("focus", () => { if (S.info && S.info.stage === "ready" 
 
 setInterval(async () => {
   if (!S.info || S.info.stage !== "ready" || S.chatBusy || document.querySelector("dialog[open]") || document.querySelector("#cf textarea")?.value) return;
-  const before = JSON.stringify([S.info.height, (S.info.requests || []).length]);
+  const before = JSON.stringify([S.info.height, (S.info.requests || []).length, (S.info.agentRequests || []).length]);
   try { S.info = await api("/app/state"); } catch { return; }
-  if (JSON.stringify([S.info.height, (S.info.requests || []).length]) !== before) load();
+  if (JSON.stringify([S.info.height, (S.info.requests || []).length, (S.info.agentRequests || []).length]) !== before) load();
 }, 10_000);
 
 boot().then(load).catch((e) => { $("#root").innerHTML = `<div class="center"><div class="card narrow err" style="display:block">${esc(e.message)}</div></div>`; });
