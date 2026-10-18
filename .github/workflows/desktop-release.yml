@@ -23,6 +23,8 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with: { bun-version: "1.4.3" }
       - run: bun install --frozen-lockfile
+      # The block format is shared with the website (web/src/lib/device-chain/format.ts): give it viem.
+      - run: mkdir -p ../web/node_modules && cp -R node_modules/. ../web/node_modules/
       - run: bun test
       - run: bun run build mac-arm64 mac-x64
       - name: Apps and disk images
@@ -40,6 +42,8 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with: { bun-version: "1.4.3" }
       - run: bun install --frozen-lockfile
+      # The block format is shared with the website (web/src/lib/device-chain/format.ts): give it viem.
+      - run: mkdir -p ../web/node_modules && cp -R node_modules/. ../web/node_modules/
       - run: bun run build windows-x64
       - name: Installer (Inno Setup)
         run: |
@@ -57,6 +61,8 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with: { bun-version: "1.4.3" }
       - run: bun install --frozen-lockfile
+      # The block format is shared with the website (web/src/lib/device-chain/format.ts): give it viem.
+      - run: mkdir -p ../web/node_modules && cp -R node_modules/. ../web/node_modules/
       - run: bun test
       - run: bun run build linux-x64 linux-arm64
       - name: Debian packages
