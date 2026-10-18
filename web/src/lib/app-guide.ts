@@ -64,7 +64,7 @@ You can attach files for the buyer (a spec, a catalogue, a sample, a quotation) 
 2. Press "Confirm": a private link AND a 6-digit one-time code (OTP) are made, shown in the chat and on the deal's page ("🔐 Access code"). Send the link and, separately (another chat or a call), the code.
 3. The first time, they open the link, enter the code and set their own password; after that the link asks only for their password. A forwarded link alone opens nothing.
 4. If they lose the password: on the link they press "Forgot password?" and get a reset code; they send it to you; you enter it on the deal's page ("Reset their access") and get a new one-time code to send them.
-5. On the link they can: accept the offer (a seller), or pay by card (a buyer), deliver, approve, dispute, set their own name, and choose where their money goes. No account needed.
+5. On the link they can: accept the offer (a seller), or pay by card (a buyer), deliver, approve, ask for changes, set their own name, and choose where their money goes. No account needed.
 6. If they already have an account and open the link while signed in, the deal links to their account: they accept the offer on the link first, then the app opens with the deal in their Deals list.`,
   deposit: `Deposits (มัดจำ) paid on signing:
 1. Say it in AI Chat, e.g. "30% deposit on signing, the rest in 2 installments". The deposit is always the first milestone.
@@ -81,12 +81,12 @@ You can attach files for the buyer (a spec, a catalogue, a sample, a quotation) 
 5. A website: deliver one .html file; the buyer tries it in a live desktop / tablet / phone mockup before approving.`,
   review: `Reviewing a delivery (buyer):
 1. Deals → the deal: the delivered milestone shows the evidence, a preview of the file (or the parcel tracking, or the website mockup).
-2. "Approve" pays the seller from escrow and unlocks the file. "Request changes" asks the seller to deliver again. "Dispute" (or "Report a problem" for a parcel) sends it to the neutral arbiter.
+2. "Approve" pays the seller from escrow and unlocks the file. "Request changes" asks the seller to deliver again, within the rounds agreed for the milestone. There are no disputes: if the work still does not fit, do not approve, and ask the seller to refund (only the seller can).
 3. You have the review window agreed in the deal (usually 72 hours). If you do nothing, the seller can claim the milestone after it ends.`,
-  dispute: `Disputes:
-1. On the deal's page press "Dispute" on the delivered milestone and say what is wrong against the acceptance criteria.
-2. Mediation: an AI mediator proposes a split; both sides accept or reject.
-3. If rejected or silent: a panel of 3 AI models decides; either side may appeal once to 5 models. Every ruling is signed and executed by the escrow contract (refund, pay out or split).
+  dispute: `Disputes are turned off (since 19 Oct 2026): nobody can open a new dispute.
+1. A buyer reviews each delivery: "Approve" pays the seller; "Request changes" asks for a fix, within the rounds agreed for the milestone.
+2. If the work does not fit, do not approve, and ask the seller to refund the milestone (only the seller can refund). Mind the review window: when it ends, the seller can claim the payment.
+3. A dispute opened before this change still runs to its ruling on the deal's page (mediation, then a panel of AI models, one appeal), executed by the escrow contract.
 4. For a scam or a serious problem, export the "Complaint" document (Export documents → ⚖ Complaint): a draft complaint with the timeline and on-chain evidence, for a lawyer, the police (online fraud: 1441, thaipoliceonline.go.th) or the district court. You can also Report or Block the person in Contacts.`,
   documents: `Documents (Deals → the deal → Export documents; each opens a printable page: Print → Save as PDF):
 - Contract (สัญญา): the terms both sides signed, milestones, deposit, witnesses, terms fingerprint.
@@ -146,7 +146,7 @@ Witnesses (optional): each side can add one under "Witnesses"; they appear on th
 4. Guarantors are printed on the contract with a guarantee clause and signature lines, and listed on a complaint.`,
   revisions: `Rounds of changes:
 - Each milestone has an agreed number of rounds of changes (0 to 10, the most the app allows). Tell the AI when drafting; the preview shows "↻ N rounds of changes".
-- The buyer presses "Request changes (used/allowed)" on a delivered milestone. When all rounds are used, the button stops: approve the delivery, or dispute it if it fails the criteria.`,
+- The buyer presses "Request changes (used/allowed)" on a delivered milestone. When all rounds are used, the button stops: approve the delivery, or ask the seller to refund it.`,
   expiry: `Offers expire:
 - An offer must be signed (accepted) within 14 days. The deal's page and the other side's link show the last day.
 - After that it is withdrawn automatically; a buyer's locked money comes back to their balance. Make a new offer if you still want the deal.`,
@@ -177,7 +177,7 @@ Witnesses (optional): each side can add one under "Witnesses"; they appear on th
 1. Get the app for your computer from the team (one file; the first time, Windows asks "More info → Run anyway", macOS: right-click → Open). It opens in your browser.
 2. In the app: "Sign in" with your email and password, or "Create account" (then "Verify in my browser" with the demo digital ID, then "Create my wallet"). Name the computer and choose an app passphrase (it encrypts the computer's key; nobody can reset it). Accounts with a second factor: "Link with code" (website Profile → Desktop app → "Make a link code").
 3. Money: top up (PromptPay QR or card through Stripe test mode in your browser, your linked card, or a demo counter slip). Friends: search by name, username or email, choose your own username, accept requests, Make payee. Private links: copy, new one-time code, reset a lost password, new link. Groups: create, join, vote on group payments (each vote is a signed block).
-4. Use the app for everyday work, each move a block you sign: AI chat (draft deals, then "Confirm and sign" under the chat), Deals (Deliver with a file, note or parcel; Approve, Dispute, Accept, Refund), Contacts (Make payee / Stop paying), Activity (money in and out). The website is still where people without an account open their private links.
+4. Use the app for everyday work, each move a block you sign: AI chat (draft deals, then "Confirm and sign" under the chat), Deals (Deliver with a file, note or parcel; Approve, Ask for changes, Preview, Accept, Refund), Contacts (Make payee / Stop paying), Activity (money in and out). The website is still where people without an account open their private links.
 5. Profile → "My desktop app signs deal moves": moves pressed on the website then wait for your signature in the app ("Sign" or "Reject").
 6. Settings → "Save key backup" and keep the file: on a new computer, "Restore from backup" with that file and your passphrase brings the chain back (the chain itself is backed up to the server encrypted; the server cannot read it). Lost computer: Profile → Desktop app → Remove.
 - AI allowance: the AI has a token budget per day and per week for each person (Profile → Preferences and the app's Settings → AI show how much is left and when it resets). A person's own AI key in the desktop app is not limited.

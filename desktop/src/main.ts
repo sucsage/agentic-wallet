@@ -158,6 +158,7 @@ async function route(req: Request, path: string, port: number): Promise<Response
   }
   if (m === "GET" && path === "/app/drafts") return json(await wallet.drafts());
   if (m === "GET" && path === "/app/activity") return json(await wallet.activity());
+  if (m === "POST" && path === "/app/changes") return json(await wallet.askChanges(await body(req)));
   if (m === "GET" && path === "/app/preview") {
     const q = new URL(req.url).searchParams;
     const { jpeg, pages } = await wallet.preview(Number(q.get("deal")), Number(q.get("index")), Number(q.get("page") ?? 1));

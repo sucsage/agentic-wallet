@@ -22,8 +22,8 @@ function moves(role: "buyer" | "seller", dealStatus: string, status: string, dea
   if (dealStatus !== "Active") return [];
   const open = Date.now() / 1000 <= deadline;
   if (role === "buyer") {
-    if (status === "Delivered") return open ? ["approve", "dispute"] : ["approve"];
-    if (status === "KeyReleased") return open ? ["dispute"] : [];
+    if (status === "Delivered") return open && config.disputesOpen ? ["approve", "dispute"] : ["approve"];
+    if (status === "KeyReleased") return open && config.disputesOpen ? ["dispute"] : [];
     if (status === "Approved") return open ? [] : ["reclaim"];
     return [];
   }

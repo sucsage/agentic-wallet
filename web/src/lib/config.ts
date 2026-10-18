@@ -36,6 +36,11 @@ const besu = defineChain({
 const chains: Record<string, Chain> = { baseSepolia, hardhat, besu };
 
 export const config = {
+  /**
+   * Disputes are turned off (2026-10-19): the buyer approves or asks for changes; nobody can open a
+   * new dispute. Disputes already open still run to their ruling. DISPUTES=on turns them back on.
+   */
+  disputesOpen: process.env.DISPUTES === "on",
   get chain(): Chain {
     const c = chains[process.env.CHAIN ?? "hardhat"];
     if (!c) throw new Error(`Unsupported CHAIN ${process.env.CHAIN}`);

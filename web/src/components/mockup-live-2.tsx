@@ -2188,7 +2188,7 @@ function ParcelPanel({ p, shipTo, role, reviewing, onArrive }: { p: Parcel; ship
         </ol>
       )}
       {p.delivered === true && (
-        <p className="aw-parcel-ok">{role === "buyer" && reviewing ? "✓ Delivered. Check the item, then approve to pay the seller (or dispute)." : "✓ Delivered."}</p>
+        <p className="aw-parcel-ok">{role === "buyer" && reviewing ? "✓ Delivered. Check the item, then approve to pay the seller (or ask for changes)." : "✓ Delivered."}</p>
       )}
       {p.delivered === false && role === "buyer" && reviewing && <p>Not delivered yet. Approve only once you have the item.</p>}
       {p.tracked && !p.delivered && onArrive && (
@@ -2272,7 +2272,7 @@ function NoteForm({ dealId, kind, index, deadline, onDone, onCancel }: { dealId:
         <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} maxLength={1000} placeholder={kind === "CHANGES" ? "e.g. Add the top-risks section and export as PDF" : "e.g. Split it into 2 milestones, ฿2,500 each"} />
       </label>
       {kind === "CHANGES" && deadline ? (
-        <small>Your review window still ends {when(deadline)}: if the fix does not arrive by then, dispute before it ends.</small>
+        <small>Your review window still ends {when(deadline)}: when it ends the seller can claim the payment, so approve only when the fix is right, or ask the seller to refund.</small>
       ) : null}
       {kind === "REVISION" && <small>The seller sees your note, withdraws this offer and sends a new one. Nothing is paid until you accept.</small>}
       <div className="aw-actions">
@@ -2770,7 +2770,7 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
                     <Button
                       variant="outline"
                       disabled={!!busy || (m.revisionsUsed ?? 0) >= (m.revisions ?? 10)}
-                      title={(m.revisionsUsed ?? 0) >= (m.revisions ?? 10) ? "All agreed rounds of changes are used: approve or dispute" : undefined}
+                      title={(m.revisionsUsed ?? 0) >= (m.revisions ?? 10) ? "All agreed rounds of changes are used: approve, or ask the seller to refund" : undefined}
                       onClick={() => setAsking(m.index)}
                     >
                       Request changes ({m.revisionsUsed ?? 0}/{m.revisions ?? 10})

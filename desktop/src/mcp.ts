@@ -83,14 +83,13 @@ const TOOLS: Tool[] = [
   {
     name: "request_deal_move",
     description:
-      "Ask the user to sign a move on a deal: approve (pay a delivered milestone), dispute (with a reason), accept (an offer), cancel, claim, refund, reclaim. It does NOT happen now: it waits in the Agentic Wallet app until the user presses Sign. Check it with request_status.",
+      "Ask the user to sign a move on a deal: approve (pay a delivered milestone), accept (an offer), cancel, claim, refund, reclaim. There are no disputes. It does NOT happen now: it waits in the Agentic Wallet app until the user presses Sign. Check it with request_status.",
     inputSchema: {
       type: "object",
       properties: {
         dealId: int("The deal number (D-<n>)"),
-        action: { type: "string", enum: ["approve", "dispute", "accept", "cancel", "claim", "refund", "reclaim"] },
+        action: { type: "string", enum: ["approve", "accept", "cancel", "claim", "refund", "reclaim"] },
         index: int("Milestone index, 0 for the first (0 for accept/cancel)"),
-        reason: str("For a dispute: what is wrong (at least 10 characters)"),
         why: str("One sentence for the user: why you ask"),
       },
       required: ["dealId", "action"],

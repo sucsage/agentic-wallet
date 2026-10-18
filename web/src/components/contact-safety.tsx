@@ -110,7 +110,7 @@ export function ReportDialog({ person, onClose, onDone }: { person: { userId: st
             ×
           </button>
         </header>
-        <p>What happened? Reports go to the app&apos;s reviewers. If money is involved in a running deal, open a dispute on the deal&apos;s page as well: that is what can hold or return the money.</p>
+        <p>What happened? Reports go to the app&apos;s reviewers. If money is involved in a running deal, do not approve the delivery, and ask the seller to refund it (only the seller can refund).</p>
         <fieldset className="aw-report-reasons">
           <legend>Reason</legend>
           {REASONS.map(([k, label]) => (

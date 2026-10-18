@@ -1,5 +1,7 @@
 import "server-only";
 
+import { config } from "./config";
+
 /**
  * Printable documents for a deal: the contract, a receipt, a payment request (ใบเบิกเงิน), a
  * tax invoice and, when something went wrong, a draft complaint with its evidence (เอกสารฟ้องร้อง). Each is one self-contained HTML page (print it, or "Save as PDF" in the browser's
@@ -184,7 +186,7 @@ export function renderDealDocument(type: DocType, d: DocInput): string {
     ${d.shipTo ? `<p><b>ที่อยู่จัดส่ง · Ship to:</b> ${esc(d.shipTo)}</p>` : ""}
     <ol class="terms">
       <li>The total is held in an escrow smart contract (deal D-${d.dealId}${d.escrow ? `, ${esc(d.escrow)}` : ""}) and paid to the ${hire ? "contractor" : "seller"} milestone by milestone, after the ${hire ? "client" : "buyer"} approves each delivery.</li>
-      <li>The ${hire ? "client" : "buyer"} has ${d.reviewHours} hours to review each delivery: approve it, or open a dispute that a neutral arbiter decides. Silence after that window lets the ${hire ? "contractor" : "seller"} claim the milestone.</li>
+      <li>The ${hire ? "client" : "buyer"} has ${d.reviewHours} hours to review each delivery: approve it${config.disputesOpen ? ", or open a dispute that a neutral arbiter decides" : ", or ask for changes within the rounds agreed for it"}. Silence after that window lets the ${hire ? "contractor" : "seller"} claim the milestone.</li>
       ${d.milestones[0]?.deposit ? `<li>Milestone 1 is a deposit, paid as soon as this contract is signed (the offer accepted on-chain).</li>` : ""}
       <li>Signing: acceptance of the offer on-chain is the signature of both parties. Terms fingerprint: sha256 <code>${esc(d.termsHash ?? "—")}</code>.</li>
     </ol>

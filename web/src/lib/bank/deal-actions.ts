@@ -7,6 +7,7 @@ import { companyOfWallet } from "../company";
 import { HttpError } from "../guard";
 import { KycRequired, requireKycFor } from "../kyc";
 import { SocialError, proposeDealAction } from "../social";
+import { config } from "../config";
 import { openDispute } from "./arbiter";
 import { DealError, acceptAndPay, buyerAction, dealForWallet, sellerAction, syncDeal } from "./deals";
 
@@ -49,6 +50,7 @@ export async function runDealMove(
       return { groupVote: vote };
     }
   }
+  if (action === "dispute" && !config.disputesOpen) throw new HttpError(400, "Disputes are turned off: approve the delivery or ask the seller for changes");
   if (action === "dispute" && deal.role === "buyer") {
     if (!reason || reason.trim().length < 10) throw new HttpError(400, "Say what is wrong (at least 10 characters): the arbiter decides on it");
     // Recorded before the transaction, so the arbiter has the reason as soon as the chain says Disputed.

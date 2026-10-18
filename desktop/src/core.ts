@@ -561,7 +561,8 @@ class Wallet {
   addAgentRequest(client: string, input: Record<string, unknown>): AgentRequest {
     this.need();
     const kind = input.kind;
-    const MOVES = ["approve", "dispute", "accept", "cancel", "claim", "refund", "reclaim"];
+    // No "dispute": disputes are turned off (the buyer approves or asks for changes).
+    const MOVES = ["approve", "accept", "cancel", "claim", "refund", "reclaim"];
     const r: AgentRequest = { id: crypto.randomUUID(), client: client.slice(0, 60) || "an AI agent", kind: "move", status: "PENDING", createdAt: Date.now(), why: typeof input.why === "string" ? input.why.slice(0, 300) : undefined };
     if (kind === "move") {
       if (!MOVES.includes(String(input.action))) throw new ApiError(400, `action must be one of ${MOVES.join(", ")}`);
@@ -731,6 +732,11 @@ class Wallet {
 
   deals() {
     return this.call<{ deals: unknown[] }>("GET", "/api/device/deals");
+  }
+
+  /** The buyer asks the seller to fix a delivery under review. */
+  askChanges(input: { dealId: number; index: number; text: string }) {
+    return this.call<{ id: string }>("POST", "/api/device/notes", { dealId: Number(input.dealId), index: Number(input.index), text: String(input.text ?? "") });
   }
 
   /** A watermarked preview of a delivered image or PDF page (the website's rules: either party). */

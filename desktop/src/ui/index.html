@@ -509,7 +509,7 @@ function renderView() {
     };
   } else if (S.view === "deals") {
     m.innerHTML = `${requestsBanner()}<div class="row space"><h1>Deals</h1><button id="sync">Refresh</button></div>
-      <p class="hint">Every move here (deliver, approve, dispute, accept, refund) is a block signed by your device key. New deals: AI chat.</p>
+      <p class="hint">Every move here (deliver, approve, ask for changes, accept, refund) is a block signed by your device key. New deals: AI chat.</p>
       ${S.deals && S.deals.length ? `<div class="row" style="margin-bottom:12px"><input id="dq" placeholder="Search deals" value="${esc(S.dealQ || "")}" style="flex:1;min-width:160px">
         <select id="dfile" style="width:auto">${[["all", "Any files"], ["asks", "Asks for documents / files"], ["pdf", "Asks for a PDF"], ["todo", "I still have to send a file"], ["review", "Files delivered to me to review"]].map(([v, t]) => `<option value="${v}" ${S.dealFile === v ? "selected" : ""}>${t}</option>`).join("")}</select>
         <span class="hint">${dealsShown().length} of ${S.deals.length}</span></div>` : ""}
@@ -884,6 +884,22 @@ function previewDialog(dealId, index, name) {
   show();
 }
 
+/** The buyer asks the seller to fix a delivery under review (within the rounds agreed for the milestone). */
+function changesDialog(dealId, index) {
+  const dlg = $("#dlg"), form = $("#dlg-form");
+  form.innerHTML = `<h2>Ask for changes</h2><p class="hint">The seller sees your message on the deal and can deliver again. Asking does not stop the review time: when it ends, the seller can be paid. There are no disputes: if the work still does not fit, ask the seller to refund (only they can).</p>
+    <label>What should change?</label><textarea name="text" rows="4" minlength="5" maxlength="1000" required></textarea><div class="err" id="ce"></div>
+    <div class="row" style="justify-content:flex-end;margin-top:12px"><button value="cancel" formnovalidate>Cancel</button><button class="primary" id="cok" value="ok">Send to the seller</button></div>`;
+  dlg.showModal();
+  form.onsubmit = async (ev) => {
+    if (ev.submitter?.value !== "ok") return;
+    ev.preventDefault();
+    const ok = $("#cok"); busy(ok, "Sending…");
+    try { await api("/app/changes", "POST", { dealId: Number(dealId), index: Number(index), text: new FormData(form).get("text") }); dlg.close(); toast("Sent to the seller"); }
+    catch (e) { showErr($("#ce"), e); idle(ok); }
+  };
+}
+
 function deliverDialog(dealId, index) {
   const d = (S.deals || []).find((x) => x.id === Number(dealId));
   const m = d.milestones[Number(index)];
@@ -942,7 +958,7 @@ function dealHtml(d) {
     ${d.milestones.map((m) => {
       const acts = [];
       if (d.status === "Active") {
-        if (d.role === "buyer" && (m.status === "Delivered" || m.status === "KeyReleased")) { acts.push(btn("approve", m.index, "Approve and pay", "primary")); acts.push(btn("dispute", m.index, "Dispute", "danger")); }
+        if (d.role === "buyer" && (m.status === "Delivered" || m.status === "KeyReleased")) { acts.push(btn("approve", m.index, "Approve and pay", "primary")); if (m.status === "Delivered") acts.push(`<button data-changes="${d.id}" data-i="${m.index}">Ask for changes</button>`); }
         if (d.role === "buyer" && m.status === "Pending" && m.deadline && m.deadline < now) acts.push(btn("reclaim", m.index, "Reclaim (late)"));
         if (d.role === "seller" && m.status === "Delivered" && m.deadline && m.deadline < now) acts.push(btn("claim", m.index, "Claim payment", "primary"));
         if (d.role === "seller" && m.status === "Pending" && m.delivery !== "deposit") acts.push(`<button class="primary" data-deliver="${d.id}" data-i="${m.index}">Deliver</button>`);
@@ -993,6 +1009,7 @@ function wireDealButtons() {
   document.querySelectorAll("[data-act]").forEach((b) => (b.onclick = () => confirmMove(b.dataset.act, b.dataset.deal, b.dataset.i)));
   document.querySelectorAll("[data-deliver]").forEach((b) => (b.onclick = () => deliverDialog(b.dataset.deliver, b.dataset.i)));
   document.querySelectorAll("[data-preview]").forEach((b) => (b.onclick = () => previewDialog(b.dataset.preview, b.dataset.i, b.dataset.name)));
+  document.querySelectorAll("[data-changes]").forEach((b) => (b.onclick = () => changesDialog(b.dataset.changes, b.dataset.i)));
 }
 function wireAgentButtons() {
   document.querySelectorAll("[data-asign]").forEach((b) => (b.onclick = async () => {

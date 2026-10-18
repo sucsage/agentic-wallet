@@ -116,6 +116,7 @@ export async function buyerAction(
   action: BuyerAction,
   index = 0,
 ): Promise<{ tier: 1 | 2; outcome: TxOutcome }> {
+  if (action === "dispute" && !config.disputesOpen) throw new DealError("Disputes are turned off: approve the delivery or ask the seller for changes");
   const deal = await dealForWallet(wallet, dealId);
   if (deal.role !== "buyer") throw new DealError("Only the buyer can do this");
 

@@ -456,6 +456,10 @@ Besides the private link (one chosen person, with a one-time code), a user can p
 - **Lighter watermark**: previews keep one sparse "PREVIEW D-<deal>" layer, a fainter crossing layer and three thin lines (no blotches or grid), lighter grain, 820 px and JPEG 62, so a document can be read before approval while a screenshot still names the deal.
 - **Files filter** on Deals (website and app): deals that ask for documents/files, ask for a PDF, wait for a file from me (seller, file milestone still Pending), or have a file delivered to me to review (buyer, file milestone Delivered).
 
+### 3.19d Disputes turned off (2026-10-19)
+
+Nobody can open a new dispute: `config.disputesOpen` is false unless `DISPUTES=on`. The server refuses the `dispute` move in `runDealMove` and in `buyerAction` (so no website button, private link, desktop-app intent, AI tool or MCP request can reach the contract's `dispute()`; users' wallets are only driven by the server). The deal page no longer offers Dispute / Report a problem; the buyer approves, or asks for changes within the agreed rounds (`lib/bank/deal-notes.ts`, now also in the desktop app: `POST /api/device/notes`), or asks the seller to refund. Disputes opened before stay and run to their ruling (mediation, panel, appeal) on the deal and link pages. The contract text says "approve it, or ask for changes within the rounds agreed for it". Consequence: asking for changes does not stop the on-chain review window, and after it the seller can claim, so a buyer's only protection against bad work is not approving and the seller's refund.
+
 ### 3.20 Desktop app and device chains
 
 The desktop app (`desktop/`, Bun, one executable per OS: macOS arm64/x64, Windows x64, Linux x64/arm64) is the main way to hold deals. Each user's computer keeps its **own** chain; the server keeps only its head. Two users' chains link through the same deal event. Block format and checks are one file shared by both sides: `web/src/lib/device-chain/format.ts`.
