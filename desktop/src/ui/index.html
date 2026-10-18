@@ -487,11 +487,11 @@ function renderView() {
       ${g && g.votes.length ? `<div class="banner"><b>Payments waiting for your vote</b>${g.votes.map((v) => `<div class="req row space"><div><b>${esc(v.title)}</b><div class="hint">${esc(v.group.name)} · ${v.yes} of ${v.group.threshold} yes so far</div></div><div class="row"><button class="primary" data-vote="${esc(v.proposalId)}" data-yes="1">Approve</button><button data-vote="${esc(v.proposalId)}" data-yes="0">Reject</button></div></div>`).join("")}</div>` : ""}
       ${g && g.invites.length ? `<div class="banner"><b>Invitations</b>${g.invites.map((i) => `<div class="req row space"><div><b>${esc(i.group?.name || i.name || "A group")}</b><div class="hint">${i.canSign ? "as a signer" : "as a member"}</div></div><div class="row"><button class="primary" data-inv="${esc(i.id)}" data-yes="1">Join</button><button data-inv="${esc(i.id)}" data-yes="0">Decline</button></div></div>`).join("")}</div>` : ""}
       <div id="glist">${g ? (g.groups.length ? g.groups.map((x) => `<div class="card deal"><div class="row space"><b>${esc(x.name)}</b><span class="chip">${x.threshold} of ${x.members.filter((mm) => mm.canSign).length} signers</span></div>
-        <div class="hint">${x.members.map((mm) => `${esc(mm.name)}${mm.role === "ADMIN" ? " (admin)" : ""}${mm.canSign ? " ✍" : ""}`).join(" · ")}${x.invited ? ` · ${x.invited} invited` : ""}</div>${x.openProposals ? `<div class="hint">${x.openProposals} open proposal(s)</div>` : ""}</div>`).join("") : `<div class="card hint">No groups yet.</div>`) : `<div class="card hint">Loading…</div>`}</div>
+        <div class="hint">${x.members.map((mm) => `${esc(mm.name)}${mm.role === "ADMIN" ? " (admin)" : ""}${mm.canSign ? " ✍" : ""}`).join(" · ")}${x.invited ? ` · ${x.invited} invited` : ""}</div>${x.openProposals ? `<div class="hint">${x.openProposals} open proposal(s)</div>` : ""}${groupWalletHtml(x)}</div>`).join("") : `<div class="card hint">No groups yet.</div>`) : `<div class="card hint">Loading…</div>`}</div>
       <div class="card" style="margin-top:12px"><h2>New group</h2><form id="gf"><label>Name</label><input name="name" required minlength="2" maxlength="60" placeholder="e.g. Coffee shop partners">
         <label>Members (friends)</label>${friends.length ? friends.map((f) => `<div class="row" style="margin:4px 0"><label style="margin:0;font-weight:400;display:flex;gap:6px;align-items:center"><input type="checkbox" name="mem" value="${esc(f.userId)}" style="width:auto"> ${esc(f.name)}</label><label style="margin:0;font-weight:400;display:flex;gap:6px;align-items:center" class="hint"><input type="checkbox" name="sign" value="${esc(f.userId)}" checked style="width:auto"> can sign</label></div>`).join("") : `<p class="hint">Add friends first.</p>`}
         <label>Votes needed to pay (at least 2)</label><input name="threshold" type="number" min="2" value="2" required style="width:120px">
-        <div class="row" style="margin-top:10px"><button class="primary" ${friends.length ? "" : "disabled"}>Create group</button></div><p class="hint">Group chat and payouts to members: on the website for now.</p></form></div>`;
+        <div class="row" style="margin-top:10px"><button class="primary" ${friends.length ? "" : "disabled"}>Create group</button></div><p class="hint">Group chat: on the website for now.</p></form></div>`;
     $("#sync").onclick = () => load();
     document.querySelectorAll("[data-vote]").forEach((b) => (b.onclick = async () => {
       const yes = b.dataset.yes === "1";
@@ -500,6 +500,7 @@ function renderView() {
       try { const r = await api("/app/vote", "POST", { proposalId: b.dataset.vote, approve: yes }); if (!r.ok) throw new Error(r.error || "Not done"); toast("Vote signed"); } catch (e) { toast(e.message); }
       await load();
     }));
+    wireGroupWallets();
     document.querySelectorAll("[data-inv]").forEach((b) => (b.onclick = async () => { try { S.groups = await api("/app/groups", "POST", { op: "invite", inviteId: b.dataset.inv, accept: b.dataset.yes === "1" }); renderView(); } catch (e) { toast(e.message); } }));
     $("#gf").onsubmit = async (ev) => {
       ev.preventDefault();
@@ -605,6 +606,59 @@ function wireUpdate() {
 function updateNudge() {
   const u = S.update;
   return u && u.available ? `<button data-v="settings" style="color:var(--accent);font-weight:700">⬆ Update to ${esc(u.latest)}</button>` : "";
+}
+
+/** A group's shared wallet: balance and account, or (for the owner) the button to open one. */
+function groupWalletHtml(x) {
+  const w = x.wallet;
+  if (!w) {
+    return `<div class="ms" style="grid-template-columns:1fr auto"><div><b>Group wallet</b><div class="hint">${x.myRole === "ADMIN" ? "Not opened yet. A group wallet hires and sells in the group's name; its money moves only after " + x.threshold + " signers approve." : "Not opened yet: the group's owner can open one."}</div></div>
+      <div class="row">${x.myRole === "ADMIN" ? `<button class="primary" data-gwopen="${esc(x.id)}" data-name="${esc(x.name)}" data-th="${x.threshold}">Open a group wallet</button>` : ""}</div></div>`;
+  }
+  return `<div class="ms" style="grid-template-columns:1fr auto"><div><b>${w.kind === "GROUP" ? "Group" : "Company"} wallet</b> · <b>${money(w.balance, x.currency)}</b>
+      <div class="hint">Account ${esc(w.accountNo || "-")} · payments and payouts need ${x.threshold} signers' votes</div></div>
+    <div class="row"><button data-gwfund="${esc(w.companyId)}" data-name="${esc(x.name)}" data-cur="${esc(x.currency)}">Add money</button>${x.iSign ? `<button data-gwpay="${esc(x.id)}">Pay out to members</button>` : ""}</div></div>`;
+}
+
+function wireGroupWallets() {
+  document.querySelectorAll("[data-gwopen]").forEach((b) => (b.onclick = async () => {
+    if (!confirm(`Open a shared wallet for "${b.dataset.name}"? The group can then hire and sell in its own name; its money moves only after ${b.dataset.th} signers approve.`)) return;
+    busy(b, "Opening (about 10 s)…");
+    try { S.groups = await api("/app/groups", "POST", { op: "wallet", groupId: b.dataset.gwopen }); toast("Group wallet opened"); renderView(); } catch (e) { toast(e.message); idle(b); }
+  }));
+  document.querySelectorAll("[data-gwfund]").forEach((b) => (b.onclick = () => {
+    const dlg = $("#dlg"), form = $("#dlg-form");
+    form.innerHTML = `<h2>Add money to ${esc(b.dataset.name)}</h2><p class="hint">From your own wallet balance to the group's account (test money).</p>
+      <label>Amount (${esc(b.dataset.cur)})</label><input name="amount" type="number" min="1" step="0.01" required><div class="err" id="fe"></div>
+      <div class="row" style="justify-content:flex-end;margin-top:12px"><button value="cancel" formnovalidate>Cancel</button><button class="primary" id="fok" value="ok">Move money</button></div>`;
+    const requestId = crypto.randomUUID();
+    dlg.showModal();
+    form.onsubmit = async (ev) => {
+      if (ev.submitter?.value !== "ok") return;
+      ev.preventDefault();
+      const ok = $("#fok"); busy(ok, "Moving…");
+      try { S.groups = await api("/app/groups", "POST", { op: "fund", companyId: b.dataset.gwfund, amount: Number(new FormData(form).get("amount")), requestId }); dlg.close(); toast("Added to the group wallet"); renderView(); }
+      catch (e) { showErr($("#fe"), e); idle(ok); }
+    };
+  }));
+  document.querySelectorAll("[data-gwpay]").forEach((b) => (b.onclick = () => {
+    const g = S.groups.groups.find((x) => x.id === b.dataset.gwpay);
+    const dlg = $("#dlg"), form = $("#dlg-form");
+    form.innerHTML = `<h2>Pay out from ${esc(g.name)}</h2><p class="hint">Balance ${money(g.wallet.balance, g.currency)}. Everyone is paid together after ${g.threshold} signers approve (your proposal counts as your yes; votes are signed blocks).</p>
+      ${g.members.map((mm) => `<div class="row" style="margin:6px 0"><span style="flex:1">${esc(mm.name)}</span><input name="a:${esc(mm.userId)}" type="number" min="0" step="0.01" placeholder="0" style="width:140px"></div>`).join("")}
+      <div class="err" id="pe"></div>
+      <div class="row" style="justify-content:flex-end;margin-top:12px"><button value="cancel" formnovalidate>Cancel</button><button class="primary" id="pok" value="ok">Propose the payout</button></div>`;
+    dlg.showModal();
+    form.onsubmit = async (ev) => {
+      if (ev.submitter?.value !== "ok") return;
+      ev.preventDefault();
+      const recipients = [...new FormData(form).entries()].filter(([k, v]) => k.startsWith("a:") && Number(v) > 0).map(([k, v]) => ({ userId: k.slice(2), amount: Number(v) }));
+      if (!recipients.length) { showErr($("#pe"), new Error("Enter an amount for at least one member")); return; }
+      const ok = $("#pok"); busy(ok, "Proposing…");
+      try { S.groups = await api("/app/groups", "POST", { op: "payout", groupId: g.id, recipients }); dlg.close(); toast("Payout proposed: waiting for the signers' votes"); renderView(); }
+      catch (e) { showErr($("#pe"), e); idle(ok); }
+    };
+  }));
 }
 
 function friendResults() {

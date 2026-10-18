@@ -198,6 +198,10 @@ export async function fundCompany(userId: string, companyId: string, amount: num
   if (!from || !to) throw new CompanyError("Account not found");
   if (from.currency !== to.currency) throw new CompanyError(`The company account is in ${to.currency}`);
   const minor = BigInt(Math.round(amount * 100));
+  const key = `company-fund:${company.id}:${userId}:${requestId}`;
+  // The same request sent again (a retry after a timeout): answer with the move already made.
+  const done = await db.bankTransfer.findUnique({ where: { idempotencyKey: key } });
+  if (done) return done;
   if (from.balance < minor) throw new CompanyError("Not enough money in your wallet");
-  return transfer({ key: `company-fund:${company.id}:${userId}:${requestId}`, kind: "TRANSFER", fromId: from.id, toId: to.id, amount: minor });
+  return transfer({ key, kind: "TRANSFER", fromId: from.id, toId: to.id, amount: minor });
 }

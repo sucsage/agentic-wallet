@@ -9,9 +9,10 @@ import { RelinkError, relinkInvite } from "../bank/relink";
 import { linkOf, topupFromLink } from "../bank/stripe-link";
 import { TopupError, confirmTopup, startTopup, topupHistory, topupLimit } from "../bank/topup";
 import { dealTerms } from "../bank/deals";
+import { CompanyError, createGroupWallet, fundCompany } from "../company";
 import { db } from "../db";
 import { LinkAccessError, issueOtp, resetWithCode } from "../link-access";
-import { SocialError, acceptFriend, answerGroupInvite, createGroup, listFriends, listGroups, myGroupInvites, pendingVotes, removeFriend, requestFriend, searchCustomers, setUsername } from "../social";
+import { SocialError, acceptFriend, answerGroupInvite, createGroup, listFriends, listGroups, myGroupInvites, pendingVotes, proposePayout, removeFriend, requestFriend, searchCustomers, setUsername } from "../social";
 import { readFileDeals } from "../state";
 import { type DeviceRow, DeviceError, deviceWallet } from ".";
 
@@ -23,7 +24,7 @@ import { type DeviceRow, DeviceError, deviceWallet } from ".";
 
 const social = <T>(p: Promise<T>) =>
   p.catch((e) => {
-    throw e instanceof SocialError || e instanceof TopupError || e instanceof LinkAccessError || e instanceof RelinkError ? new DeviceError(400, e.message) : e;
+    throw e instanceof SocialError || e instanceof CompanyError || e instanceof TopupError || e instanceof LinkAccessError || e instanceof RelinkError ? new DeviceError(400, e.message) : e;
   });
 
 async function customer(device: DeviceRow) {
@@ -135,16 +136,30 @@ export async function linkAction(device: DeviceRow, origin: string, input: { dea
 
 export async function deviceGroups(device: DeviceRow) {
   const [groups, invites, votes] = await Promise.all([listGroups(device.userId), myGroupInvites(device.userId), pendingVotes(device.userId)]);
+  // Each group's shared wallet (if opened): its account number and balance.
+  const accounts = await db.bankAccount.findMany({
+    where: { ownerAddress: { in: groups.flatMap((g) => (g.company ? [g.company.walletAddress.toLowerCase()] : [])) } },
+    select: { ownerAddress: true, accountNo: true, balance: true },
+  });
   return {
-    groups: groups.map((g) => ({
-      id: g.id,
-      name: g.name,
-      currency: g.currency,
-      threshold: g.threshold,
-      members: g.members.map((m) => ({ userId: m.user.id, name: m.user.name, role: m.role, canSign: m.canSign })),
-      openProposals: g.proposals.length,
-      invited: g.invites.length,
-    })),
+    groups: groups.map((g) => {
+      const me = g.members.find((m) => m.userId === device.userId);
+      const acct = g.company ? accounts.find((a) => a.ownerAddress === g.company!.walletAddress.toLowerCase()) : undefined;
+      return {
+        id: g.id,
+        name: g.name,
+        currency: g.currency,
+        threshold: g.threshold,
+        myRole: me?.role ?? "MEMBER",
+        iSign: me?.canSign ?? false,
+        members: g.members.map((m) => ({ userId: m.user.id, name: m.user.name, role: m.role, canSign: m.canSign })),
+        openProposals: g.proposals.length,
+        invited: g.invites.length,
+        wallet: g.company
+          ? { companyId: g.company.id, kind: g.company.kind, name: g.company.name, accountNo: acct?.accountNo ?? null, balance: acct ? Number(acct.balance) / 100 : 0 }
+          : null,
+      };
+    }),
     invites: JSON.parse(JSON.stringify(invites, (_k, v) => (typeof v === "bigint" ? v.toString() : v))),
     votes,
   };
@@ -152,8 +167,28 @@ export async function deviceGroups(device: DeviceRow) {
 
 export async function groupAction(
   device: DeviceRow,
-  input: { op: "create"; name: string; members: { userId: string; canSign: boolean }[]; threshold: number } | { op: "invite"; inviteId: string; accept: boolean },
+  input:
+    | { op: "create"; name: string; members: { userId: string; canSign: boolean }[]; threshold: number }
+    | { op: "invite"; inviteId: string; accept: boolean }
+    | { op: "wallet"; groupId: string }
+    | { op: "fund"; companyId: string; amount: number; requestId: string }
+    | { op: "payout"; groupId: string; recipients: { userId: string; amount: number }[] },
 ) {
+  // The owner opens the group's shared wallet (it hires and sells in the group's name; money moves by the signers' vote).
+  if (input.op === "wallet") {
+    await social(createGroupWallet(device.userId, input.groupId));
+    return deviceGroups(device);
+  }
+  // A member moves money from their own wallet into the group's account.
+  if (input.op === "fund") {
+    await social(fundCompany(device.userId, input.companyId, input.amount, input.requestId));
+    return deviceGroups(device);
+  }
+  // A signer proposes paying members from the group's account: it happens after the vote (votes are signed blocks).
+  if (input.op === "payout") {
+    const r = await social(proposePayout(device.userId, input.groupId, input.recipients));
+    return { payout: JSON.parse(JSON.stringify(r, (_k, v) => (typeof v === "bigint" ? v.toString() : v))), ...(await deviceGroups(device)) };
+  }
   if (input.op === "create") {
     const c = await customer(device);
     const g = await social(createGroup(device.userId, c.currency, { name: input.name, members: input.members.slice(0, 20), threshold: input.threshold }));

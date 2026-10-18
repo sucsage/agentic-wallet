@@ -1,6 +1,6 @@
 {
   "name": "agentic-wallet-desktop",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "type": "module",
   "description": "Agentic Wallet desktop app: your own deal chain on your computer (macOS, Windows, Linux).",
