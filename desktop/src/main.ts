@@ -89,7 +89,7 @@ async function route(req: Request, path: string, port: number): Promise<Response
   }
   if (m === "POST" && path === "/app/sync") return json(await wallet.sync());
   if (m === "GET" && path === "/app/account") return json(await wallet.account_());
-  if (m === "GET" && path === "/app/deals") return json(await wallet.deals());
+  if (m === "GET" && path === "/app/deals") return json(await wallet.deals(companyParam(req)));
   if (m === "GET" && path === "/app/chain") return json(await wallet.chain());
   if (m === "POST" && path === "/app/repair") return json(await wallet.repair());
   if (m === "POST" && path === "/app/verify") return json(await wallet.verify());
@@ -110,7 +110,14 @@ async function route(req: Request, path: string, port: number): Promise<Response
       }),
     );
   }
-  if (m === "POST" && path === "/app/confirm-draft") return json(await wallet.confirmDraft(String((await body<{ draftId: string }>(req)).draftId ?? "")));
+  if (m === "POST" && path === "/app/confirm-draft") {
+    const b = await body<{ draftId: string; companyId?: string | null }>(req);
+    return json(await wallet.confirmDraft(String(b.draftId ?? ""), b.companyId === undefined ? undefined : b.companyId || null));
+  }
+  if (m === "POST" && path === "/app/drafts/discard") {
+    const b = await body<{ draftId: string; companyId?: string | null }>(req);
+    return json(await wallet.discardDraft(String(b.draftId ?? ""), b.companyId === undefined ? undefined : b.companyId || null));
+  }
   if (m === "GET" && path === "/app/update") return json(await checkUpdate(new URL(req.url).searchParams.has("force")));
   if (m === "POST" && path === "/app/update") {
     const version = await installUpdate();
@@ -168,7 +175,7 @@ async function route(req: Request, path: string, port: number): Promise<Response
     const b = await body<{ friendshipId: string; allowed: boolean }>(req);
     return json(await wallet.payee(String(b.friendshipId ?? ""), b.allowed === true));
   }
-  if (m === "GET" && path === "/app/drafts") return json(await wallet.drafts());
+  if (m === "GET" && path === "/app/drafts") return json(await wallet.drafts(companyParam(req)));
   if (m === "GET" && path === "/app/activity") return json(await wallet.activity());
   if (m === "POST" && path === "/app/changes") return json(await wallet.askChanges(await body(req)));
   if (m === "GET" && path === "/app/preview") {
@@ -266,6 +273,12 @@ async function agentAnswer(req: Request, path: string, client: string): Promise<
     return json({ requestId: r.id, status: r.status, error: r.error, block: r.block });
   }
   return json({ error: "Not found" }, 404);
+}
+
+/** ?company=<id> asks for a group's view (the server checks membership); without it the view follows "Acting as". */
+function companyParam(req: Request): string | undefined {
+  const c = new URL(req.url).searchParams.get("company");
+  return c ? c.slice(0, 40) : undefined;
 }
 
 /** Restarts this executable (after an update) with the same arguments; the new process takes over the port and the open tab. */

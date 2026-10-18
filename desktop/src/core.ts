@@ -419,9 +419,10 @@ class Wallet {
   }
 
   /** A path for a request that follows "Act as": ?as=<group> is signed with the path. */
-  private asPath(path: string) {
-    const a = this.acting();
-    return a ? `${path}?as=${encodeURIComponent(a.companyId)}` : path;
+  /** company: undefined follows "Acting as", null is the user's own wallet, an id is that group (the server checks membership). */
+  private asPath(path: string, company?: string | null) {
+    const id = company === undefined ? this.acting()?.companyId : company;
+    return id ? `${path}?as=${encodeURIComponent(id)}` : path;
   }
 
   /** A deal move, signed here as an intent block; the server runs it once the block is on the chain. */
@@ -460,10 +461,10 @@ class Wallet {
   }
 
   /** Confirms a preview the AI drafted (the server reads its terms from the database). */
-  confirmDraft(draftId: string) {
+  confirmDraft(draftId: string, company?: string | null) {
     return this.serial(async () => {
-      const acting = this.acting();
-      const b = await this.sign(this.next("intent", { dealId: 0, action: "confirm_draft", index: 0, draftId, ...(acting ? { as: acting.companyId } : {}) }));
+      const as = company === undefined ? this.acting()?.companyId : company;
+      const b = await this.sign(this.next("intent", { dealId: 0, action: "confirm_draft", index: 0, draftId, ...(as ? { as } : {}) }));
       store.append([b]);
       const [result] = await this.submit([b]);
       return { ...result, block: b.hash, height: b.height };
@@ -532,8 +533,12 @@ class Wallet {
     }).finally(() => this.sync().catch(() => undefined));
   }
 
-  drafts() {
-    return this.call<{ drafts: unknown[] }>("GET", this.asPath("/api/device/drafts"));
+  drafts(company?: string | null) {
+    return this.call<{ drafts: unknown[] }>("GET", this.asPath("/api/device/drafts", company));
+  }
+
+  discardDraft(draftId: string, company?: string | null) {
+    return this.call<{ drafts: unknown[] }>("POST", this.asPath("/api/device/drafts", company), { discard: String(draftId) });
   }
 
   activity() {
@@ -769,8 +774,8 @@ class Wallet {
     return this.call<{ name: string; wallet: Address; device: Address; deviceName: string; currency: string; balance: number }>("GET", this.asPath("/api/device/me"));
   }
 
-  deals() {
-    return this.call<{ deals: unknown[] }>("GET", this.asPath("/api/device/deals"));
+  deals(company?: string | null) {
+    return this.call<{ deals: unknown[] }>("GET", this.asPath("/api/device/deals", company));
   }
 
   /** The buyer asks the seller to fix a delivery under review. */

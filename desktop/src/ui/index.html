@@ -505,7 +505,7 @@ function renderView() {
       ${g && g.votes.length ? `<div class="banner"><b>Payments waiting for your vote</b>${g.votes.map((v) => `<div class="req row space"><div><b>${esc(v.title)}</b><div class="hint">${esc(v.group.name)} · ${v.yes} of ${v.group.threshold} yes so far</div></div><div class="row"><button class="primary" data-vote="${esc(v.proposalId)}" data-yes="1">Approve</button><button data-vote="${esc(v.proposalId)}" data-yes="0">Reject</button></div></div>`).join("")}</div>` : ""}
       ${g && g.invites.length ? `<div class="banner"><b>Invitations</b>${g.invites.map((i) => `<div class="req row space"><div><b>${esc(i.group?.name || i.name || "A group")}</b><div class="hint">${i.canSign ? "as a signer" : "as a member"}</div></div><div class="row"><button class="primary" data-inv="${esc(i.id)}" data-yes="1">Join</button><button data-inv="${esc(i.id)}" data-yes="0">Decline</button></div></div>`).join("")}</div>` : ""}
       <div id="glist">${g ? (g.groups.length ? g.groups.map((x) => `<div class="card deal"><div class="row space"><b>${esc(x.name)}</b><span class="chip">${x.threshold} of ${x.members.filter((mm) => mm.canSign).length} signers</span></div>
-        <div class="hint">${x.members.map((mm) => `${esc(mm.name)}${mm.role === "ADMIN" ? " (admin)" : ""}${mm.canSign ? " ✍" : ""}`).join(" · ")}${x.invited ? ` · ${x.invited} invited` : ""}</div>${x.openProposals ? `<div class="hint">${x.openProposals} open proposal(s)</div>` : ""}${groupWalletHtml(x)}</div>`).join("") : `<div class="card hint">No groups yet.</div>`) : `<div class="card hint">Loading…</div>`}</div>
+        <div class="hint">${x.members.map((mm) => `${esc(mm.name)}${mm.role === "ADMIN" ? " (admin)" : ""}${mm.canSign ? " ✍" : ""}`).join(" · ")}${x.invited ? ` · ${x.invited} invited` : ""}</div>${x.openProposals ? `<div class="hint">${x.openProposals} open proposal(s)</div>` : ""}${groupWalletHtml(x)}${groupDealsHtml(x)}</div>`).join("") : `<div class="card hint">No groups yet.</div>`) : `<div class="card hint">Loading…</div>`}</div>
       <div class="card" style="margin-top:12px"><h2>New group</h2><form id="gf"><label>Name</label><input name="name" required minlength="2" maxlength="60" placeholder="e.g. Coffee shop partners">
         <label>Members (friends)</label>${friends.length ? friends.map((f) => `<div class="row" style="margin:4px 0"><label style="margin:0;font-weight:400;display:flex;gap:6px;align-items:center"><input type="checkbox" name="mem" value="${esc(f.userId)}" style="width:auto"> ${esc(f.name)}</label><label style="margin:0;font-weight:400;display:flex;gap:6px;align-items:center" class="hint"><input type="checkbox" name="sign" value="${esc(f.userId)}" checked style="width:auto"> can sign</label></div>`).join("") : `<p class="hint">Add friends first.</p>`}
         <label>Votes needed to pay (at least 2)</label><input name="threshold" type="number" min="2" value="2" required style="width:120px">
@@ -519,6 +519,7 @@ function renderView() {
       await load();
     }));
     wireGroupWallets();
+    wireDrafts();
     document.querySelectorAll("[data-inv]").forEach((b) => (b.onclick = async () => { try { S.groups = await api("/app/groups", "POST", { op: "invite", inviteId: b.dataset.inv, accept: b.dataset.yes === "1" }); renderView(); } catch (e) { toast(e.message); } }));
     $("#gf").onsubmit = async (ev) => {
       ev.preventDefault();
@@ -529,6 +530,7 @@ function renderView() {
   } else if (S.view === "deals") {
     m.innerHTML = `${requestsBanner()}<div class="row space"><h1>Deals</h1><button id="sync">Refresh</button></div>
       <p class="hint">Every move here (deliver, approve, ask for changes, accept, refund) is a block signed by your device key. New deals: AI chat.</p>
+      ${(() => { const w = (S.drafts || []).filter((d) => ["PREVIEW", "DRAFT", "FAILED"].includes(d.status)); return w.length ? `<h2 style="margin-top:4px">Previews waiting for Confirm${S.info.acting ? ` · ${esc(S.info.acting.name)}` : ""}</h2>${w.map((d) => draftCard(d)).join("")}` : ""; })()}
       ${S.deals && S.deals.length ? `<div class="row" style="margin-bottom:12px"><input id="dq" placeholder="Search deals" value="${esc(S.dealQ || "")}" style="flex:1;min-width:160px">
         <select id="dfile" style="width:auto">${[["all", "Any files"], ["asks", "Asks for documents / files"], ["pdf", "Asks for a PDF"], ["todo", "I still have to send a file"], ["review", "Files delivered to me to review"]].map(([v, t]) => `<option value="${v}" ${S.dealFile === v ? "selected" : ""}>${t}</option>`).join("")}</select>
         <span class="hint">${dealsShown().length} of ${S.deals.length}</span></div>` : ""}
@@ -572,6 +574,7 @@ function renderView() {
   wireRequestButtons();
   if (S.view === "ai") wireSettings();
   if (S.view === "mcp") wireMcp();
+  if (S.view === "deals") wireDrafts();
 }
 
 /** What a deal asks in files (the Files filter): documents asked for, a PDF, a file I owe, a file to review. */
@@ -626,6 +629,42 @@ function updateNudge() {
   return u && u.available ? `<button data-v="settings" style="color:var(--accent);font-weight:700">⬆ Update to ${esc(u.latest)}</button>` : "";
 }
 
+/** After Confirm or Discard: reload the previews and deals on screen (yours, and any group's opened under Groups). */
+async function refreshDealLists() {
+  const jobs = [api("/app/drafts").then((d) => (S.drafts = d.drafts)).catch(() => undefined)];
+  if (S.view === "deals") jobs.push(api("/app/deals").then((d) => (S.deals = d.deals)).catch(() => undefined));
+  for (const gid of Object.keys(S.groupDeals || {})) jobs.push(loadGroupDeals(gid));
+  await Promise.all(jobs);
+  renderView();
+}
+
+/** A group's deals and the previews its members drafted for it (yours), read as that group. */
+async function loadGroupDeals(gid) {
+  const g = ((S.groups && S.groups.groups) || []).find((x) => x.id === gid);
+  if (!g || !g.wallet) return;
+  const c = encodeURIComponent(g.wallet.companyId);
+  try {
+    const [d, p] = await Promise.all([api(`/app/deals?company=${c}`), api(`/app/drafts?company=${c}`)]);
+    S.groupDeals[gid] = { deals: d.deals, drafts: p.drafts };
+  } catch (e) { S.groupDeals[gid] = { error: e.message }; }
+}
+
+function groupDealsHtml(x) {
+  if (!x.wallet) return "";
+  S.groupDeals = S.groupDeals || {};
+  const open = S.groupOpen && S.groupOpen[x.id];
+  const gd = S.groupDeals[x.id];
+  const head = `<div class="row space" style="margin-top:10px"><b>Deals</b><div class="row"><button data-gdeals="${esc(x.id)}">${open ? "Hide" : "Show deals and previews"}</button>${open ? `<button data-actdeals="${esc(x.id)}">Open in Deals (act as ${esc(x.wallet.name)})</button>` : ""}</div></div>`;
+  if (!open) return head;
+  if (!gd) return head + `<div class="loading" style="margin-top:8px"><span class="spin"></span>Loading the group's deals…</div>`;
+  if (gd.error) return head + `<p class="hint">${esc(gd.error)}</p>`;
+  const waiting = gd.drafts.filter((d) => ["PREVIEW", "DRAFT", "FAILED"].includes(d.status));
+  const done = (d) => d.milestones.filter((m) => ["Released", "Split", "Refunded"].includes(m.status)).length;
+  return head + (waiting.length ? `<div class="hint" style="margin-top:8px">Previews waiting for Confirm (yours, for this group)</div>${waiting.map((d) => draftCard(d, x.wallet.companyId)).join("")}` : "") +
+    (gd.deals.length ? `<table style="margin-top:8px"><thead><tr><th>Deal</th><th>Role</th><th>Status</th><th>Milestones</th><th>Total</th></tr></thead><tbody>${gd.deals.map((d) => `<tr><td><b>D-${esc(d.id)}</b> ${esc(d.title)}<div class="hint">${esc(d.counterpartyLabel || short(d.counterparty))}</div></td><td>${d.role === "buyer" ? "buying" : "selling"}</td><td><span class="chip ${STATUS_CHIP[d.status] || ""}">${esc(d.status)}</span></td><td>${done(d)} / ${d.milestones.length}</td><td>${esc(d.total)}</td></tr>`).join("")}</tbody></table>` : `<p class="hint" style="margin-top:8px">No deals yet. Act as the group and ask the AI to draft one.</p>`) +
+    `<p class="hint">To deliver, approve or ask for changes on a group deal: Open in Deals.</p>`;
+}
+
 /** A group's shared wallet: balance and account, or (for the owner) the button to open one. */
 function groupWalletHtml(x) {
   const w = x.wallet;
@@ -639,6 +678,20 @@ function groupWalletHtml(x) {
 }
 
 function wireGroupWallets() {
+  document.querySelectorAll("[data-gdeals]").forEach((b) => (b.onclick = async () => {
+    const gid = b.dataset.gdeals;
+    S.groupOpen = S.groupOpen || {}; S.groupDeals = S.groupDeals || {};
+    S.groupOpen[gid] = !S.groupOpen[gid];
+    if (!S.groupOpen[gid]) { delete S.groupDeals[gid]; renderView(); return; }
+    renderView(); await loadGroupDeals(gid); renderView();
+  }));
+  document.querySelectorAll("[data-actdeals]").forEach((b) => (b.onclick = async () => {
+    try {
+      const r = await api("/app/acting", "POST", { groupId: b.dataset.actdeals });
+      S.info = { ...S.info, acting: r.acting }; S.deals = null; S.account = null; S.activity = null; S.drafts = null;
+      go("deals");
+    } catch (e) { toast(e.message); }
+  }));
   document.querySelectorAll("[data-actas]").forEach((b) => (b.onclick = async () => {
     try {
       const r = await api("/app/acting", "POST", { groupId: b.dataset.actas || null });
@@ -775,14 +828,16 @@ function chatsPanel() {
     <p>${full ? `${max} chats max: delete one to start another. ` : ""}Chats are kept on this computer only. Deleting one removes the conversation; your deals stay.</p></aside>`;
 }
 
-function draftCard(d) {
+/** company: the group whose preview this is (its card under Groups); undefined follows "Acting as". */
+function draftCard(d, company) {
+  const co = company === undefined ? "" : ` data-company="${esc(company || "")}"`;
   const blocking = d.review && d.review.blocking;
   return `<div class="card deal"><div class="row space"><div><b>${esc(d.title)}</b> <span class="hint">${esc(d.id)}</span>
     <div class="hint">${d.side === "BUY" ? "You pay" : "You sell to"} ${esc(d.sellerLabel || d.counterparty)} · review ${esc(d.reviewHours)} h${d.paymentPlan ? " · split payment" : ""}</div></div>
     <div class="row"><span class="chip">${esc(d.status)}</span><b>${esc(d.total)} ${esc(d.symbol)}</b></div></div>
     ${(d.milestones || []).map((m, i) => `<div class="ms"><div>${i + 1}. ${esc(m.name)} · <b>${esc(m.amount)}</b>${m.deposit ? ` <span class="chip warn">deposit on signing</span>` : ""}${m.due ? ` <span class="chip">due ${esc(m.due)}</span>` : ""}<div class="hint">${esc(m.acceptance)}</div></div><div class="hint">${esc(m.delivery || (m.hasFile ? "file" : "note"))}</div></div>`).join("")}
     ${d.review ? d.review.issues.map((i) => `<div class="issue ${i.level}">${esc(i.text)}</div>`).join("") : ""}
-    <div class="row" style="margin-top:10px">${["PREVIEW", "DRAFT", "FAILED"].includes(d.status) ? `<button class="primary" data-confirm="${esc(d.id)}" ${blocking ? "disabled title=\"Fix the blocking points with the AI first\"" : ""}>Confirm and sign</button>` : d.status === "FUNDED" ? `<span class="chip ok">confirmed</span>` : `<span class="hint">The AI still needs details: answer it in the chat.</span>`}</div></div>`;
+    <div class="row" style="margin-top:10px">${["PREVIEW", "DRAFT", "FAILED"].includes(d.status) ? `<button class="primary" data-confirm="${esc(d.id)}"${co} ${blocking ? "disabled title=\"Fix the blocking points with the AI first\"" : ""}>Confirm and sign</button><button data-discard="${esc(d.id)}"${co}>Discard</button>` : d.status === "FUNDED" ? `<span class="chip ok">confirmed</span>` : `<span class="hint">The AI still needs details: answer it in the chat.</span>`}</div></div>`;
 }
 
 function msgHtml(x) {
@@ -932,10 +987,20 @@ function wireMcp() {
 }
 
 function wireDrafts() {
+  const allDrafts = () => [...(S.drafts || []), ...Object.values(S.groupDeals || {}).flatMap((g) => (g && g.drafts) || [])];
+  // A group's preview (its card under Groups) is confirmed as that group: its purchase goes to the signers' vote.
+  const companyOf = (b) => (b.dataset.company === undefined ? undefined : b.dataset.company || null);
+  document.querySelectorAll("[data-discard]").forEach((b) => (b.onclick = async () => {
+    if (!confirm("Discard this preview? Nothing was paid or locked.")) return;
+    try { await api("/app/drafts/discard", "POST", { draftId: b.dataset.discard, companyId: companyOf(b) }); toast("Preview discarded"); await refreshDealLists(); } catch (e) { toast(e.message); }
+  }));
   document.querySelectorAll("[data-confirm]").forEach((b) => (b.onclick = () => {
-    const d = (S.drafts || []).find((x) => x.id === b.dataset.confirm);
+    const d = allDrafts().find((x) => x.id === b.dataset.confirm);
+    const company = companyOf(b);
+    const group = company ? (S.actingGroups || []).find((g) => g.wallet && g.wallet.companyId === company) : null;
     const dlg = $("#dlg"), form = $("#dlg-form");
-    form.innerHTML = `<h2>Confirm: ${esc(d.title)}</h2><p>${d.side === "BUY" ? `The full ${esc(d.total)} ${esc(d.symbol)} is locked in escrow from your Mock Bank balance${d.paymentPlan ? " (split payment: part 1 now)" : ""}.` : "Your offer goes to the buyer; nothing is locked from you."}</p>
+    const forGroup = company ? group : company === undefined && S.info.acting ? { wallet: { name: S.info.acting.name } } : null;
+    form.innerHTML = `<h2>Confirm: ${esc(d.title)}</h2><p>${forGroup ? `For <b>${esc(forGroup.wallet.name)}</b>: ${d.side === "BUY" ? `it goes to the group's signers' vote; ${esc(d.total)} ${esc(d.symbol)} is locked from the group's account when enough of them approve.` : "the offer goes to the buyer in the group's name."}` : d.side === "BUY" ? `The full ${esc(d.total)} ${esc(d.symbol)} is locked in escrow from your Mock Bank balance${d.paymentPlan ? " (split payment: part 1 now)" : ""}.` : "Your offer goes to the buyer; nothing is locked from you."}</p>
       <p class="hint">This adds a block signed by your device key; the server carries it out.</p><div class="err" id="de"></div><div id="dres"></div>
       <div class="row" style="justify-content:flex-end;margin-top:12px"><button value="cancel" formnovalidate>Close</button><button class="primary" id="dok" value="ok">Sign</button></div>`;
     dlg.showModal();
@@ -944,13 +1009,13 @@ function wireDrafts() {
       ev.preventDefault();
       const ok = $("#dok"); ok.disabled = true; ok.textContent = "Signing…";
       try {
-        const r = await api("/app/confirm-draft", "POST", { draftId: d.id });
+        const r = await api("/app/confirm-draft", "POST", { draftId: d.id, companyId: company });
         if (!r.ok) throw new Error(r.error || "Not done (the signed block stays on your chain)");
         const inv = r.result && r.result.invite;
-        $("#dres").innerHTML = `<div class="ok-box">Signed and done${r.result.companyVote ? " · sent to the signers' vote" : ""}${r.result.plan ? ` · part ${r.result.plan.paidParts} paid` : ""}.</div>` +
+        $("#dres").innerHTML = `<div class="ok-box">Signed and done${r.result.companyVote ? ` · sent to the signers' vote (${r.result.companyVote.yes} of ${r.result.companyVote.threshold} yes)` : ""}${r.result.plan ? ` · part ${r.result.plan.paidParts} paid` : ""}.</div>` +
           (inv && inv.link ? `<p>Send this private link to ${esc(inv.name)}:</p><div class="mono">${esc(inv.link)}</div>${inv.access && inv.access.otp ? `<p>One-time code (send it separately): <b class="mono">${esc(inv.access.otp)}</b></p>` : ""}` : "");
         ok.style.display = "none";
-        S.drafts = (await api("/app/drafts")).drafts;
+        await refreshDealLists();
       } catch (err) { showErr($("#de"), err); ok.disabled = false; ok.textContent = "Sign"; }
     };
     dlg.addEventListener("close", () => renderView(), { once: true });
@@ -1194,7 +1259,7 @@ async function load() {
   try {
     S.info = await api("/app/state");
     if (S.view === "overview") { const [a, d] = await Promise.all([api("/app/account"), api("/app/deals")]); S.account = a; S.deals = d.deals; }
-    if (S.view === "deals") S.deals = (await api("/app/deals")).deals;
+    if (S.view === "deals") { const [d, p] = await Promise.all([api("/app/deals"), api("/app/drafts").catch(() => ({ drafts: [] }))]); S.deals = d.deals; S.drafts = p.drafts; }
     if (S.view === "chain") S.chain = await api("/app/chain");
     if (S.view === "chat") {
       if (S.chatId === undefined) { try { S.chatId = localStorage.getItem("awchat"); } catch { S.chatId = null; } }
