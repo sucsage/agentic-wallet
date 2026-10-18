@@ -22,9 +22,12 @@ server: `web/src/lib/device-chain/format.ts`.
 
 1. Run the app for your computer. First time only: Windows "More info → Run anyway"; macOS
    right-click → Open (or `xattr -d com.apple.quarantine <file>`); Linux `chmod +x <file>`.
-2. **Sign in** (or **Create account**, then verify your identity with the demo digital ID and
-   create your wallet), name the computer and choose an app passphrase. Accounts with a second
-   factor use **Link with code** (website: Profile → Desktop app → Make a link code).
+2. **Sign in** with your MilestonePay email and password, name the computer and choose an app
+   passphrase. New here? **Create account** opens the website's sign-up (identity check and wallet
+   happen there), then sign in. Accounts with a second factor use **Link with code** (website:
+   Profile → Desktop app → Make a link code).
+   Several accounts can live on one computer: the unlock screen lists them, and
+   **+ Add another account** adds one. Each has its own folder (`profiles/<device address>/`).
 3. Settings → **Save key backup** and keep the file. A new computer: **Restore from backup**.
 
 ## AI

@@ -80,6 +80,20 @@ th { color: var(--muted); font-weight: 500; font-size: 11px; }
 .check { display: grid; grid-template-columns: 24px 1fr; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--line-2); }
 dialog { border: 1px solid var(--line); border-radius: 20px; background: var(--panel-2); color: var(--ink); width: min(460px, 92vw); padding: 22px; }
 dialog::backdrop { background: rgba(0,0,0,.6); backdrop-filter: blur(2px); }
+.spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid #3a3a3a; border-top-color: var(--accent); display: inline-block; animation: spin .8s linear infinite; flex: none; }
+button .spin { width: 13px; height: 13px; border-width: 2px; border-color: #bbb; border-top-color: #111; margin-right: 7px; vertical-align: -2px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; }
+.accounts { display: flex; flex-direction: column; gap: 6px; margin: 14px 0 4px; }
+.acct { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 9px 10px; border: 1px solid var(--line-2); border-radius: 12px; background: #0c0c0c; font-weight: 500; }
+.acct:hover { border-color: #4a4a4a; background: #121212; }
+.acct.on { border-color: #6657a9; background: #1a1530; }
+.acct .avatar { width: 30px; height: 30px; border-radius: 50%; background: #fff; color: #111; display: grid; place-items: center; font-size: 11px; font-weight: 700; flex: none; }
+.acct .who { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
+.acct .who b { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acct .who small { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.linkbtn { border: 0; background: none; padding: 0; color: var(--blue); font-weight: 500; font-size: 12.5px; }
+.linkbtn:hover { background: none; text-decoration: underline; }
 .demo { font-size: 11px; color: #c9b9ff; margin-top: 14px; text-align: center; }
 .msgs { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
 .msg { max-width: 78%; padding: 12px 14px; border-radius: 17px; white-space: pre-wrap; word-break: break-word; font-size: 13.5px; }
@@ -111,7 +125,7 @@ dialog::backdrop { background: rgba(0,0,0,.6); backdrop-filter: blur(2px); }
 </style>
 </head>
 <body>
-<div id="root"></div>
+<div id="root"><div class="center"><div class="loading"><span class="spin"></span>Opening MilestonePay…</div></div></div>
 <dialog id="dlg"><form method="dialog" id="dlg-form"></form></dialog>
 <script>/*MARKDOWN*/</script>
 <script>
@@ -154,7 +168,14 @@ function render() {
 }
 
 // ---------------------------------------------------------------- setup / restore / unlock
+const initials = (name) => (name || "?").split(/\s+/).filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+const host = (u) => { try { return new URL(u).host; } catch { return u || ""; } };
+const busy = (btn, text) => { btn.disabled = true; btn.dataset.label = btn.textContent; btn.innerHTML = `<span class="spin"></span>${esc(text)}`; };
+const idle = (btn) => { btn.disabled = false; btn.textContent = btn.dataset.label || btn.textContent; };
+function loadingScreen(text) { $("#root").innerHTML = `<div class="center"><div class="loading"><span class="spin"></span>${esc(text)}</div></div>`; }
+
 function renderSetup(tab = "login") {
+  const hasAccounts = (S.info.accounts || []).length > 0;
   const TABS = [["login", "Sign in"], ["signup", "Create account"], ["link", "Link with code"], ["restore", "Restore"]];
   const serverField = `<label>Server</label><input name="server" value="${esc(S.info.defaultServer)}" />`;
   const pass = `<label>App passphrase</label><input name="passphrase" type="password" minlength="8" required />
@@ -163,34 +184,46 @@ function renderSetup(tab = "login") {
   const computer = `<label>Name of this computer</label><input name="deviceName" value="${esc(S.info.hostname)}" />`;
   const body = {
     login: `${serverField}<label>Email</label><input name="email" type="email" autocomplete="username" required /><label>Password</label><input name="password" type="password" autocomplete="current-password" required />${computer}${pass}`,
-    signup: `${serverField}<label>Full name (as on your ID)</label><input name="name" autocomplete="name" required minlength="2" /><label>Email</label><input name="email" type="email" autocomplete="username" required /><label>Account password</label><input name="password" type="password" minlength="8" autocomplete="new-password" required /><div class="hint">For signing in to MilestonePay (at least 8 characters).</div>${computer}${pass}`,
+    signup: `${serverField}<p class="hint" style="margin:12px 0 0">New accounts are made on the MilestonePay website: sign up, verify your identity with the digital ID, and your wallet opens. Then come back here and <b>Sign in</b> with the same email and password.</p>`,
     link: `${serverField}<label>Link code</label><input name="code" placeholder="ABCD-EFGH" autocomplete="off" required /><div class="hint">On the website: Profile → Desktop app → Make a link code (for accounts with a second factor).</div>${computer}${pass}`,
     restore: `<label>Key backup file</label><input name="file" type="file" accept=".json,application/json" required /><div class="hint">The file you saved from Settings → Save key backup.</div><label>App passphrase</label><input name="passphrase" type="password" required />`,
   }[tab];
-  const label = { login: "Sign in and create my chain", signup: "Create account", link: "Link and create my chain", restore: "Restore" }[tab];
+  const label = { login: "Sign in", signup: "Open sign-up on the website", link: "Link this computer", restore: "Restore" }[tab];
+  const working = { login: "Signing in…", signup: "Opening…", link: "Linking…", restore: "Restoring…" }[tab];
   $("#root").innerHTML = `<div class="center"><div class="card narrow">
-    <div class="brand"><span class="mark"></span>MilestonePay <span class="tag">Desktop</span></div>
-    <p class="hint">Your deals as your own chain on this computer. The website keeps only its latest block, signed by both sides.</p>
+    <div class="row space"><div class="brand"><span class="mark"></span>MilestonePay <span class="tag">Desktop</span></div>${hasAccounts ? `<button class="linkbtn" id="back">← Accounts</button>` : ""}</div>
+    <p class="hint">${hasAccounts ? "Add another account to this computer." : "Your deals as your own chain on this computer. The website keeps only its latest block, signed by both sides."}</p>
     <div class="tabs" style="flex-wrap:wrap">${TABS.map(([k, l]) => `<button data-t="${k}" class="${tab === k ? "on" : ""}">${l}</button>`).join("")}</div>
-    <form id="f">${body}<div class="err" id="e"></div><div class="row" style="margin-top:16px"><button class="primary" id="go">${label}</button></div></form>
+    <form id="f">${body}<div class="err" id="e"></div><div class="row" style="margin-top:16px"><button class="primary" id="go">${label}</button></div>
+    ${tab === "signup" ? `<p class="hint" id="opened" style="display:none">The website opened in your browser. Signed up and verified? <button type="button" class="linkbtn" id="tologin">Sign in here</button></p>` : ""}</form>
     <div class="demo">Demo · test money · no real funds</div>
   </div></div>`;
   document.querySelectorAll(".tabs button").forEach((b) => (b.onclick = () => renderSetup(b.dataset.t)));
+  const back = $("#back"); if (back) back.onclick = () => renderUnlock();
+  const tl = $("#tologin"); if (tl) tl.onclick = () => renderSetup("login");
   $("#f").onsubmit = async (ev) => {
     ev.preventDefault();
     const f = new FormData(ev.target), e = $("#e"), go = $("#go");
     e.style.display = "none";
     try {
-      go.disabled = true; go.textContent = "Working…";
+      busy(go, working);
+      if (tab === "signup") {
+        await api("/app/open-signup", "POST", { server: f.get("server") });
+        $("#opened").style.display = "block";
+        idle(go);
+        return;
+      }
       if (tab === "restore") {
         await api("/app/restore", "POST", { keyBackup: await f.get("file").text(), passphrase: f.get("passphrase") });
       } else {
         if (f.get("passphrase") !== f.get("again")) throw new Error("The app passphrases differ");
-        await api("/app/setup", "POST", { mode: tab === "link" ? "code" : tab, server: f.get("server"), code: f.get("code"), email: f.get("email"), password: f.get("password"), name: f.get("name"), passphrase: f.get("passphrase"), deviceName: f.get("deviceName") });
+        await api("/app/setup", "POST", { mode: tab === "link" ? "code" : tab, server: f.get("server"), code: f.get("code"), email: f.get("email"), password: f.get("password"), passphrase: f.get("passphrase"), deviceName: f.get("deviceName") });
       }
+      loadingScreen("Opening your wallet…");
       S.info = await api("/app/state");
-      render(); load();
-    } catch (err) { showErr(e, err); go.disabled = false; go.textContent = label; }
+      S.view = "overview";
+      await load();
+    } catch (err) { showErr(e, err); idle(go); }
   };
 }
 
@@ -220,17 +253,30 @@ async function renderOnboarding() {
 }
 
 function renderUnlock() {
+  const accounts = S.info.accounts || [];
+  const cur = S.info.current;
   const d = S.info.device;
   $("#root").innerHTML = `<div class="center"><div class="card narrow">
     <div class="brand"><span class="mark"></span>MilestonePay <span class="tag">Desktop</span></div>
-    <p>${esc(d.user)} · <span class="hint">${esc(d.name)}</span></p>
-    <form id="f"><label>Passphrase</label><input name="p" type="password" autofocus required />
-    <div class="err" id="e"></div><div class="row" style="margin-top:14px"><button class="primary" id="go">Unlock</button></div></form>
+    <div class="accounts">${accounts.map((a) => `<button type="button" class="acct ${a.id === cur ? "on" : ""}" data-acct="${esc(a.id)}"><span class="avatar">${esc(initials(a.user))}</span><span class="who"><b>${esc(a.user)}</b><small>${esc(a.deviceName)} · ${esc(host(a.server))}</small></span></button>`).join("")}</div>
+    <form id="f"><label>App passphrase${accounts.length > 1 && d ? ` for ${esc(d.user)}` : ""}</label><input name="p" type="password" autofocus required />
+    <div class="err" id="e"></div><div class="row space" style="margin-top:14px"><button class="primary" id="go">Unlock</button><button type="button" class="linkbtn" id="add">+ Add another account</button></div></form>
     <div class="demo">Demo · test money · no real funds</div></div></div>`;
+  document.querySelectorAll("[data-acct]").forEach((b) => (b.onclick = async () => {
+    if (b.dataset.acct === S.info.current) return;
+    try { S.info = await api("/app/select-account", "POST", { id: b.dataset.acct }); renderUnlock(); } catch (e) { showErr($("#e"), e); }
+  }));
+  $("#add").onclick = () => renderSetup("login");
   $("#f").onsubmit = async (ev) => {
     ev.preventDefault();
-    try { S.info = await api("/app/unlock", "POST", { passphrase: new FormData(ev.target).get("p") }); S.view = "overview"; render(); if (S.info.stage === "ready") load(); }
-    catch (err) { showErr($("#e"), err); }
+    const go = $("#go"), e = $("#e");
+    e.style.display = "none";
+    busy(go, "Unlocking…");
+    try {
+      S.info = await api("/app/unlock", "POST", { passphrase: new FormData(ev.target).get("p") });
+      S.view = "overview";
+      if (S.info.stage === "ready") { loadingScreen("Opening your wallet…"); await load(); } else render();
+    } catch (err) { showErr(e, err); idle(go); }
   };
 }
 

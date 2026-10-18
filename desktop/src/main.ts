@@ -70,6 +70,20 @@ async function route(req: Request, path: string, port: number): Promise<Response
     return json(wallet.info());
   }
   if (m === "POST" && path === "/app/lock") return (wallet.lock(), json(wallet.info()));
+  if (m === "POST" && path === "/app/select-account") return (wallet.selectAccount(String((await body<{ id: string }>(req)).id ?? "")), json(wallet.info()));
+  if (m === "POST" && path === "/app/open-signup") {
+    // New accounts are made on the website (sign-up, identity check, wallet); the app then signs in.
+    const raw = String((await body<{ server?: string }>(req)).server ?? "") || wallet.info().defaultServer;
+    let url: URL;
+    try {
+      url = new URL("/login", new URL(raw).origin);
+    } catch {
+      return json({ error: "Enter the server address, e.g. https://agentic-wallet-inky.vercel.app" }, 400);
+    }
+    if (url.protocol !== "https:" && url.hostname !== "localhost" && url.hostname !== "127.0.0.1") return json({ error: "The server must use https" }, 400);
+    openBrowser(url.toString());
+    return json({ url: url.toString() });
+  }
   if (m === "POST" && path === "/app/sync") return json(await wallet.sync());
   if (m === "GET" && path === "/app/account") return json(await wallet.account_());
   if (m === "GET" && path === "/app/deals") return json(await wallet.deals());

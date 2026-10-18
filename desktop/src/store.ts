@@ -10,6 +10,12 @@ import { chainPath } from "./paths";
  */
 let db: Database | null = null;
 
+/** Switching accounts: the next call opens the other account's chain file. */
+export function closeStore() {
+  db?.close();
+  db = null;
+}
+
 function open() {
   if (db) return db;
   db = new Database(chainPath(), { create: true });

@@ -3,7 +3,7 @@ import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 
 import { type Hex, keccak256, concat, toHex } from "viem";
 
-import { vaultPath } from "./paths";
+import { lastProfilePath, migrateSingleAccount, profileIds, vaultPath, vaultPathOf } from "./paths";
 
 /**
  * The device key, encrypted with the user's passphrase (scrypt + AES-256-GCM), with what the app
@@ -51,6 +51,26 @@ export function openKey(file: VaultFile, passphrase: string): Hex {
 }
 
 export const hasVault = () => existsSync(vaultPath());
+
+/** The accounts on this computer (what the account picker shows; never the key). */
+export function listAccounts() {
+  migrateSingleAccount((f) => JSON.parse(readFileSync(f, "utf8")).address);
+  return profileIds()
+    .map((id) => {
+      const v = JSON.parse(readFileSync(vaultPathOf(id), "utf8")) as VaultFile;
+      return { id, address: v.address, user: v.user, deviceName: v.deviceName, server: v.server, wallet: v.wallet, linkedAt: v.linkedAt };
+    })
+    .sort((a, b) => b.linkedAt - a.linkedAt);
+}
+
+export const lastAccount = (): string | null => {
+  try {
+    return readFileSync(lastProfilePath(), "utf8").trim() || null;
+  } catch {
+    return null;
+  }
+};
+export const rememberAccount = (id: string) => writeFileSync(lastProfilePath(), id, { mode: 0o600 });
 export const readVault = (): VaultFile => JSON.parse(readFileSync(vaultPath(), "utf8"));
 export function writeVault(file: VaultFile) {
   writeFileSync(vaultPath(), JSON.stringify(file, null, 2), { mode: 0o600 });

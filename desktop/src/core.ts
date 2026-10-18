@@ -24,7 +24,8 @@ import {
 } from "../../web/src/lib/device-chain/format";
 import { ApiError, plain, signed, signedForm } from "./api";
 import * as store from "./store";
-import { type VaultFile, WrongPassphrase, hasVault, openBackup, openKey, openLocal, readVault, sealBackup, sealKey, sealLocal, writeVault } from "./vault";
+import { currentProfile, setProfile } from "./paths";
+import { type VaultFile, WrongPassphrase, hasVault, lastAccount, listAccounts, openBackup, openKey, openLocal, readVault, rememberAccount, sealBackup, sealKey, sealLocal, writeVault } from "./vault";
 
 export const DEFAULT_SERVER = "https://agentic-wallet-inky.vercel.app";
 
@@ -58,12 +59,48 @@ const osName = () => ({ darwin: "macOS", win32: "Windows", linux: "Linux" })[pla
  * Every chain change runs one at a time (a promise queue), so blocks never race each other.
  */
 class Wallet {
-  vault: VaultFile | null = hasVault() ? readVault() : null;
+  vault: VaultFile | null = null;
   account: PrivateKeyAccount | null = null;
   private key: Hex | null = null;
   requests: WebRequest[] = [];
   lastSync: { at: number; ok: boolean; error?: string; added: number } | null = null;
   private queue: Promise<unknown> = Promise.resolve();
+
+  constructor() {
+    // The account last used on this computer (or the newest) is the one the unlock screen offers first.
+    const accounts = listAccounts();
+    const last = lastAccount();
+    const pick = accounts.find((a) => a.id === last) ?? accounts[0];
+    if (pick) {
+      setProfile(pick.id);
+      this.vault = hasVault() ? readVault() : null;
+    }
+  }
+
+  /** The unlock screen's account picker: switch to another account on this computer (locks the open one). */
+  selectAccount(id: string) {
+    if (!listAccounts().some((a) => a.id === id)) throw new ApiError(404, "That account is not on this computer");
+    this.lock();
+    this.lastSync = null;
+    store.closeStore();
+    setProfile(id);
+    this.vault = readVault();
+    rememberAccount(id);
+  }
+
+  /** Before adding another account: nothing is open while its set-up runs. */
+  private leaveCurrent(): { id: string | null; vault: VaultFile | null } {
+    if (this.account) throw new ApiError(409, "Lock this account first");
+    const was = { id: currentProfile(), vault: this.vault };
+    store.closeStore();
+    return was;
+  }
+
+  private backTo(was: { id: string | null; vault: VaultFile | null }) {
+    store.closeStore();
+    setProfile(was.id);
+    this.vault = was.vault;
+  }
 
   private serial<T>(fn: () => Promise<T>): Promise<T> {
     const run = this.queue.then(fn, fn);
@@ -105,8 +142,8 @@ class Wallet {
    * making an account right here), encrypts the key with the passphrase and starts the chain.
    */
   async setup(input: { mode?: "code" | "login" | "signup"; server: string; code?: string; email?: string; password?: string; name?: string; passphrase: string; deviceName?: string }) {
-    if (this.vault) throw new ApiError(409, "This computer is already set up");
     if (input.passphrase.length < 8) throw new ApiError(400, "Use a passphrase of at least 8 characters");
+    if (this.account) throw new ApiError(409, "Lock this account first");
     const server = new URL(input.server.trim() || DEFAULT_SERVER).origin;
     const key = generatePrivateKey();
     const account = privateKeyToAccount(key);
@@ -122,6 +159,10 @@ class Wallet {
       const sig = await account.signMessage({ message: accountMessage(mode, email, account.address) });
       linked = await plain(server, `/api/device/${mode}`, { email, password: input.password ?? "", name: input.name, address: account.address, deviceName, os: osName(), sig });
     }
+    // The new account gets its own folder; the one shown before stays as it was.
+    this.leaveCurrent();
+    setProfile(account.address);
+    rememberAccount(account.address.toLowerCase());
     const vault = sealKey(key, input.passphrase, {
       address: account.address,
       server,
@@ -186,6 +227,8 @@ class Wallet {
       this.lock();
       throw new ApiError(500, "The vault is damaged (its key does not match its address)");
     }
+    const id = currentProfile();
+    if (id) rememberAccount(id);
   }
 
   lock() {
@@ -196,7 +239,6 @@ class Wallet {
 
   /** A new computer: the key backup file + passphrase, then the chain from the encrypted server backup. */
   async restore(input: { keyBackup: string; passphrase: string }) {
-    if (this.vault) throw new ApiError(409, "This computer is already set up");
     let vault: VaultFile;
     try {
       vault = JSON.parse(input.keyBackup);
@@ -204,6 +246,9 @@ class Wallet {
     } catch {
       throw new ApiError(400, "That is not an Agentic Wallet key backup file");
     }
+    if (listAccounts().some((a) => a.address.toLowerCase() === String(vault.address).toLowerCase())) throw new ApiError(409, "This account is already on this computer: choose it on the unlock screen");
+    const was = this.leaveCurrent();
+    setProfile(vault.address);
     this.vault = vault;
     try {
       this.unlock(input.passphrase);
@@ -217,10 +262,11 @@ class Wallet {
       writeVault(vault);
       store.replaceAll(blocks);
     } catch (e) {
-      this.vault = null;
       this.lock();
+      this.backTo(was);
       throw e;
     }
+    rememberAccount(String(vault.address).toLowerCase());
     return this.sync();
   }
 
@@ -670,7 +716,9 @@ class Wallet {
     return {
       stage: this.stage(),
       device: v ? { address: v.address, name: v.deviceName, user: v.user, wallet: v.wallet, server: v.server, linkedAt: v.linkedAt } : null,
-      height: store.head()?.height ?? null,
+      height: v ? (store.head()?.height ?? null) : null,
+      accounts: listAccounts(),
+      current: currentProfile(),
       lastSync: this.lastSync,
       requests: this.requests,
       agentRequests: this.vault && this.account ? this.agentRequests().filter((r) => r.status === "PENDING") : [],
