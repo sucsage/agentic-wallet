@@ -1,3 +1,4 @@
+import { VERSION } from "./version";
 import { existsSync, readFileSync } from "node:fs";
 
 import { sessionPath } from "./paths";
@@ -10,7 +11,6 @@ import { sessionPath } from "./paths";
  * pay on its own.
  */
 
-const VERSION = "0.1.0";
 const PROTOCOL = "2025-06-18";
 
 type Tool = { name: string; description: string; inputSchema: Record<string, unknown>; run: (args: Record<string, unknown>) => Promise<unknown> };

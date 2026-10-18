@@ -1,3 +1,5 @@
+import { VERSION } from "./version";
+import { spawn as spawnProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
@@ -5,6 +7,7 @@ import { ApiError } from "./api";
 import { wallet } from "./core";
 import { MCP_TOOLS, runMcp } from "./mcp";
 import { clientStatus, setClient } from "./mcp-clients";
+import { checkUpdate, cleanOldExecutable, installUpdate } from "./updater";
 import { dataDir, sessionPath } from "./paths";
 import indexHtml from "./ui/index.html" with { type: "text" };
 import markdownJs from "./ui/markdown.js" with { type: "text" };
@@ -17,7 +20,6 @@ const PAGE = (indexHtml as unknown as string).replace("/*MARKDOWN*/", () => mark
  * 127.0.0.1 and opens it in the default browser. Only this computer can reach it, and only with the
  * token in the opened URL: other web pages cannot call it (no CORS, a custom header, Host checked).
  */
-const VERSION = "0.1.0";
 const PREFERRED_PORT = 47821;
 const args = new Set(process.argv.slice(2));
 const noOpen = args.has("--no-open");
@@ -109,6 +111,16 @@ async function route(req: Request, path: string, port: number): Promise<Response
     );
   }
   if (m === "POST" && path === "/app/confirm-draft") return json(await wallet.confirmDraft(String((await body<{ draftId: string }>(req)).draftId ?? "")));
+  if (m === "GET" && path === "/app/update") return json(await checkUpdate(new URL(req.url).searchParams.has("force")));
+  if (m === "POST" && path === "/app/update") {
+    const version = await installUpdate();
+    restartSoon();
+    return json({ ok: true, version });
+  }
+  if (m === "POST" && path === "/app/quit") {
+    setTimeout(() => process.exit(0), 300);
+    return json({ ok: true });
+  }
   if (m === "GET" && path === "/app/mcp") return json(mcpView());
   if (m === "POST" && path === "/app/mcp/settings") return (wallet.setMcpSettings(await body(req)), json(mcpView()));
   if (m === "POST" && path === "/app/mcp/client") {
@@ -255,10 +267,41 @@ async function agentAnswer(req: Request, path: string, client: string): Promise<
   return json({ error: "Not found" }, 404);
 }
 
+/** Restarts this executable (after an update) with the same arguments; the new process takes over the port and the open tab. */
+function restartSoon() {
+  const args = [...process.argv.slice(2).filter((a) => a !== "--restarted"), "--restarted"];
+  setTimeout(() => {
+    const child = spawnProcess(process.execPath, args, { detached: true, stdio: "ignore", env: process.env });
+    child.unref();
+    process.exit(0);
+  }, 400);
+}
+
+/** After an update: wait for the old process to leave, then reuse its port and token (the open tab keeps working). */
+async function takeOver(): Promise<{ port: number; token: string } | null> {
+  try {
+    const s = JSON.parse(readFileSync(sessionPath(), "utf8")) as { port: number; token: string; pid: number };
+    for (let i = 0; i < 60; i++) {
+      try {
+        process.kill(s.pid, 0);
+      } catch {
+        return { port: s.port, token: s.token };
+      }
+      await Bun.sleep(250);
+    }
+  } catch {
+    // no session: start fresh
+  }
+  return null;
+}
+
 async function main() {
   if (process.argv.includes("--mcp")) return runMcp();
-  if (await alreadyRunning()) return;
-  const token = randomBytes(24).toString("base64url");
+  const restarted = process.argv.includes("--restarted");
+  const previous = restarted ? await takeOver() : null;
+  if (!restarted && (await alreadyRunning())) return;
+  cleanOldExecutable();
+  const token = previous?.token ?? randomBytes(24).toString("base64url");
   // A second, weaker token for MCP agents (read and queue only), kept in the same private file.
   const agentToken = randomBytes(24).toString("base64url");
   const handler = async (req: Request, port: number) => {
@@ -316,7 +359,7 @@ async function main() {
   let server: ReturnType<typeof Bun.serve>;
   const serve = (port: number) => Bun.serve({ hostname: "127.0.0.1", port, idleTimeout: 120, fetch: (req) => handler(req, server.port!) });
   try {
-    server = serve(PREFERRED_PORT);
+    server = serve(previous?.port ?? PREFERRED_PORT);
   } catch {
     server = serve(0);
   }
@@ -326,7 +369,8 @@ async function main() {
   console.log(`Data: ${dataDir()}`);
   console.log(`Open: ${url}`);
   console.log("Keep this window open while you use the app; close it to quit.");
-  openBrowser(url);
+  // Restarted after an update on the same port and token: the tab already open reconnects by itself.
+  if (!previous || previous.port !== server.port) openBrowser(url);
   // Background sync while unlocked.
   setInterval(() => {
     if (wallet.stage() === "ready") wallet.sync().catch(() => undefined);

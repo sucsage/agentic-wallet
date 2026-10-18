@@ -1,0 +1,91 @@
+# MilestonePay desktop: installers for macOS, Windows and Linux, published as a GitHub Release.
+# Runs when a tag desktop-v<version> is pushed (the version must match desktop/package.json).
+# The app's updater and the website's /download page read the release's latest.json.
+name: Desktop release
+
+on:
+  push:
+    tags: ["desktop-v*"]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: desktop
+    shell: bash
+
+jobs:
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with: { bun-version: "1.4.3" }
+      - run: bun install --frozen-lockfile
+      - run: bun test
+      - run: bun run build mac-arm64 mac-x64
+      - name: Apps and disk images
+        run: |
+          V=${GITHUB_REF_NAME#desktop-v}
+          bash packaging/macos/make-dmg.sh arm64 "$V"
+          bash packaging/macos/make-dmg.sh x64 "$V"
+      - uses: actions/upload-artifact@v4
+        with: { name: macos, path: "desktop/dist/*", if-no-files-found: error }
+
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with: { bun-version: "1.4.3" }
+      - run: bun install --frozen-lockfile
+      - run: bun run build windows-x64
+      - name: Installer (Inno Setup)
+        run: |
+          V=${GITHUB_REF_NAME#desktop-v}
+          ISCC="/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
+          if [ ! -f "$ISCC" ]; then choco install innosetup -y --no-progress; fi
+          "$ISCC" "/DAppVersion=$V" "/DSourceExe=..\\..\\dist\\AgenticWallet-windows-x64.exe" packaging/windows/installer.iss
+      - uses: actions/upload-artifact@v4
+        with: { name: windows, path: "desktop/dist/*", if-no-files-found: error }
+
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with: { bun-version: "1.4.3" }
+      - run: bun install --frozen-lockfile
+      - run: bun test
+      - run: bun run build linux-x64 linux-arm64
+      - name: Debian packages
+        run: |
+          V=${GITHUB_REF_NAME#desktop-v}
+          bash packaging/linux/make-deb.sh x64 "$V"
+          bash packaging/linux/make-deb.sh arm64 "$V"
+      - uses: actions/upload-artifact@v4
+        with: { name: linux, path: "desktop/dist/*", if-no-files-found: error }
+
+  release:
+    needs: [macos, windows, linux]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with: { bun-version: "1.4.3" }
+      - uses: actions/download-artifact@v4
+        with: { path: desktop/dist, merge-multiple: true }
+      - name: Check the version
+        run: |
+          V=${GITHUB_REF_NAME#desktop-v}
+          test "$V" = "$(bun -e 'console.log((await Bun.file("package.json").json()).version)')" || { echo "Tag $V does not match package.json"; exit 1; }
+      - run: bun run scripts/release-manifest.ts "${GITHUB_REF_NAME#desktop-v}" "release-notes/${GITHUB_REF_NAME#desktop-v}.md"
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V=${GITHUB_REF_NAME#desktop-v}
+          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "MilestonePay Desktop $V (test mode demo)" --notes-file "release-notes/$V.md" --latest

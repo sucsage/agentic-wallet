@@ -346,7 +346,7 @@ function renderApp() {
   $("#root").innerHTML = `<div class="layout"><nav>
       <div class="brand"><span class="mark"></span>MilestonePay</div>
       ${groups.map(([g, ks]) => `<div class="group">${g}</div>${ks.map((k) => `<button data-v="${k}" class="${S.view === k ? "on" : ""}">${label[k]}</button>`).join("")}`).join("")}
-      <div class="foot"><div class="avatar">${esc(initials)}</div><div class="who"><b>${esc(d.user)}</b><small>${esc(d.name)}</small></div><button id="lock" title="Lock the app">Lock</button></div>
+      ${updateNudge()}<div class="foot"><div class="avatar">${esc(initials)}</div><div class="who"><b>${esc(d.user)}</b><small>${esc(d.name)}</small></div><button id="lock" title="Lock the app">Lock</button></div>
     </nav><main id="main"></main></div>`;
   document.querySelectorAll("nav [data-v]").forEach((b) => (b.onclick = () => { S.view = b.dataset.v; renderApp(); load(); }));
   $("#lock").onclick = async () => { S.info = await api("/app/lock", "POST"); render(); };
@@ -543,7 +543,11 @@ function renderView() {
       <div class="card" style="margin-top:12px"><h2>Backups</h2>
         <p class="hint">Your chain is backed up to the server after every sync, encrypted with a key only your device key can make: the server cannot read it. To move to a new computer you need the <b>key backup file</b> and your passphrase.</p>
         <a href="/app/key-backup?t=${encodeURIComponent(TOKEN)}" download><button class="primary">Save key backup</button></a>
-        <p class="hint">Keep the file somewhere safe (it is encrypted with your passphrase). Lost computer? Remove it on the website (Profile → Desktop app).</p></div>`;
+        <p class="hint">Keep the file somewhere safe (it is encrypted with your passphrase). Lost computer? Remove it on the website (Profile → Desktop app).</p></div>
+      <div class="card" style="margin-top:12px"><h2>App version and updates</h2><div id="upd">${updateHtml()}</div></div>
+      <div class="card" style="margin-top:12px"><h2>Quit</h2><p class="hint">The app keeps running in the background while this tab is closed (AI agents and syncing use it). Quit stops it; open MilestonePay again to start it.</p><button id="quit" class="danger">Quit MilestonePay</button></div>`;
+    $("#quit").onclick = async () => { if (!confirm("Quit MilestonePay? Open it again to use it.")) return; await api("/app/quit", "POST").catch(() => null); $("#root").innerHTML = `<div class="center"><div class="card narrow">MilestonePay has stopped. You can close this tab.</div></div>`; };
+    wireUpdate();
   }
   wireDealButtons();
   wireRequestButtons();
@@ -565,6 +569,42 @@ function dealFiles(d) {
 function dealsShown() {
   const q = (S.dealQ || "").trim().toLowerCase(), f = S.dealFile || "all";
   return (S.deals || []).filter((d) => (f === "all" || dealFiles(d)[f]) && (!q || [`d-${d.id}`, d.title, d.counterpartyLabel, d.counterparty, d.status].some((x) => String(x || "").toLowerCase().includes(q))));
+}
+
+function updateHtml() {
+  const u = S.update;
+  if (!u) return `<div class="loading"><span class="spin"></span>Checking for updates…</div>`;
+  if (S.updating) return `<div class="loading"><span class="spin"></span>${esc(S.updating)}</div>`;
+  return `<table><tr><th>This version</th><td>${esc(u.current)} <span class="hint">(${esc(u.platform)})</span></td></tr><tr><th>Latest release</th><td>${u.latest ? esc(u.latest) : "-"}${u.date ? ` <span class="hint">${new Date(u.date).toLocaleDateString()}</span>` : ""}</td></tr></table>
+    ${u.available ? `<div class="banner" style="margin:10px 0 0"><b>Version ${esc(u.latest)} is out.</b>${u.notes ? `<div class="hint" style="white-space:pre-wrap;margin-top:4px">${esc(u.notes).slice(0, 600)}</div>` : ""}</div>` : u.latest ? `<p class="ok-box" style="margin:10px 0 0">You have the latest version.</p>` : ""}
+    ${u.reason && u.available ? `<p class="hint">${esc(u.reason)}</p>` : u.reason && !u.latest ? `<p class="hint">${esc(u.reason)}</p>` : ""}
+    <div class="row" style="margin-top:10px">${u.canInstall ? `<button class="primary" id="upd-go">Update to ${esc(u.latest)} and restart</button>` : ""}<button id="upd-check">Check now</button>${u.page ? `<a href="${esc(u.page)}" target="_blank" rel="noopener"><button>Release page</button></a>` : ""}</div>
+    ${u.canInstall ? `<p class="hint">The new version is checked against its SHA-256 before it replaces this one. The app restarts and asks for your passphrase again.</p>` : ""}`;
+}
+
+function wireUpdate() {
+  const c = $("#upd-check"); if (c) c.onclick = async () => { S.update = null; $("#upd").innerHTML = updateHtml(); S.update = await api("/app/update?force=1").catch((e) => ({ current: "?", reason: e.message })); renderView(); };
+  const g = $("#upd-go"); if (g) g.onclick = async () => {
+    if (!confirm(`Update MilestonePay to ${S.update.latest}? It restarts and asks for your passphrase again.`)) return;
+    S.updating = "Downloading and checking the new version…"; $("#upd").innerHTML = updateHtml();
+    try {
+      const r = await api("/app/update", "POST");
+      S.updating = `Restarting as version ${r.version}…`; $("#upd").innerHTML = updateHtml();
+      // The new process takes over the same port and token; reload once it answers with the new version.
+      for (let i = 0; i < 80; i++) {
+        await new Promise((ok) => setTimeout(ok, 500));
+        const p = await fetch("/ping").then((x) => x.json()).catch(() => null);
+        if (p && p.version === r.version) { location.reload(); return; }
+      }
+      S.updating = null; toast("The app did not come back: open MilestonePay again"); renderView();
+    } catch (e) { S.updating = null; toast(e.message); renderView(); }
+  };
+}
+
+/** A line in the menu when a newer version is out (checked once per launch). */
+function updateNudge() {
+  const u = S.update;
+  return u && u.available ? `<button data-v="settings" style="color:var(--accent);font-weight:700">⬆ Update to ${esc(u.latest)}</button>` : "";
 }
 
 function friendResults() {
@@ -1057,6 +1097,7 @@ function wireRepair() {
 
 async function load() {
   if (S.info.stage !== "ready") return;
+  if (S.update === undefined) { S.update = null; api("/app/update").then((u) => { S.update = u; if (S.info.stage === "ready") renderApp(); }).catch(() => undefined); }
   try {
     S.info = await api("/app/state");
     if (S.view === "overview") { const [a, d] = await Promise.all([api("/app/account"), api("/app/deals")]); S.account = a; S.deals = d.deals; }

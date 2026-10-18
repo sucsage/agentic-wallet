@@ -75,13 +75,11 @@ export function DesktopAppCard() {
 
       <div className="aw-desktop-download">
         {s?.downloads ? (
-          <a href={s.downloads} target="_blank" rel="noreferrer">
-            Download the app
-          </a>
+          <a href={s.downloads}>Download the app (macOS, Windows, Linux)</a>
         ) : (
           <span>Download: ask the team for the build for your computer (desktop/ in the repository builds all of them).</span>
         )}
-        <small>Test mode demo · the app is unsigned, so Windows and macOS ask once before opening it.</small>
+        <small>Test mode demo · the app is unsigned, so Windows and macOS ask once before opening it. It updates itself (Settings in the app).</small>
       </div>
 
       {s && active.length > 0 && (

@@ -416,7 +416,7 @@ export async function deviceSettings(userId: string) {
     myDevices(userId),
     db.deviceRequest.count({ where: { userId, status: "PENDING" } }),
   ]);
-  return { deviceSigns: pref?.deviceSigns ?? false, devices, pendingRequests: requests, server: serverSigner(), downloads: process.env.DESKTOP_DOWNLOAD_URL ?? null };
+  return { deviceSigns: pref?.deviceSigns ?? false, devices, pendingRequests: requests, server: serverSigner(), downloads: process.env.DESKTOP_DOWNLOAD_URL ?? "/download" };
 }
 
 // ------------------------------------------------------------------------------------------
