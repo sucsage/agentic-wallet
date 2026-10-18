@@ -72,6 +72,33 @@ async function route(req: Request, path: string): Promise<Response> {
   if (m === "POST" && path === "/app/repair") return json(await wallet.repair());
   if (m === "POST" && path === "/app/verify") return json(await wallet.verify());
   if (m === "POST" && path === "/app/move") return json(await wallet.move(await body(req)));
+  if (m === "POST" && path === "/app/deliver") {
+    const form = await req.formData();
+    const f = form.get("file");
+    const file = f instanceof File && f.size > 0 ? { name: f.name, mime: f.type, bytes: new Uint8Array(await f.arrayBuffer()) } : undefined;
+    if (file && file.bytes.length > 4 * 1024 * 1024) return json({ error: "The file is larger than 4 MB" }, 413);
+    return json(
+      await wallet.deliver({
+        dealId: Number(form.get("dealId")),
+        index: Number(form.get("index")),
+        note: String(form.get("note") ?? ""),
+        file,
+        carrier: String(form.get("carrier") ?? "") || undefined,
+        tracking: String(form.get("tracking") ?? "") || undefined,
+      }),
+    );
+  }
+  if (m === "POST" && path === "/app/confirm-draft") return json(await wallet.confirmDraft(String((await body<{ draftId: string }>(req)).draftId ?? "")));
+  if (m === "GET" && path === "/app/contacts") return json(await wallet.contacts());
+  if (m === "POST" && path === "/app/payee") {
+    const b = await body<{ friendshipId: string; allowed: boolean }>(req);
+    return json(await wallet.payee(String(b.friendshipId ?? ""), b.allowed === true));
+  }
+  if (m === "GET" && path === "/app/drafts") return json(await wallet.drafts());
+  if (m === "GET" && path === "/app/activity") return json(await wallet.activity());
+  if (m === "GET" && path === "/app/chat") return json({ history: wallet.chatHistory() });
+  if (m === "POST" && path === "/app/chat") return json(await wallet.chat(await body(req)));
+  if (m === "POST" && path === "/app/chat/clear") return (wallet.clearChat(), json({ ok: true }));
   if (m === "GET" && path === "/app/key-backup")
     return new Response(wallet.keyBackup(), {
       headers: { "content-type": "application/json", "content-disposition": 'attachment; filename="agentic-wallet-key-backup.json"', "cache-control": "no-store" },

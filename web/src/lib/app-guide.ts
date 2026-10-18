@@ -173,7 +173,7 @@ Witnesses (optional): each side can add one under "Witnesses"; they appear on th
 1. Get the app for your computer from the team (one file; the first time, Windows asks "More info → Run anyway", macOS: right-click → Open). It opens in your browser.
 2. On the website: Profile → Desktop app → "Make a link code" (valid 10 minutes).
 3. In the app: type the code, name the computer, choose a passphrase (it encrypts the computer's key; nobody can reset it).
-4. Approve, dispute, accept or refund in the app: each is a block you sign; the server carries it out. Delivering files and drafting deals stay on the website (files and the AI).
+4. Use the app for everyday work, each move a block you sign: AI chat (draft deals, then "Confirm and sign" under the chat), Deals (Deliver with a file, note or parcel; Approve, Dispute, Accept, Refund), Contacts (Make payee / Stop paying), Activity (money in and out). Sign-up, identity check, top-ups, adding friends and groups stay on the website.
 5. Profile → "My desktop app signs deal moves": moves pressed on the website then wait for your signature in the app ("Sign" or "Reject").
 6. Settings → "Save key backup" and keep the file: on a new computer, "Restore from backup" with that file and your passphrase brings the chain back (the chain itself is backed up to the server encrypted; the server cannot read it). Lost computer: Profile → Desktop app → Remove.
 - "Verify now" checks every block, that your latest block matches the server's countersigned one, and that it is in the blockchain anchor.`,

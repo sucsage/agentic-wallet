@@ -1,6 +1,8 @@
 import "server-only";
 
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
+
+import { after } from "next/server";
 
 import { type Address, type Hex, getAddress, isAddress, isHex, keccak256 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -11,11 +13,15 @@ import { chainAnchorAbi } from "../abis";
 import { accountOf } from "../bank/ledger";
 import { customerOfUser } from "../bank/customers";
 import { type DealMove, DEAL_MOVES, runDealMove } from "../bank/deal-actions";
-import { dealTerms } from "../bank/deals";
+import { appOrigin, confirmDraft } from "../bank/confirm-draft";
+import { DealError, dealTerms, deliver, syncDeal } from "../bank/deals";
+import { type DraftMilestone, deliveryOf, draftView, listDrafts } from "../bank/drafts";
+import { CARRIERS, type Carrier } from "../post";
 import { send } from "../chain";
 import { db } from "../db";
 import { HttpError } from "../guard";
 import { hmac } from "../kyc";
+import { SocialError, listFriends, setFriendPayee } from "../social";
 import { readFileDeals } from "../state";
 import { primaryWalletAddress } from "../user-wallets";
 import {
@@ -130,7 +136,7 @@ export async function revokeDevice(userId: string, address: string) {
  * the method, path, time and body. The time must be within 5 minutes, and the same signed request is
  * refused a second time (its signature is remembered for that window), so a copied request cannot be replayed.
  */
-export async function authDevice(req: Request, body: string) {
+export async function authDevice(req: Request, body: string | Uint8Array) {
   const address = req.headers.get("x-aw-device") ?? "";
   const time = Number(req.headers.get("x-aw-time"));
   const sig = req.headers.get("x-aw-sig") ?? "";
@@ -216,7 +222,9 @@ const headOf = (d: { headHeight: number | null; headHash: string | null; headSer
 // Blocks
 // ------------------------------------------------------------------------------------------
 
-const Moves = new Set<string>([...DEAL_MOVES, "reject"]);
+const Moves = new Set<string>([...DEAL_MOVES, "reject", "deliver", "confirm_draft", "payee"]);
+
+export type Upload = { name: string; mime: string; bytes: Buffer };
 
 /**
  * The device sends the blocks it appended since its last head. Checked: every hash and device
@@ -224,7 +232,7 @@ const Moves = new Set<string>([...DEAL_MOVES, "reject"]);
  * signed events for the device's wallet, and that intents are well-formed. The new head is stored
  * (countersigned) before any intent runs, so a move can never happen without being on the chain.
  */
-export async function submitBlocks(device: DeviceRow, blocks: SignedBlock[]) {
+export async function submitBlocks(device: DeviceRow, blocks: SignedBlock[], upload: Upload | null = null) {
   if (!Array.isArray(blocks) || !blocks.length) throw new DeviceError(400, "No blocks");
   if (blocks.length > MAX_BLOCKS_PER_SUBMIT) throw new DeviceError(400, `Up to ${MAX_BLOCKS_PER_SUBMIT} blocks at a time`);
   const owner = getAddress(device.address);
@@ -244,10 +252,23 @@ export async function submitBlocks(device: DeviceRow, blocks: SignedBlock[]) {
       const i = b.body as IntentBody;
       if (!Moves.has(i.action) || !Number.isInteger(i.dealId) || !Number.isInteger(i.index) || i.index < 0 || i.index > 20) throw new DeviceError(400, `Block ${b.height}: not a deal move`);
       if (i.reason !== undefined && (typeof i.reason !== "string" || i.reason.length > 2000)) throw new DeviceError(400, `Block ${b.height}: reason too long`);
+      if (i.action === "deliver") {
+        if (i.note !== undefined && (typeof i.note !== "string" || i.note.length > 4000)) throw new DeviceError(400, `Block ${b.height}: note too long`);
+        if (i.fileSha256 !== undefined && !/^[0-9a-f]{64}$/.test(String(i.fileSha256))) throw new DeviceError(400, `Block ${b.height}: bad file hash`);
+        if (i.carrier !== undefined && !(CARRIERS as readonly string[]).includes(String(i.carrier))) throw new DeviceError(400, `Block ${b.height}: unknown carrier`);
+        if ((i.fileName?.length ?? 0) > 200 || (i.tracking?.length ?? 0) > 40) throw new DeviceError(400, `Block ${b.height}: too long`);
+      }
+      if (i.action === "confirm_draft" && (typeof i.draftId !== "string" || i.draftId.length > 40)) throw new DeviceError(400, `Block ${b.height}: which preview?`);
+      if (i.action === "payee" && (typeof i.friendshipId !== "string" || i.friendshipId.length > 40 || typeof i.allowed !== "boolean")) throw new DeviceError(400, `Block ${b.height}: which contact?`);
       if (Math.abs(Date.now() - b.time) > MAX_SKEW_MS) throw new DeviceError(400, `Block ${b.height}: a deal move must be sent when it is signed`);
       intents.push(b as Block & { kind: "intent"; hash: Hex });
     }
   }
+  const delivers = intents.filter((b) => b.body.action === "deliver");
+  if (delivers.length > 1) throw new DeviceError(400, "One delivery at a time");
+  if (upload && !delivers.some((b) => b.body.fileSha256)) throw new DeviceError(400, "A file needs a signed delivery that names its hash");
+  if (upload && createHash("sha256").update(upload.bytes).digest("hex") !== delivers[0].body.fileSha256) throw new DeviceError(400, "The file is not the one the delivery block signed (sha256 differs)");
+  if (delivers[0]?.body.fileSha256 && !upload) throw new DeviceError(400, "The delivery block names a file that was not sent");
   const known = await db.dealEvent.findMany({ where: { id: { in: eventIds } }, select: { id: true } });
   if (known.length !== new Set(eventIds).size) throw new DeviceError(409, "A deal event in these blocks is not one this server signed");
 
@@ -265,7 +286,7 @@ export async function submitBlocks(device: DeviceRow, blocks: SignedBlock[]) {
   });
 
   const results = [];
-  for (const b of intents) results.push(await runIntent(device, b));
+  for (const b of intents) results.push(await runIntent(device, b, upload));
   return { head: { height: last.height, hash: last.hash, serverSig }, intents: results };
 }
 
@@ -273,7 +294,7 @@ export async function submitBlocks(device: DeviceRow, blocks: SignedBlock[]) {
 const jsonSafe = (v: unknown) =>
   v === undefined || v === null ? Prisma.JsonNull : (JSON.parse(JSON.stringify(v, (_, x) => (typeof x === "bigint" ? x.toString() : x))) as Prisma.InputJsonValue);
 
-async function runIntent(device: DeviceRow, b: Block & { kind: "intent"; hash: Hex }) {
+async function runIntent(device: DeviceRow, b: Block & { kind: "intent"; hash: Hex }, upload: Upload | null) {
   const i = b.body;
   const record = (status: string, result: unknown) =>
     db.deviceIntent.create({
@@ -306,6 +327,32 @@ async function runIntent(device: DeviceRow, b: Block & { kind: "intent"; hash: H
   try {
     const customer = await customerOfUser(device.userId);
     if (!customer) throw new DeviceError(403, "Sign in through the Mock Bank on the website first");
+    const wallet = getAddress(device.walletAddress);
+    if (i.action === "deliver") {
+      const result = await deliver(device.userId, wallet, i.dealId, i.index, {
+        note: i.note ?? "",
+        file: upload ? { name: (i.fileName || upload.name).slice(0, 200), mime: upload.mime, bytes: upload.bytes } : null,
+        parcel: i.carrier ? { carrier: i.carrier as Carrier, tracking: i.tracking || undefined } : null,
+      }).catch((e) => {
+        throw e instanceof DealError ? new DeviceError(400, e.message) : e;
+      });
+      after(() => syncDeal(wallet, i.dealId).catch((e) => console.error("syncDeal", i.dealId, e)));
+      await record("done", result);
+      return { block: b.hash, ok: true, result: jsonSafe(result) };
+    }
+    if (i.action === "payee") {
+      const outcome = await setFriendPayee(device.userId, i.friendshipId!, i.allowed!, wallet).catch((e) => {
+        throw e instanceof SocialError ? new DeviceError(400, e.message) : e;
+      });
+      if (outcome.status !== "success") throw new DeviceError(400, outcome.error);
+      await record("done", outcome);
+      return { block: b.hash, ok: true, result: jsonSafe(outcome) };
+    }
+    if (i.action === "confirm_draft") {
+      const result = await confirmDraft(device.userId, wallet, i.draftId!, appOrigin());
+      await record("done", { draft: i.draftId });
+      return { block: b.hash, ok: true, result: jsonSafe(result) };
+    }
     const result = await runDealMove(
       { userId: device.userId, currency: customer.currency, wallet: getAddress(device.walletAddress) },
       i.dealId,
@@ -382,7 +429,7 @@ export async function deviceDeals(device: DeviceRow) {
   const counterDevices = await db.device.findMany({ where: { walletAddress: { in: [...new Set(deals.map((d) => d.counterparty))] }, revokedAt: null }, select: { walletAddress: true } });
   const withApp = new Set(counterDevices.map((d) => d.walletAddress.toLowerCase()));
   return deals.map((d, i) => {
-    const names = Array.isArray(terms[i]?.milestones) ? (terms[i]!.milestones as { name?: string }[]) : [];
+    const names = Array.isArray(terms[i]?.milestones) ? (terms[i]!.milestones as DraftMilestone[]) : [];
     return {
       id: d.id,
       title: terms[i]?.title ?? `Deal D-${d.id}`,
@@ -394,7 +441,20 @@ export async function deviceDeals(device: DeviceRow) {
       total: d.total,
       status: d.status,
       reviewHours: d.reviewHours,
-      milestones: d.milestones.map((m) => ({ index: m.index, name: names[m.index]?.name ?? `Milestone ${m.index + 1}`, amount: m.amount, status: m.status, deadline: m.deadline, split: m.split ?? null })),
+      milestones: d.milestones.map((m) => {
+        const t = names[m.index];
+        return {
+          index: m.index,
+          name: t?.name ?? `Milestone ${m.index + 1}`,
+          amount: m.amount,
+          status: m.status,
+          deadline: m.deadline,
+          split: m.split ?? null,
+          delivery: t ? (t.deposit ? "deposit" : deliveryOf(t)) : m.hasFile ? "file" : "note",
+          acceptance: t?.acceptance ?? null,
+          fileTypes: t?.fileTypes ?? [],
+        };
+      }),
     };
   });
 }
@@ -408,6 +468,61 @@ export async function eventLinks(device: DeviceRow, ids: string[]) {
   return acks
     .filter((a) => a.device.walletAddress.toLowerCase() !== device.walletAddress.toLowerCase())
     .map((a) => ({ event: a.eventId, height: a.height, block: a.blockHash }));
+}
+
+/** Friends and whether the wallet may pay each (payee). */
+export async function deviceContacts(device: DeviceRow) {
+  const friends = await listFriends(device.userId, getAddress(device.walletAddress));
+  return friends.filter((f) => f.status === "ACCEPTED").map((f) => ({ friendshipId: f.friendshipId, name: f.name, username: f.username, hasWallet: Boolean(f.wallet), payee: f.allowlisted }));
+}
+
+/** Previews and drafts not locked yet (what the AI drafted): the app confirms them with a signed block. */
+export async function deviceDrafts(device: DeviceRow) {
+  const drafts = await listDrafts(device.userId, getAddress(device.walletAddress));
+  const open = drafts.filter((d) => ["PREVIEW", "DRAFT", "FAILED", "NEED_INFO"].includes(d.status));
+  const views = await Promise.all(open.map((d) => draftView(d)));
+  return JSON.parse(JSON.stringify(views, (_k, v) => (typeof v === "bigint" ? v.toString() : v)));
+}
+
+const KIND_LABEL: Record<string, string> = {
+  DEPOSIT: "Opening deposit",
+  FUND: "Locked for a deal",
+  REFUND: "Refund from a deal",
+  PAYOUT: "Payment received",
+  WITHDRAW: "Payment from a deal (invited seller)",
+  TOPUP: "Top-up",
+  TRANSFER: "Sent / received",
+  PLAN: "Split payment (held until the last part)",
+};
+
+/** The wallet's money in and out (the Mock Bank statement), newest first. */
+export async function deviceActivity(device: DeviceRow) {
+  const account = await accountOf(getAddress(device.walletAddress));
+  if (!account) return { balance: 0, currency: "THB", rows: [] };
+  const rows = await db.bankTransfer.findMany({
+    where: { OR: [{ fromId: account.id }, { toId: account.id }] },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: 100,
+    include: { from: { select: { kind: true, label: true } }, to: { select: { kind: true, label: true } } },
+  });
+  return {
+    balance: Number(account.balance) / 100,
+    currency: account.currency,
+    rows: rows.map((t) => {
+      const incoming = t.toId === account.id;
+      const other = incoming ? t.from : t.to;
+      return {
+        id: t.id,
+        kind: t.kind,
+        label: KIND_LABEL[t.kind] ?? t.kind,
+        direction: incoming ? "in" : "out",
+        amount: Number(t.amount) / 100,
+        counterparty: !other ? "Mock Bank" : other.kind === "RESERVE" ? "Agentic Wallet escrow" : other.label,
+        txHash: t.txHash,
+        at: t.createdAt,
+      };
+    }),
+  };
 }
 
 // ------------------------------------------------------------------------------------------

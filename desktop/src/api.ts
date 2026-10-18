@@ -42,3 +42,22 @@ export async function plain<T>(server: string, path: string, body: unknown): Pro
   });
   return parse<T>(res);
 }
+
+/** A signed multipart request (a delivered file): the signature covers the exact bytes sent. */
+export async function signedForm<T>(server: string, account: PrivateKeyAccount, path: string, form: FormData): Promise<T> {
+  const packed = new Request("http://local/", { method: "POST", body: form });
+  // Read the boundary before the body: Bun fills this header lazily and drops it once the body is consumed.
+  const type = packed.headers.get("content-type");
+  if (!type?.startsWith("multipart/form-data")) throw new ApiError(0, "Could not pack the file");
+  const bytes = new Uint8Array(await packed.arrayBuffer());
+  const time = nextTime();
+  const sig = await account.signMessage({ message: requestMessage("POST", path, time, bytes) });
+  const res = await fetch(new URL(path, server), {
+    method: "POST",
+    headers: { "content-type": type, "x-aw-device": account.address, "x-aw-time": String(time), "x-aw-sig": sig },
+    body: bytes,
+  }).catch((e) => {
+    throw new ApiError(0, `Cannot reach ${new URL(server).host}: ${e instanceof Error ? e.message : e}`);
+  });
+  return parse<T>(res);
+}

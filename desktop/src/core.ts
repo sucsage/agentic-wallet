@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { hostname, platform } from "node:os";
 
 import { type Address, type Hex, getAddress } from "viem";
@@ -20,7 +21,7 @@ import {
   verifyBlocks,
   verifyProof,
 } from "../../web/src/lib/device-chain/format";
-import { ApiError, plain, signed } from "./api";
+import { ApiError, plain, signed, signedForm } from "./api";
 import * as store from "./store";
 import { type VaultFile, WrongPassphrase, hasVault, openBackup, openKey, readVault, sealBackup, sealKey, writeVault } from "./vault";
 
@@ -194,9 +195,19 @@ class Wallet {
   // ----------------------------------------------------------------------------------------
 
   /** Sends blocks to the server. If it refuses them, they are dropped (they were never countersigned). */
-  private async submit(blocks: SignedBlock[]): Promise<IntentResult[]> {
+  private async submit(blocks: SignedBlock[], file?: { name: string; mime: string; bytes: Uint8Array }): Promise<IntentResult[]> {
     try {
-      const r = await this.call<{ head: { height: number; hash: Hex; serverSig: Hex }; intents: IntentResult[] }>("POST", "/api/device/blocks", { blocks });
+      type Out = { head: { height: number; hash: Hex; serverSig: Hex }; intents: IntentResult[] };
+      let r: Out;
+      if (file) {
+        const { vault, account } = this.need();
+        const form = new FormData();
+        form.set("blocks", JSON.stringify(blocks));
+        form.set("file", new File([file.bytes as Uint8Array<ArrayBuffer>], file.name, { type: file.mime || "application/octet-stream" }));
+        r = await signedForm<Out>(vault.server, account, "/api/device/deliver", form);
+      } else {
+        r = await this.call<Out>("POST", "/api/device/blocks", { blocks });
+      }
       await this.checkServerHead(r.head);
       store.setMeta("serverHead", JSON.stringify(r.head));
       return r.intents;
@@ -279,6 +290,78 @@ class Wallet {
       const [result] = await this.submit([b]);
       return { ...result, block: b.hash, height: b.height };
     }).finally(() => this.sync().catch(() => undefined));
+  }
+
+  /** Delivers a milestone: the block signs the note and the file's sha256; the file goes with it. */
+  deliver(input: { dealId: number; index: number; note: string; file?: { name: string; mime: string; bytes: Uint8Array }; carrier?: string; tracking?: string }) {
+    return this.serial(async () => {
+      const body: IntentBody = { dealId: input.dealId, action: "deliver", index: input.index, note: input.note.trim().slice(0, 4000) };
+      if (input.file) {
+        body.fileName = input.file.name.slice(0, 200);
+        body.fileSha256 = createHash("sha256").update(input.file.bytes).digest("hex");
+      }
+      if (input.carrier) body.carrier = input.carrier;
+      if (input.tracking) body.tracking = input.tracking.slice(0, 40);
+      const b = await this.sign(this.next("intent", body));
+      store.append([b]);
+      const [result] = await this.submit([b], input.file);
+      return { ...result, block: b.hash, height: b.height };
+    }).finally(() => this.sync().catch(() => undefined));
+  }
+
+  /** Confirms a preview the AI drafted (the server reads its terms from the database). */
+  confirmDraft(draftId: string) {
+    return this.serial(async () => {
+      const b = await this.sign(this.next("intent", { dealId: 0, action: "confirm_draft", index: 0, draftId }));
+      store.append([b]);
+      const [result] = await this.submit([b]);
+      return { ...result, block: b.hash, height: b.height };
+    }).finally(() => this.sync().catch(() => undefined));
+  }
+
+  /** Lets the wallet pay a contact (or stops it): a block signed here, carried out on-chain by the server. */
+  payee(friendshipId: string, allowed: boolean) {
+    return this.serial(async () => {
+      const b = await this.sign(this.next("intent", { dealId: 0, action: "payee", index: 0, friendshipId, allowed }));
+      store.append([b]);
+      const [result] = await this.submit([b]);
+      return { ...result, block: b.hash, height: b.height };
+    }).finally(() => this.sync().catch(() => undefined));
+  }
+
+  contacts() {
+    return this.call<{ contacts: unknown[] }>("GET", "/api/device/contacts");
+  }
+
+  drafts() {
+    return this.call<{ drafts: unknown[] }>("GET", "/api/device/drafts");
+  }
+
+  activity() {
+    return this.call<{ balance: number; currency: string; rows: unknown[] }>("GET", "/api/device/activity");
+  }
+
+  /** The AI chat. Its history stays on this computer (the last 30 turns go with each message). */
+  chatHistory(): { role: "user" | "assistant"; text: string; at: number; steps?: unknown[] }[] {
+    return JSON.parse(store.getMeta("chat") ?? "[]");
+  }
+
+  async chat(input: { message: string; lang?: "en" | "th"; attachment?: unknown }) {
+    const history = this.chatHistory();
+    const asked = { role: "user" as const, text: input.message || "(document)", at: Date.now() };
+    const r = await this.call<{ reply: string; steps: unknown[]; flags: unknown[] }>("POST", "/api/device/chat", {
+      history: history.slice(-30).map(({ role, text }) => ({ role, text: text.slice(0, 8000) })),
+      message: input.message,
+      lang: input.lang ?? "en",
+      attachment: input.attachment,
+    });
+    const next = [...history, asked, { role: "assistant" as const, text: r.reply, at: Date.now(), steps: r.steps }].slice(-200);
+    store.setMeta("chat", JSON.stringify(next));
+    return { reply: r.reply, steps: r.steps, flags: r.flags };
+  }
+
+  clearChat() {
+    store.setMeta("chat", "[]");
   }
 
   // ----------------------------------------------------------------------------------------

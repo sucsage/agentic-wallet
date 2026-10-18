@@ -27,12 +27,24 @@ export type DealEventBody = {
 export type GenesisBody = { wallet: string; server: string; linkedAt: number };
 export type EventBlockBody = { event: DealEventBody; serverSig: Hex };
 export type IntentBody = {
+  /** 0 for a move that is not on a deal yet (confirm_draft). */
   dealId: number;
-  action: "approve" | "dispute" | "accept" | "cancel" | "claim" | "refund" | "reclaim" | "reject";
+  action: "approve" | "dispute" | "accept" | "cancel" | "claim" | "refund" | "reclaim" | "reject" | "deliver" | "confirm_draft" | "payee";
   index: number;
   reason?: string;
   /** A move started on the website that the app signs (DeviceRequest id). */
   requestId?: string;
+  /** deliver: what was handed over. The file's sha256 is signed here; the file itself goes to the server alongside. */
+  note?: string;
+  fileName?: string;
+  fileSha256?: string;
+  carrier?: string;
+  tracking?: string;
+  /** confirm_draft: the preview the user confirms (the server reads its terms from the database). */
+  draftId?: string;
+  /** payee: let the wallet pay this contact (true) or stop it (false). */
+  friendshipId?: string;
+  allowed?: boolean;
 };
 
 export type Block =
@@ -67,9 +79,9 @@ export const headMessage = (owner: Address, height: number, hash: Hex) => `Agent
 export const eventMessage = (id: Hex) => `Agentic Wallet deal event\n${id}`;
 /** What a device signs to link itself with a one-time code. */
 export const linkMessage = (code: string, device: Address) => `Agentic Wallet link device\n${code.toUpperCase()}\n${getAddress(device)}`;
-/** What a device signs for every request (method, path, time and the body's hash). */
-export const requestMessage = (method: string, path: string, time: number, body: string) =>
-  `Agentic Wallet device request\n${method.toUpperCase()}\n${path}\n${time}\n${keccak256(toHex(body))}`;
+/** What a device signs for every request (method, path, time and the hash of the body's bytes). */
+export const requestMessage = (method: string, path: string, time: number, body: string | Uint8Array) =>
+  `Agentic Wallet device request\n${method.toUpperCase()}\n${path}\n${time}\n${keccak256(typeof body === "string" ? toHex(body) : body)}`;
 
 export async function signerOf(message: string, sig: Hex): Promise<Address> {
   return getAddress(await recoverMessageAddress({ message, signature: sig }));

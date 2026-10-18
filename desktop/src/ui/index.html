@@ -59,10 +59,21 @@ th { color: var(--muted); font-weight: 600; font-size: 12.5px; }
 .check { display: grid; grid-template-columns: 22px 1fr; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
 dialog { border: 1px solid var(--line); border-radius: 14px; background: var(--panel); color: var(--ink); width: min(440px, 92vw); }
 dialog::backdrop { background: rgba(0,0,0,.35); }
+.msgs { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.msg { max-width: 82%; padding: 10px 12px; border-radius: 12px; white-space: pre-wrap; word-break: break-word; }
+.msg.user { align-self: flex-end; background: var(--accent); color: var(--accent-ink); }
+.msg.assistant { align-self: flex-start; background: var(--panel); border: 1px solid var(--line); }
+.msg .tools { margin-top: 6px; display: flex; gap: 4px; flex-wrap: wrap; }
+.composer { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: end; position: sticky; bottom: 0; background: var(--bg); padding: 10px 0; }
+.composer textarea { resize: vertical; min-height: 44px; max-height: 200px; }
+.issue { font-size: 12.5px; padding: 4px 8px; border-radius: 8px; margin-top: 4px; }
+.issue.block { background: var(--bad-bg); color: var(--bad); } .issue.warn { background: var(--warn-bg); color: var(--warn); }
+.in { color: var(--ok); } .out { color: var(--bad); }
 .demo { font-size: 11.5px; color: var(--muted); margin-top: 12px; }
 @media (max-width: 760px) {
   .layout { grid-template-columns: 1fr; }
   nav { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 8px; }
+  nav button { white-space: nowrap; flex: none; }
   nav .brand, nav .foot { display: none; }
   main { padding: 16px; }
 }
@@ -92,7 +103,7 @@ async function api(path, method = "GET", body) {
   return j;
 }
 
-const S = { info: null, view: "overview", account: null, deals: null, chain: null, verify: null, busy: false };
+const S = { lang: (() => { try { return localStorage.getItem("awlang") || "th"; } catch { return "th"; } })(), info: null, view: "overview", account: null, deals: null, chain: null, verify: null, busy: false };
 
 function showErr(el, e) { el.textContent = e.message || String(e); el.style.display = "block"; }
 
@@ -172,7 +183,7 @@ function renderUnlock() {
 }
 
 // ---------------------------------------------------------------- app shell
-const VIEWS = [["overview", "Overview"], ["deals", "Deals"], ["chain", "My chain"], ["settings", "Settings"]];
+const VIEWS = [["overview", "Overview"], ["chat", "AI chat"], ["deals", "Deals"], ["activity", "Activity"], ["contacts", "Contacts"], ["chain", "My chain"], ["settings", "Settings"]];
 function renderApp() {
   const d = S.info.device;
   $("#root").innerHTML = `<div class="layout"><nav>
@@ -211,14 +222,55 @@ function renderView() {
         <div class="card stat"><div class="hint">Deals</div><div class="v">${S.deals ? S.deals.length : "…"}</div></div>
       </div>
       <div class="card"><h2>How this works</h2>
-        <p class="hint" style="margin:0">Every deal event (offer, payment locked, delivery, approval, dispute, ruling) is signed by the server and added as a block to your chain here. Each block names the hash of the one before it and is signed by your device key, so changing any old block breaks every hash after it. The website keeps only your latest block, countersigned. When the other side of a deal also uses the app, the same event sits in both chains: that links them. Deal moves you make here are blocks you sign; the server carries them out.</p>
+        <p class="hint" style="margin:0">Every deal event (offer, payment locked, delivery, approval, dispute, ruling) is signed by the server and added as a block to your chain here. Each block names the hash of the one before it and is signed by your device key, so changing any old block breaks every hash after it. The website keeps only your latest block, countersigned. When the other side of a deal also uses the app, the same event sits in both chains: that links them. Everything you do here (new deals with the AI, delivering, approving, disputing) is a block you sign; the server carries it out, and the money itself stays locked in the escrow contract on the blockchain.</p>
       </div>
       <div class="card" style="margin-top:12px"><div class="row space"><h2 style="margin:0">Integrity check</h2><button id="verify">Verify now</button></div><div id="vres">${verifyHtml()}</div></div>`;
     $("#sync").onclick = () => doSync();
     $("#verify").onclick = () => doVerify();
+  } else if (S.view === "chat") {
+    const h = S.chatHistory || [];
+    m.innerHTML = `${requestsBanner()}<div class="row space"><h1>AI chat</h1><div class="row"><select id="lang" style="width:auto"><option value="th">ไทย</option><option value="en">English</option></select><button id="clear">New chat</button></div></div>
+      <p class="hint">Same agent as the website: describe the deal ("hire Seller One for a logo, 5,000 baht, 2 milestones"). Previews appear below; you confirm them here with your device key.</p>
+      <div class="msgs" id="msgs">${h.length ? h.map(msgHtml).join("") : `<div class="card hint">No messages yet.</div>`}${S.chatBusy ? `<div class="msg assistant hint">Thinking… (tools run on the server)</div>` : ""}</div>
+      <div id="drafts">${draftsHtml()}</div>
+      <form class="composer" id="cf"><textarea name="m" rows="2" placeholder="Message the agent…" ${S.chatBusy ? "disabled" : ""}></textarea>
+        <label class="hint" style="margin:0;cursor:pointer" title="Attach a PDF, image or text file (up to 3 MB)">📎<input type="file" name="f" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.txt,.md,.csv,.json" style="display:none"></label>
+        <button class="primary" ${S.chatBusy ? "disabled" : ""}>Send</button></form><div class="hint" id="att"></div>`;
+    $("#lang").value = S.lang || "th";
+    $("#lang").onchange = (e) => { S.lang = e.target.value; try { localStorage.setItem("awlang", S.lang); } catch {} };
+    $("#clear").onclick = async () => { await api("/app/chat/clear", "POST"); S.chatHistory = []; renderView(); };
+    const fi = $("#cf [name=f]"); fi.onchange = () => { $("#att").textContent = fi.files[0] ? `📎 ${fi.files[0].name}` : ""; };
+    $("#cf").onsubmit = (ev) => { ev.preventDefault(); sendChat(new FormData(ev.target)); };
+    $("#cf textarea").onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#cf").requestSubmit(); } };
+    wireDrafts();
+    const box = $("#msgs"); box.lastElementChild?.scrollIntoView({ block: "end" });
+  } else if (S.view === "activity") {
+    const a = S.activity;
+    m.innerHTML = `<div class="row space"><h1>Activity</h1><button id="sync">Refresh</button></div>
+      ${a ? `<div class="card" style="margin-bottom:12px"><div class="hint">Balance (Mock Bank)</div><div class="stat"><div class="v">${money(a.balance, a.currency)}</div></div><p class="hint" style="margin:6px 0 0">Top up on the website ("+ Top up"): PromptPay QR or a test card.</p></div>
+      <div class="card"><table><thead><tr><th>When</th><th>What</th><th>With</th><th style="text-align:right">Amount</th></tr></thead><tbody>
+      ${a.rows.length ? a.rows.map((r) => `<tr><td class="hint">${when(r.at)}</td><td>${esc(r.label)}${r.txHash ? `<div class="mono hint">${short(r.txHash)}</div>` : ""}</td><td>${esc(r.counterparty)}</td><td style="text-align:right" class="${r.direction}"><b>${r.direction === "in" ? "+" : "−"}${money(r.amount, a.currency)}</b></td></tr>`).join("") : `<tr><td colspan="4" class="hint">Nothing yet.</td></tr>`}
+      </tbody></table></div>` : `<div class="card hint">Loading…</div>`}`;
+    $("#sync").onclick = () => load();
+  } else if (S.view === "contacts") {
+    const cs = S.contacts;
+    m.innerHTML = `<div class="row space"><h1>Contacts</h1><button id="sync">Refresh</button></div>
+      <p class="hint">Your wallet only pays people you made a payee. Turning it on or off is a block you sign; the server sets it on your wallet contract. Adding friends: on the website (Contacts).</p>
+      <div class="card">${cs ? (cs.length ? `<table><thead><tr><th>Name</th><th>Payee</th><th></th></tr></thead><tbody>${cs.map((c) => `<tr><td><b>${esc(c.name)}</b><div class="hint">@${esc(c.username)}</div></td>
+        <td>${c.payee ? `<span class="chip ok">can be paid</span>` : `<span class="chip">not a payee</span>`}</td>
+        <td style="text-align:right">${c.hasWallet ? `<button data-payee="${esc(c.friendshipId)}" data-on="${c.payee ? "0" : "1"}" class="${c.payee ? "danger" : "primary"}">${c.payee ? "Stop paying" : "Make payee"}</button>` : `<span class="hint">no wallet yet</span>`}</td></tr>`).join("")}</tbody></table>` : `<p class="hint">No friends yet.</p>`) : `<p class="hint">Loading…</p>`}</div>`;
+    $("#sync").onclick = () => load();
+    document.querySelectorAll("[data-payee]").forEach((b) => (b.onclick = async () => {
+      const on = b.dataset.on === "1";
+      const c = S.contacts.find((x) => x.friendshipId === b.dataset.payee);
+      if (!confirm(`${on ? "Let your wallet pay" : "Stop paying"} ${c.name}? This adds a block signed by your device key.`)) return;
+      b.disabled = true; b.textContent = "Signing…";
+      try { const r = await api("/app/payee", "POST", { friendshipId: c.friendshipId, allowed: on }); if (!r.ok) throw new Error(r.error || "Not done"); toast("Signed and done"); } catch (e) { toast(e.message); }
+      await load();
+    }));
   } else if (S.view === "deals") {
     m.innerHTML = `${requestsBanner()}<div class="row space"><h1>Deals</h1><button id="sync">Refresh</button></div>
-      <p class="hint">Delivering files and drafting new deals stay on the website (they carry files and the AI). Approvals, disputes, accepting and refunds are signed here.</p>
+      <p class="hint">Every move here (deliver, approve, dispute, accept, refund) is a block signed by your device key. New deals: AI chat.</p>
       <div id="deals">${S.deals ? (S.deals.length ? S.deals.map(dealHtml).join("") : `<div class="card hint">No deals yet.</div>`) : `<div class="card hint">Loading…</div>`}</div>`;
     $("#sync").onclick = () => doSync();
   } else if (S.view === "chain") {
@@ -258,9 +310,109 @@ function verifyHtml() {
 
 function blockText(b) {
   if (b.kind === "genesis") return `<b>Genesis</b> · wallet <span class="mono">${short(b.body.wallet)}</span>`;
+  if (b.kind === "intent" && b.body.action === "payee") return `<b>You signed: ${b.body.allowed ? "make payee" : "stop paying"}</b> <span class="hint">contact ${esc(b.body.friendshipId)}</span>`;
+  if (b.kind === "intent" && b.body.action === "confirm_draft") return `<b>You signed: confirm deal</b> <span class="hint">preview ${esc(b.body.draftId)}</span>`;
+  if (b.kind === "intent" && b.body.action === "deliver") return `<b>You signed: deliver</b> · D-${esc(b.body.dealId)} milestone ${Number(b.body.index) + 1}${b.body.fileName ? `<div class="hint">${esc(b.body.fileName)} · sha256 ${esc(String(b.body.fileSha256 || "").slice(0, 12))}…</div>` : ""}${b.body.carrier ? `<div class="hint">${esc(b.body.carrier)} ${esc(b.body.tracking || "")}</div>` : ""}`;
   if (b.kind === "intent") return `<b>You signed: ${esc(b.body.action)}</b> · D-${esc(b.body.dealId)}${["cancel", "accept"].includes(b.body.action) ? "" : ` milestone ${Number(b.body.index) + 1}`}${b.body.requestId ? ` <span class="chip">from website</span>` : ""}${b.body.reason ? `<div class="hint">${esc(b.body.reason)}</div>` : ""}`;
   const e = b.body.event;
   return e.type === "deal" ? `<b>Deal D-${esc(e.dealId)}</b> → ${esc(e.status)} <span class="hint">total ${esc(e.data.total)}</span>` : `<b>D-${esc(e.dealId)} milestone ${Number(e.index) + 1}</b> → ${esc(e.status)} <span class="hint">${esc(e.data.amount)}</span>`;
+}
+
+function msgHtml(x) {
+  const tools = (x.steps || []).map((st) => st && (st.tool || st.name)).filter(Boolean);
+  return `<div class="msg ${x.role}">${esc(x.text)}${tools.length ? `<div class="tools">${tools.map((t) => `<span class="chip">${esc(t)}</span>`).join("")}</div>` : ""}</div>`;
+}
+
+function draftsHtml() {
+  const ds = (S.drafts || []).filter((d) => d.status !== "FUNDED");
+  if (!ds.length) return "";
+  return `<h2 style="margin-top:6px">Previews waiting for you</h2>` + ds.map((d) => {
+    const blocking = d.review && d.review.blocking;
+    return `<div class="card deal"><div class="row space"><div><b>${esc(d.title)}</b> <span class="hint">${esc(d.id)}</span>
+      <div class="hint">${d.side === "BUY" ? "You pay" : "You sell to"} ${esc(d.sellerLabel || d.counterparty)} · review ${esc(d.reviewHours)} h${d.paymentPlan ? " · split payment" : ""}</div></div>
+      <div class="row"><span class="chip">${esc(d.status)}</span><b>${esc(d.total)} ${esc(d.symbol)}</b></div></div>
+      ${(d.milestones || []).map((m, i) => `<div class="ms"><div>${i + 1}. ${esc(m.name)} · <b>${esc(m.amount)}</b>${m.deposit ? ` <span class="chip warn">deposit on signing</span>` : ""}<div class="hint">${esc(m.acceptance)}</div></div><div class="hint">${esc(m.delivery || (m.hasFile ? "file" : "note"))}</div></div>`).join("")}
+      ${d.review ? d.review.issues.map((i) => `<div class="issue ${i.level}">${esc(i.text)}</div>`).join("") : ""}
+      <div class="row" style="margin-top:10px">${["PREVIEW", "DRAFT", "FAILED"].includes(d.status) ? `<button class="primary" data-confirm="${esc(d.id)}" ${blocking ? "disabled title=\"Fix the blocking points with the AI first\"" : ""}>Confirm and sign</button>` : `<span class="hint">The AI still needs details: answer it in the chat.</span>`}</div></div>`;
+  }).join("");
+}
+
+function wireDrafts() {
+  document.querySelectorAll("[data-confirm]").forEach((b) => (b.onclick = () => {
+    const d = (S.drafts || []).find((x) => x.id === b.dataset.confirm);
+    const dlg = $("#dlg"), form = $("#dlg-form");
+    form.innerHTML = `<h2>Confirm: ${esc(d.title)}</h2><p>${d.side === "BUY" ? `The full ${esc(d.total)} ${esc(d.symbol)} is locked in escrow from your Mock Bank balance${d.paymentPlan ? " (split payment: part 1 now)" : ""}.` : "Your offer goes to the buyer; nothing is locked from you."}</p>
+      <p class="hint">This adds a block signed by your device key; the server carries it out.</p><div class="err" id="de"></div><div id="dres"></div>
+      <div class="row" style="justify-content:flex-end;margin-top:12px"><button value="cancel" formnovalidate>Close</button><button class="primary" id="dok" value="ok">Sign</button></div>`;
+    dlg.showModal();
+    form.onsubmit = async (ev) => {
+      if (ev.submitter?.value !== "ok") return;
+      ev.preventDefault();
+      const ok = $("#dok"); ok.disabled = true; ok.textContent = "Signing…";
+      try {
+        const r = await api("/app/confirm-draft", "POST", { draftId: d.id });
+        if (!r.ok) throw new Error(r.error || "Not done (the signed block stays on your chain)");
+        const inv = r.result && r.result.invite;
+        $("#dres").innerHTML = `<div class="ok-box">Signed and done${r.result.companyVote ? " · sent to the signers' vote" : ""}${r.result.plan ? ` · part ${r.result.plan.paidParts} paid` : ""}.</div>` +
+          (inv && inv.link ? `<p>Send this private link to ${esc(inv.name)}:</p><div class="mono">${esc(inv.link)}</div>${inv.access && inv.access.otp ? `<p>One-time code (send it separately): <b class="mono">${esc(inv.access.otp)}</b></p>` : ""}` : "");
+        ok.style.display = "none";
+        S.drafts = (await api("/app/drafts")).drafts;
+      } catch (err) { showErr($("#de"), err); ok.disabled = false; ok.textContent = "Sign"; }
+    };
+    dlg.addEventListener("close", () => renderView(), { once: true });
+  }));
+}
+
+async function fileToAttachment(f) {
+  if (f.size > 3 * 1024 * 1024) throw new Error("Attach up to 3 MB");
+  const b64 = async () => { const buf = new Uint8Array(await f.arrayBuffer()); let s = ""; for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000)); return btoa(s); };
+  if (f.type === "application/pdf" || /\.pdf$/i.test(f.name)) return { kind: "pdf", name: f.name, base64: await b64() };
+  if (/^image\/(png|jpeg|webp|gif)$/.test(f.type)) return { kind: "image", name: f.name, mediaType: f.type, base64: await b64() };
+  return { kind: "text", name: f.name, text: (await f.text()).slice(0, 60000) };
+}
+
+async function sendChat(fd) {
+  const message = String(fd.get("m") || "").trim();
+  const f = fd.get("f");
+  if (!message && !(f && f.size)) return;
+  let attachment;
+  try { attachment = f && f.size ? await fileToAttachment(f) : undefined; } catch (e) { toast(e.message); return; }
+  S.chatHistory = [...(S.chatHistory || []), { role: "user", text: message || `📎 ${f.name}`, at: Date.now() }];
+  S.chatBusy = true; renderView();
+  try {
+    await api("/app/chat", "POST", { message: message || `Read the attached ${f.name}`, lang: S.lang || "th", attachment });
+  } catch (e) { toast(e.message); }
+  S.chatBusy = false;
+  const [h, d] = await Promise.all([api("/app/chat"), api("/app/drafts").catch(() => ({ drafts: S.drafts || [] }))]);
+  S.chatHistory = h.history; S.drafts = d.drafts;
+  if (S.view === "chat") renderView();
+}
+
+function deliverDialog(dealId, index) {
+  const d = (S.deals || []).find((x) => x.id === Number(dealId));
+  const m = d.milestones[Number(index)];
+  const dlg = $("#dlg"), form = $("#dlg-form");
+  const types = (m.fileTypes || []).join(",");
+  form.innerHTML = `<h2>Deliver: ${esc(m.name)}</h2><p class="hint">Accepted when: ${esc(m.acceptance || "-")}</p>
+    ${m.delivery === "parcel" ? `<label>Carrier</label><select name="carrier"><option value="MOCK_POST">Mock Post (books a demo parcel)</option><option value="THAILAND_POST">Thailand Post</option><option value="KERRY">Kerry</option><option value="FLASH">Flash</option><option value="OTHER">Other</option></select>
+      <label>Tracking number</label><input name="tracking" maxlength="40" placeholder="(Mock Post makes one)">` : ""}
+    ${m.delivery === "file" ? `<label>File (up to 4 MB${types ? `; ${esc(types)}` : ""})</label><input type="file" name="file" ${types ? `accept="${esc(types)}"` : ""} required>` : ""}
+    <label>Note for the buyer</label><textarea name="note" rows="3" maxlength="4000" placeholder="What you delivered and how it meets the criteria"></textarea>
+    <p class="hint">Your device key signs the note${m.delivery === "file" ? " and the file's SHA-256" : ""}; the file is encrypted on the server and the buyer sees a watermarked preview until they approve.</p>
+    <div class="err" id="de"></div><div class="row" style="justify-content:flex-end;margin-top:12px"><button value="cancel" formnovalidate>Back</button><button class="primary" id="dok" value="ok">Sign and deliver</button></div>`;
+  dlg.showModal();
+  form.onsubmit = async (ev) => {
+    if (ev.submitter?.value !== "ok") return;
+    ev.preventDefault();
+    const ok = $("#dok"); ok.disabled = true; ok.textContent = "Delivering…";
+    try {
+      const fd = new FormData(form);
+      fd.set("dealId", dealId); fd.set("index", index);
+      const r = await fetch("/app/deliver", { method: "POST", headers: { "x-app-token": TOKEN }, body: fd }).then(async (x) => { const j = await x.json().catch(() => ({})); if (!x.ok) throw new Error(j.error || `Error ${x.status}`); return j; });
+      if (!r.ok) throw new Error(r.error || "Not delivered (the signed block stays on your chain)");
+      dlg.close(); toast("Delivered"); await load();
+    } catch (err) { showErr($("#de"), err); ok.disabled = false; ok.textContent = "Sign and deliver"; }
+  };
 }
 
 const STATUS_CHIP = { Released: "ok", Approved: "ok", KeyReleased: "ok", Active: "ok", Disputed: "bad", Refunded: "warn", Cancelled: "warn", Delivered: "warn", Split: "warn" };
@@ -281,9 +433,10 @@ function dealHtml(d) {
         if (d.role === "buyer" && (m.status === "Delivered" || m.status === "KeyReleased")) { acts.push(btn("approve", m.index, "Approve and pay", "primary")); acts.push(btn("dispute", m.index, "Dispute", "danger")); }
         if (d.role === "buyer" && m.status === "Pending" && m.deadline && m.deadline < now) acts.push(btn("reclaim", m.index, "Reclaim (late)"));
         if (d.role === "seller" && m.status === "Delivered" && m.deadline && m.deadline < now) acts.push(btn("claim", m.index, "Claim payment", "primary"));
+        if (d.role === "seller" && m.status === "Pending" && m.delivery !== "deposit") acts.push(`<button class="primary" data-deliver="${d.id}" data-i="${m.index}">Deliver</button>`);
         if (d.role === "seller" && ["Pending", "Delivered", "Disputed"].includes(m.status)) acts.push(btn("refund", m.index, "Refund buyer", "danger"));
       }
-      return `<div class="ms"><div>${esc(m.name)} · <b>${esc(m.amount)}</b> <span class="chip ${STATUS_CHIP[m.status] || ""}">${esc(m.status)}</span>${m.split ? `<span class="hint"> seller ${esc(m.split.toSeller)} / buyer ${esc(m.split.toBuyer)}</span>` : ""}</div><div class="row">${acts.join("")}</div></div>`;
+      return `<div class="ms"><div>${esc(m.name)} · <b>${esc(m.amount)}</b> <span class="chip ${STATUS_CHIP[m.status] || ""}">${esc(m.status)}</span> <span class="hint">${esc(m.delivery || "")}</span>${m.split ? `<span class="hint"> seller ${esc(m.split.toSeller)} / buyer ${esc(m.split.toBuyer)}</span>` : ""}</div><div class="row">${acts.join("")}</div></div>`;
     }).join("")}
   </div>`;
 }
@@ -314,6 +467,7 @@ function confirmMove(action, dealId, index, requestId) {
 
 function wireDealButtons() {
   document.querySelectorAll("[data-act]").forEach((b) => (b.onclick = () => confirmMove(b.dataset.act, b.dataset.deal, b.dataset.i)));
+  document.querySelectorAll("[data-deliver]").forEach((b) => (b.onclick = () => deliverDialog(b.dataset.deliver, b.dataset.i)));
 }
 function wireRequestButtons() {
   const reqs = S.info.requests || [];
@@ -354,12 +508,15 @@ async function load() {
     if (S.view === "overview") { const [a, d] = await Promise.all([api("/app/account"), api("/app/deals")]); S.account = a; S.deals = d.deals; }
     if (S.view === "deals") S.deals = (await api("/app/deals")).deals;
     if (S.view === "chain") S.chain = await api("/app/chain");
+    if (S.view === "chat") { const [h, d] = await Promise.all([api("/app/chat"), api("/app/drafts")]); S.chatHistory = h.history; S.drafts = d.drafts; }
+    if (S.view === "activity") S.activity = await api("/app/activity");
+    if (S.view === "contacts") S.contacts = (await api("/app/contacts")).contacts;
   } catch (e) { toast(e.message); }
   if (S.info.stage === "ready") renderApp(); else render();
 }
 
 setInterval(async () => {
-  if (!S.info || S.info.stage !== "ready" || document.querySelector("dialog[open]")) return;
+  if (!S.info || S.info.stage !== "ready" || S.chatBusy || document.querySelector("dialog[open]") || document.querySelector("#cf textarea")?.value) return;
   const before = JSON.stringify([S.info.height, (S.info.requests || []).length]);
   try { S.info = await api("/app/state"); } catch { return; }
   if (JSON.stringify([S.info.height, (S.info.requests || []).length]) !== before) load();

@@ -7,8 +7,10 @@ opens its screen in your browser at `127.0.0.1`. Test mode demo: Mock Bank money
   computer's key (made here, encrypted with your passphrase, never sent anywhere).
 - The website keeps only your latest block, countersigned, plus an encrypted backup it cannot read.
 - When the other side of a deal also uses the app, the same event is in both chains: they link.
-- Approve, dispute, accept, cancel, claim and refund are blocks you sign here; the server carries
-  them out. Delivering files and drafting deals stay on the website.
+- Everything day to day happens here, each move a block you sign: new deals with the AI chat and
+  Confirm, delivering (the block signs the file's SHA-256), approve, dispute, accept, cancel, claim,
+  refund, and payees. Activity shows money in and out. The website is for sign-up and identity,
+  top-ups, friends and groups. The money itself stays locked in the escrow contract on the chain.
 - Every hour the server puts one Merkle root of all heads on the private chain (ChainAnchor);
   "Verify now" checks your proof and the transaction receipt.
 
