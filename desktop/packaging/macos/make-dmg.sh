@@ -35,5 +35,7 @@ cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
 OUT="dist/MilestonePay-$VERSION-macos-$ARCH.dmg"
 rm -f "$OUT"
-hdiutil create -volname "MilestonePay $VERSION" -srcfolder "$STAGE" -ov -format UDZO "$OUT" >/dev/null
+# An explicit size: hdiutil's own guess is sometimes too small on CI machines ("No space left on device").
+SIZE_MB=$(( $(du -sm "$STAGE" | cut -f1) + 40 ))
+hdiutil create -volname "MilestonePay $VERSION" -srcfolder "$STAGE" -fs HFS+ -size "${SIZE_MB}m" -ov -format UDZO "$OUT" >/dev/null
 echo "$OUT"

@@ -46,6 +46,10 @@ jobs:
       - run: mkdir -p ../web/node_modules && cp -R node_modules/. ../web/node_modules/
       - run: bun run build windows-x64
       - name: Installer (Inno Setup)
+        env:
+          # Git Bash would turn /DAppVersion=... into a file path.
+          MSYS_NO_PATHCONV: "1"
+          MSYS2_ARG_CONV_EXCL: "*"
         run: |
           V=${GITHUB_REF_NAME#desktop-v}
           ISCC="/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
