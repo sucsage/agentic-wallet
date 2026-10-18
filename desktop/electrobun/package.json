@@ -1,0 +1,15 @@
+{
+  "name": "milestonepay-desktop-window",
+  "version": "0.4.0",
+  "private": true,
+  "type": "module",
+  "description": "MilestonePay in its own window (Electrobun): the same app as desktop/, shown in a native window instead of a browser tab.",
+  "scripts": {
+    "dev": "electrobun dev",
+    "build": "electrobun build --env=stable"
+  },
+  "dependencies": {
+    "electrobun": "1.18.1",
+    "viem": "2.57.3"
+  }
+}

@@ -77,8 +77,52 @@ jobs:
       - uses: actions/upload-artifact@v4
         with: { name: linux, path: "desktop/dist/*", if-no-files-found: error }
 
+  # The same app in its own window (Electrobun, desktop/electrobun). Built on each platform; a
+  # platform that fails is left out of the release instead of stopping it.
+  window:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-14, name: macos-arm64 }
+          - { os: macos-15-intel, name: macos-x64 }
+          - { os: windows-2022, name: windows-x64 }
+          - { os: ubuntu-24.04, name: linux-x64 }
+          - { os: ubuntu-24.04-arm, name: linux-arm64 }
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with: { bun-version: "1.4.3" }
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update -q && sudo apt-get install -y -q libwebkit2gtk-4.1-0 libgtk-3-0 libayatana-appindicator3-1
+      - run: bun install --frozen-lockfile
+      - run: mkdir -p ../web/node_modules && cp -R node_modules/. ../web/node_modules/
+      - name: Build the windowed app
+        working-directory: desktop/electrobun
+        run: |
+          bun install --frozen-lockfile
+          bunx electrobun build --env=stable
+      - name: Name the installers
+        working-directory: desktop/electrobun
+        run: |
+          V=${GITHUB_REF_NAME#desktop-v}
+          mkdir -p out
+          for f in artifacts/*; do
+            case "$f" in *update.json|*.tar.zst) continue ;; esac
+            base=$(basename "$f"); rest="${base#*MilestonePay}"
+            name="MilestonePay-$V-window-${{ matrix.name }}"
+            case "$rest" in .*) out="$name$rest" ;; -*) out="$name$rest" ;; *) out="$name-$rest" ;; esac
+            cp "$f" "out/$out"
+          done
+          ls -la out
+      - uses: actions/upload-artifact@v4
+        with: { name: "window-${{ matrix.name }}", path: "desktop/electrobun/out/*", if-no-files-found: error }
+
   release:
-    needs: [macos, windows, linux]
+    needs: [macos, windows, linux, window]
+    if: ${{ always() && needs.macos.result == 'success' && needs.windows.result == 'success' && needs.linux.result == 'success' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: write

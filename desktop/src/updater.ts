@@ -86,7 +86,9 @@ export async function checkUpdate(force = false) {
     if (!m) return { ...base, latest: null, available: false, canInstall: false, reason: "No release published yet", page: `https://github.com/${RELEASE_REPO}/releases` };
     const available = newer(m.version, VERSION);
     const asset = m.assets[platformKey()];
-    const reason = !compiled()
+    const reason = process.env.AW_SHELL === "electrobun"
+      ? "This is the windowed app: download the new version from the release page and install it over this one (your data stays)"
+      : !compiled()
       ? "Running from source: update with git pull"
       : !asset
         ? "No build for this computer in that release"
@@ -109,7 +111,7 @@ export async function installUpdate(): Promise<string> {
   if (!m || !newer(m.version, VERSION)) throw new Error("No newer version to install");
   const asset = m.assets[platformKey()];
   if (!asset) throw new Error("No build for this computer in the latest release");
-  if (!compiled() || !writable()) throw new Error("This copy of the app cannot update itself: install the new version from the release page");
+  if (process.env.AW_SHELL === "electrobun" || !compiled() || !writable()) throw new Error("This copy of the app cannot update itself: install the new version from the release page");
   if (!/^[\w.-]+$/.test(asset.file) || !/^[0-9a-f]{64}$/.test(asset.sha256)) throw new Error("The release information is not readable");
   const url = `https://github.com/${RELEASE_REPO}/releases/download/${encodeURIComponent(m.tag)}/${asset.file}`;
   const res = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(10 * 60_000), headers: { "user-agent": `MilestonePay-Desktop/${VERSION}` } });

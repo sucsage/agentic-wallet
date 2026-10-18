@@ -24,10 +24,14 @@ const PLATFORMS: Record<string, { exe: string; installer: RegExp; label: string 
 };
 const assets: Record<string, { file: string; sha256: string; size: number }> = {};
 const installers: Record<string, { label: string; file: string; sha256: string; size: number }> = {};
+// The same app in its own window (Electrobun): MilestonePay-<v>-window-<platform>…
+const windowed: Record<string, { label: string; file: string; sha256: string; size: number }> = {};
 for (const [key, p] of Object.entries(PLATFORMS)) {
   if (sums[p.exe]) assets[key] = { file: p.exe, sha256: sums[p.exe], size: statSync(`dist/${p.exe}`).size };
   const inst = files.find((f) => p.installer.test(f));
   if (inst) installers[key] = { label: p.label, file: inst, sha256: sums[inst], size: statSync(`dist/${inst}`).size };
+  const win = files.find((f) => f.includes(`-window-${key}`));
+  if (win) windowed[key] = { label: p.label, file: win, sha256: sums[win], size: statSync(`dist/${win}`).size };
 }
 const manifest = {
   version,
@@ -37,6 +41,7 @@ const manifest = {
   page: `https://github.com/${RELEASE_REPO}/releases/tag/${tag}`,
   assets,
   installers,
+  windowed,
 };
 writeFileSync("dist/latest.json", JSON.stringify(manifest, null, 2) + "\n");
-console.log(`latest.json: ${Object.keys(assets).length} executables, ${Object.keys(installers).length} installers`);
+console.log(`latest.json: ${Object.keys(assets).length} executables, ${Object.keys(installers).length} installers, ${Object.keys(windowed).length} windowed`);

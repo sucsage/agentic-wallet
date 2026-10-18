@@ -43,18 +43,16 @@ function openBrowser(url: string) {
 }
 
 /** Already running (a second double-click): open the running one's screen and quit. */
-async function alreadyRunning(): Promise<boolean> {
-  if (!existsSync(sessionPath())) return false;
+/** The URL of a copy of the app already running on this computer, if any. */
+async function alreadyRunning(): Promise<string | null> {
+  if (!existsSync(sessionPath())) return null;
   try {
     const s = JSON.parse(readFileSync(sessionPath(), "utf8")) as { port: number; token: string };
     const r = await fetch(`http://127.0.0.1:${s.port}/ping`, { signal: AbortSignal.timeout(800) });
-    if ((await r.json()).app !== "agentic-wallet") return false;
-    const url = `http://127.0.0.1:${s.port}/#t=${s.token}`;
-    console.log(`Agentic Wallet is already running: ${url}`);
-    openBrowser(url);
-    return true;
+    if ((await r.json()).app !== "agentic-wallet") return null;
+    return `http://127.0.0.1:${s.port}/#t=${s.token}`;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -251,6 +249,8 @@ let agentCalls = 0;
 
 /** How to start the MCP server: this executable with --mcp (from source: bun run main.ts --mcp). */
 function mcpEntry() {
+  // The windowed build (Electrobun): its own Bun runs the app's bundled entry with --mcp.
+  if (process.env.AW_SHELL === "electrobun" && process.env.AW_ENTRY) return { command: process.execPath, args: [process.env.AW_ENTRY, "--mcp"] };
   const compiled = !/\bbun(\.exe)?$/i.test(process.execPath);
   return { command: process.execPath, args: compiled ? ["--mcp"] : ["run", process.argv[1], "--mcp"] };
 }
@@ -373,11 +373,28 @@ async function takeOver(): Promise<{ port: number; token: string } | null> {
   return null;
 }
 
+/** The command line: the MCP server (--mcp), or the app opened in the default browser. */
 async function main() {
   if (process.argv.includes("--mcp")) return runMcp();
+  await startApp({ browser: !noOpen });
+}
+
+/**
+ * Starts the app's local server (or finds the copy already running) and returns its URL. The
+ * command-line build opens it in the browser; the windowed build (desktop/electrobun) shows it in
+ * its own window.
+ */
+export async function startApp(opts: { browser: boolean }): Promise<{ url: string; already: boolean }> {
   const restarted = process.argv.includes("--restarted");
   const previous = restarted ? await takeOver() : null;
-  if (!restarted && (await alreadyRunning())) return;
+  if (!restarted) {
+    const running = await alreadyRunning();
+    if (running) {
+      console.log(`Agentic Wallet is already running: ${running}`);
+      if (opts.browser) openBrowser(running);
+      return { url: running, already: true };
+    }
+  }
   cleanOldExecutable();
   const token = previous?.token ?? randomBytes(24).toString("base64url");
   // A second, weaker token for MCP agents (read and queue only), kept in the same private file.
@@ -448,11 +465,15 @@ async function main() {
   console.log(`Open: ${url}`);
   console.log("Keep this window open while you use the app; close it to quit.");
   // Restarted after an update on the same port and token: the tab already open reconnects by itself.
-  if (!previous || previous.port !== server.port) openBrowser(url);
+  if (opts.browser && (!previous || previous.port !== server.port)) openBrowser(url);
   // Background sync while unlocked.
   setInterval(() => {
     if (wallet.stage() === "ready") wallet.sync().catch(() => undefined);
   }, 20_000);
+  return { url, already: false };
 }
 
-main();
+export { runMcp };
+
+// Run as the program (the compiled app, or `bun run src/main.ts`); imported by the windowed build it waits to be started.
+if (import.meta.main) main();

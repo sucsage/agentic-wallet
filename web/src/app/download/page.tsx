@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 const REPO = "sucsage/agentic-wallet";
 
 type Installer = { label: string; file: string; sha256: string; size: number };
-type Latest = { version: string; tag: string; date: string; notes: string; page: string; installers: Record<string, Installer> };
+type Latest = { version: string; tag: string; date: string; notes: string; page: string; installers: Record<string, Installer>; windowed?: Record<string, Installer> };
 
 /**
  * The latest desktop release (its latest.json), read on each visit: a cached "no release yet"
@@ -41,7 +41,15 @@ const HOW: Record<string, string> = {
 
 export default async function DownloadPage() {
   const r = await latest();
-  const list = r ? Object.entries(r.installers).map(([key, i]) => ({ key, ...i, url: `https://github.com/${REPO}/releases/download/${encodeURIComponent(r.tag)}/${i.file}`, how: HOW[key] ?? "" })) : [];
+  const fileUrl = (file: string) => `https://github.com/${REPO}/releases/download/${encodeURIComponent(r!.tag)}/${file}`;
+  const list = r
+    ? Object.entries(r.installers).map(([key, i]) => {
+        const w = r.windowed?.[key];
+        return { key, ...i, url: fileUrl(i.file), how: HOW[key] ?? "", window: w ? { url: fileUrl(w.file), size: w.size } : null };
+      })
+    : [];
+  // The windowed app is the main download where it was tested (macOS); elsewhere it is offered as "new".
+  const primary = (x: (typeof list)[number]) => (x.window && x.key.startsWith("macos") ? { url: x.window.url, size: x.window.size } : { url: x.url, size: x.size });
   return (
     <main className="dl-page">
       <header className="dl-top">
@@ -60,7 +68,7 @@ export default async function DownloadPage() {
         </p>
         {r ? (
           <>
-            <PickForThisComputer items={list.map(({ key, label, url, size }) => ({ key, label, url, size: mb(size) }))} version={r.version} />
+            <PickForThisComputer items={list.map((x) => ({ key: x.key, label: x.label, url: primary(x).url, size: mb(primary(x).size) }))} version={r.version} />
             <small>
               Version {r.version} · {new Date(r.date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} ·{" "}
               <a href={r.page} target="_blank" rel="noreferrer">
@@ -84,9 +92,21 @@ export default async function DownloadPage() {
           {list.map((i) => (
             <article key={i.key} className="dl-card" id={i.key}>
               <h2>{i.label}</h2>
-              <a className="dl-btn" href={i.url}>
-                Download · {mb(i.size)}
-              </a>
+              {i.window && i.key.startsWith("macos") ? (
+                <>
+                  <a className="dl-btn" href={i.window.url}>
+                    Download · {mb(i.window.size)}
+                  </a>
+                  <a href={i.url}>Classic version (opens in your browser) · {mb(i.size)}</a>
+                </>
+              ) : (
+                <>
+                  <a className="dl-btn" href={i.url}>
+                    Download · {mb(i.size)}
+                  </a>
+                  {i.window && <a href={i.window.url}>New: in its own window (beta) · {mb(i.window.size)}</a>}
+                </>
+              )}
               <p>{i.how}</p>
               <code title="SHA-256">sha256 {i.sha256}</code>
             </article>
