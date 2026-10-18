@@ -70,10 +70,11 @@ function useAction() {
     setBusy(key);
     setMessage(null);
     try {
-      const r = (await fn()) as { outcome?: Outcome; status?: string; error?: string; groupVote?: { status: string; yes: number; threshold: number; group: string } } | undefined;
+      const r = (await fn()) as { outcome?: Outcome; status?: string; error?: string; groupVote?: { status: string; yes: number; threshold: number; group: string }; deviceRequest?: { device: string } } | undefined;
       const o = r?.outcome;
       const v = r?.groupVote;
-      if (v)
+      if (r?.deviceRequest) setMessage({ ok: true, text: `Waiting for your desktop app (${r.deviceRequest.device}): sign it there to carry it out.` });
+      else if (v)
         setMessage({
           ok: v.status !== "FAILED" && v.status !== "REJECTED",
           text:
@@ -1956,8 +1957,9 @@ function DisputeForm({ dealId, index, onDone, onCancel }: { dealId: number; inde
     setBusy(true);
     setMsg(null);
     try {
-      const r = await send<{ outcome: Outcome }>(`/api/deals/${dealId}/action`, "POST", { action: "dispute", index, reason });
-      if (r.outcome.status !== "success") setMsg(r.outcome.error ?? r.outcome.status);
+      const r = await send<{ outcome?: Outcome; deviceRequest?: { device: string } }>(`/api/deals/${dealId}/action`, "POST", { action: "dispute", index, reason });
+      if (r.deviceRequest) setMsg(`Waiting for your desktop app (${r.deviceRequest.device}): sign the dispute there.`);
+      else if (r.outcome && r.outcome.status !== "success") setMsg(r.outcome.error ?? r.outcome.status);
       else await onDone();
     } catch (err) {
       setMsg((err as Error).message);

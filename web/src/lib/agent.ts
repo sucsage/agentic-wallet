@@ -499,7 +499,7 @@ const BANK_TOOLS = [
         type: "string",
         enum: [...GUIDE_TOPICS],
         description:
-          "start (first steps, menu), money (top up, send, withdraw), buy, sell, outsider (private links, OTP and passwords), deposit, deliver, review (approve / request changes), dispute, documents (contract, payment request, receipt, tax invoice, complaint), files, templates, deals_page (filters), contacts, groups, limits, summary, profile, address, ai_chat, guarantors, revisions (rounds of changes), expiry (14-day offers), terms_review, protection (watermarks, screenshots), split_payment (แบ่งจ่าย, not ผ่อน), public_link (private vs public links, open calls)",
+          "start (first steps, menu), money (top up, send, withdraw), buy, sell, outsider (private links, OTP and passwords), deposit, deliver, review (approve / request changes), dispute, documents (contract, payment request, receipt, tax invoice, complaint), files, templates, deals_page (filters), contacts, groups, limits, summary, profile, address, ai_chat, guarantors, revisions (rounds of changes), expiry (14-day offers), terms_review, protection (watermarks, screenshots), split_payment (แบ่งจ่าย, not ผ่อน), public_link (private vs public links, open calls), desktop_app (the desktop app: own deal chain, link code, signing moves, backups)",
       },
     },
     ["topic"],

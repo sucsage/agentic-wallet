@@ -31,6 +31,7 @@ export const GUIDE_TOPICS = [
   "protection",
   "split_payment",
   "public_link",
+  "desktop_app",
 ] as const;
 export type GuideTopic = (typeof GUIDE_TOPICS)[number];
 
@@ -166,6 +167,16 @@ Witnesses (optional): each side can add one under "Witnesses"; they appear on th
 2. Deals → "Public posts": every application, its links and files, and the contact (only you see it).
 3. "✦ AI: who fits best?" ranks them with a short reason (the AI reads what they wrote and sent; it does not open their links).
 4. "Choose <name>" drafts the deal with them. Confirm it: their private link and one-time code are made; send both to their contact (the code separately). The post then stops taking applications. "Close" stops it any time.`,
+  desktop_app: `Desktop app (macOS, Windows, Linux; test mode demo):
+- What it is: your deals as your own chain on your computer. Every deal event (offer, payment locked, delivery, approval, dispute, ruling) is signed by the server and added as a block; each block names the one before it and is signed by your computer's key, so an old block cannot be changed without breaking the chain. This website keeps only your latest block (countersigned) and puts one fingerprint of everyone's latest blocks on the blockchain every hour (a public timestamp).
+- When the other side of a deal also uses the app, the same event sits in both chains: "My chain" shows "✓ other party".
+1. Get the app for your computer from the team (one file; the first time, Windows asks "More info → Run anyway", macOS: right-click → Open). It opens in your browser.
+2. On the website: Profile → Desktop app → "Make a link code" (valid 10 minutes).
+3. In the app: type the code, name the computer, choose a passphrase (it encrypts the computer's key; nobody can reset it).
+4. Approve, dispute, accept or refund in the app: each is a block you sign; the server carries it out. Delivering files and drafting deals stay on the website (files and the AI).
+5. Profile → "My desktop app signs deal moves": moves pressed on the website then wait for your signature in the app ("Sign" or "Reject").
+6. Settings → "Save key backup" and keep the file: on a new computer, "Restore from backup" with that file and your passphrase brings the chain back (the chain itself is backed up to the server encrypted; the server cannot read it). Lost computer: Profile → Desktop app → Remove.
+- "Verify now" checks every block, that your latest block matches the server's countersigned one, and that it is in the blockchain anchor.`,
 };
 
 export function appGuide(topic: string | undefined): string {

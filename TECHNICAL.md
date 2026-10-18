@@ -439,6 +439,26 @@ Besides the private link (one chosen person, with a one-time code), a user can p
 - **Applying** (`/apply/:slug`, `POST /api/apply/:slug`): no account; name, a contact, a proposal, up to 5 http(s) portfolio links, an optional price and up to 3 files of 4 MB. Rate-limited per IP, a hidden honeypot field drops bots, at most 200 applications, and applying again with the same contact replaces the earlier one. The page shows only the brief and the owner's display name.
 - **Owner**: Deals → Public posts lists every application with its links, files (`/api/posts/files/:id`, owner only, served like deal files) and contact (owner only). "AI: who fits best?" (`recommend`, tool `recommend_applicants`) ranks them 0-100 with a reason; applications are fenced as untrusted data, an application that tries to instruct the AI loses points, and links are not fetched (no server-side requests to strangers' URLs). "Choose" (`choose`, tool `choose_applicant`) drafts the post's deal with that person as an outsider; Confirm makes their private link and one-time code. The post is then awarded and stops taking applications; "Close" stops it any time.
 
+### 3.20 Desktop app and device chains
+
+The desktop app (`desktop/`, Bun, one executable per OS: macOS arm64/x64, Windows x64, Linux x64/arm64) is the main way to hold deals. Each user's computer keeps its **own** chain; the server keeps only its head. Two users' chains link through the same deal event. Block format and checks are one file shared by both sides: `web/src/lib/device-chain/format.ts`.
+
+```
+User A's computer:  [0 genesis]─[1 D-51 Released]─[2 D-51 Active]─[3 you signed: approve]─…   server keeps: head of A
+                                       │ same server-signed event hash
+User B's computer:  [0 genesis]─[1 D-51 Released]─[2 D-51 Active]─…                            server keeps: head of B
+Every hour: Merkle root of all heads → ChainAnchor (Besu)                                      public timestamp
+```
+
+- **Linking** (`Device`, `DeviceLinkCode`): Profile → Desktop app makes a one-time code (10 min, stored as an HMAC). The app makes a secp256k1 key on the computer, encrypts it with the user's passphrase (scrypt N=2^15 + AES-256-GCM, `vault.json`), and links by signing the code with it. The private key never leaves the computer.
+- **Blocks**: `{v, owner, height, prev, time, kind, body}`, hash = keccak256 of canonical JSON (sorted keys), signed by the device key (EIP-191 over the 32-byte hash). Kinds: `genesis` (wallet, server signer), `event` (a deal event + the server's signature), `intent` (a deal move the user signed). The chain is a SQLite file (`chain.db`).
+- **Deal events** (`DealEvent`): on each sync the server reads the wallet's FileEscrow deals and records each deal or milestone status once, as `{dealId, type, index, status, data, parties}` with id = hash of that content, signed by the server key (`CHAIN_SIGNER_KEY`, else derived from the app secret). The app checks both the id and the signature before appending it. `DealEventAck` records which device appended which event at which height: the links between chains.
+- **Sync** (`GET /api/device/sync`, `POST /api/device/blocks`): the server checks every block (hash, device signature, link to the head it holds, event signatures, events belong to the wallet) and moves the head atomically (`updateMany` on the old head), countersigning `height+hash`. Blocks the server refuses are dropped on the device, so the chain always continues from a countersigned head. After each sync the whole chain is uploaded encrypted with a key derived from the device key (`Device.backup`; the server cannot read it).
+- **Moves from the app**: approve, dispute, accept, cancel, claim, refund, reclaim are `intent` blocks. The head moves first, then the server runs the move through the same code as the website's buttons (`lib/bank/deal-actions.ts` → `runDealMove`), and records the result (`DeviceIntent`). Profile → "My desktop app signs deal moves" (`UserPreference.deviceSigns`) makes moves pressed on the website wait as `DeviceRequest`s until the app signs (or rejects) them.
+- **Requests** from the app carry `x-aw-device`, `x-aw-time` and a signature over method, path, time and body hash; the time must be within 5 minutes and each signature is accepted once (`DeviceRequestSeen`).
+- **Anchor**: `ChainAnchor` (`contracts/contracts/device-chain/ChainAnchor.sol`, Besu `0x5aafb34e20749833456d50b60c799bf829dc577b`, anchorer = the Mock Bank key) stores one Merkle root over all heads, hourly from syncs and daily from the cron (`anchorHeads`, `ChainAnchorRecord`). The app gets its Merkle proof (`GET /api/device/anchor`), checks it, and reads the transaction receipt itself through the read-only `/api/rpc` to confirm the root is on-chain.
+- **The app's own server** listens on 127.0.0.1 only, opens the browser with a per-launch token in the URL fragment, checks the Host header (DNS rebinding) and sends a strict CSP. Build: `cd desktop && bun install && bun run build` (all targets, cross-compiled from any OS).
+
 ## 4. The AI agent
 
 `web/src/lib/agent.ts`: an LLM tool-use loop (max 12 turns) over any Anthropic-compatible API

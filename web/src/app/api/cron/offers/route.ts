@@ -3,13 +3,14 @@ import { getAddress } from "viem";
 import { OFFER_DAYS, syncDeal } from "@/lib/bank/deals";
 import { lapseIfLate } from "@/lib/bank/payment-plans";
 import { db } from "@/lib/db";
+import { anchorHeads } from "@/lib/device-chain";
 import { HttpError, errorResponse, rateLimit } from "@/lib/guard";
 
 export const maxDuration = 300;
 
 /**
  * Daily (vercel.json crons): offers not signed within 14 days are withdrawn, and split payments
- * with a part more than 7 days late end (refunded). syncDeal does the work
+ * with a part more than 7 days late end (refunded), and the desktop apps' chain heads are anchored on-chain. syncDeal does the work
  * (it also runs whenever either side opens their deals); this catches deals nobody looks at.
  * With CRON_SECRET set, only Vercel's cron (Authorization: Bearer <secret>) may call it.
  */
@@ -34,7 +35,8 @@ export async function GET(req: Request) {
     for (const plan of await db.paymentPlan.findMany({ where: { status: "ACTIVE" }, include: { draft: true }, take: 500 })) {
       if (await lapseIfLate(plan).catch((e) => (console.error("plan lapse", plan.id, e), false))) lapsed += 1;
     }
-    return Response.json({ checked, lapsed });
+    const anchor = await anchorHeads().catch((e) => (console.error("anchor", e), { error: String(e) }));
+    return Response.json({ checked, lapsed, anchor });
   } catch (err) {
     return errorResponse(err);
   }

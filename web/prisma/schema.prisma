@@ -1199,6 +1199,8 @@ model UserPreference {
   emailNotify  Boolean  @default(false)
   /// A linked card covers a short balance when a deal is approved.
   cardCover    Boolean  @default(true)
+  /// On: deal moves started on the website wait for the desktop app to sign them (DeviceRequest).
+  deviceSigns  Boolean  @default(false)
   updatedAt    DateTime @updatedAt
 }
 
@@ -1234,4 +1236,132 @@ model BuyerInvite {
   createdAt    DateTime @default(now())
 
   @@index([userId])
+}
+
+/// A desktop app linked to a user (lib/device-chain). Its address is the device key, made and kept on
+/// the user's computer (encrypted with their passphrase); the server never sees the private key. The
+/// device keeps its own hash-linked chain of deal blocks; the server keeps only its head: the latest
+/// block, signed by the device and countersigned by the server.
+model Device {
+  address       String         @id
+  userId        String
+  /// The wallet whose deals this device records (the user's own wallet when it was linked).
+  walletAddress String
+  name          String
+  os            String
+  linkedAt      DateTime       @default(now())
+  revokedAt     DateTime?
+  lastSeenAt    DateTime?
+  /// Unused (an earlier replay guard; DeviceRequestSeen replaced it). Kept so the shared database loses nothing.
+  lastRequestAt BigInt         @default(0)
+  headHeight    Int?
+  headHash      String?
+  headBlock     Json?
+  headServerSig String?
+  headAt        DateTime?
+  /// The device's chain, encrypted on the device with a key derived from its private key (opaque here).
+  backup        Bytes?
+  backupHeight  Int?
+  backupAt      DateTime?
+  acks          DealEventAck[]
+
+  @@index([userId])
+}
+
+/// Signatures of recent device requests (5-minute window): the same signed request is refused twice.
+model DeviceRequestSeen {
+  sigHash String   @id
+  at      DateTime @default(now())
+
+  @@index([at])
+}
+
+/// A one-time code from Profile -> Desktop app that links a new device to the signed-in user.
+model DeviceLinkCode {
+  codeHash  String    @id
+  userId    String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+/// A fact about a deal as the escrow shows it (a deal or milestone reaching a status), signed by the
+/// server. Each party's device appends it to its own chain: the same event hash in two chains links them.
+model DealEvent {
+  id        String         @id
+  dealId    Int
+  type      String
+  index     Int?
+  data      Json
+  /// The deal's buyer and seller wallets, lowercase.
+  parties   String[]
+  serverSig String
+  createdAt DateTime       @default(now())
+  acks      DealEventAck[]
+
+  @@index([dealId])
+}
+
+/// A device appended a deal event at this height and block.
+model DealEventAck {
+  eventId       String
+  deviceAddress String
+  height        Int
+  blockHash     String
+  createdAt     DateTime  @default(now())
+  event         DealEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  device        Device    @relation(fields: [deviceAddress], references: [address], onDelete: Cascade)
+
+  @@id([eventId, deviceAddress])
+  @@index([deviceAddress])
+}
+
+/// A deal move the user signed in the desktop app (an intent block) and what came of it.
+model DeviceIntent {
+  blockHash     String   @id
+  deviceAddress String
+  userId        String
+  height        Int
+  dealId        Int
+  action        String
+  index         Int      @default(0)
+  requestId     String?
+  status        String
+  result        Json?
+  createdAt     DateTime @default(now())
+
+  @@index([deviceAddress])
+}
+
+/// A deal move started on the website that waits for the desktop app's signature (Profile: "My
+/// desktop app signs deal moves").
+model DeviceRequest {
+  id        String    @id @default(cuid())
+  userId    String
+  dealId    Int
+  action    String
+  index     Int       @default(0)
+  reason    String?
+  /// PENDING | SIGNED | REJECTED | EXPIRED
+  status    String    @default("PENDING")
+  createdAt DateTime  @default(now())
+  doneAt    DateTime?
+
+  @@index([userId, status])
+}
+
+/// One Merkle root over every device head, sent to the ChainAnchor contract (public timestamp).
+model ChainAnchorRecord {
+  id        String   @id @default(cuid())
+  root      String
+  /// The leaves, sorted: [{ address, height, hash }].
+  heads     Json
+  count     Int
+  txHash    String?
+  seq       Int?
+  /// SENT | LOCAL (no contract configured yet) | FAILED
+  status    String
+  createdAt DateTime @default(now())
 }

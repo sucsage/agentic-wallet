@@ -35,6 +35,7 @@ EVIDENCE.md from the live chain.
 |---|---|
 | `contracts/` | Solidity: `AgentWallet`, `AgentWalletFactory`, `MilestoneEscrow`, `MockUSDC` (Hardhat 3 + viem) |
 | `web/` | Next.js 16 app on Vercel: landing page, per-visitor sandbox, agent chat, approvals, deals, audit log |
+| `desktop/` | Desktop app (Bun, one executable per OS): each user's own deal chain on their computer, linked to the other party's and anchored on-chain (`desktop/README.md`) |
 | `web/src/lib/agent.ts` | LLM tool-use loop (any Anthropic-compatible API: PSU gateway, OpenRouter, Anthropic): 7 validated tools, untrusted-document handling |
 | `web/src/lib/policy.ts` | Guard #1: off-chain policy engine (tier routing, injection scan) |
 | `web/src/lib/actions.ts` | Every on-chain action, shared by the agent's tools and the UI |

@@ -91,6 +91,24 @@ key (`ArbiterNotNeutral`), so the buyer's side can never judge its own dispute.
   at `/admin/disputes`. Deals on the first escrow keep the single ruling at **≥ 75% confidence**.
 - The resolve transaction is on-chain. Settlement to the bank then runs as for any payout or refund.
 
+## 4c. Desktop app and device chains
+
+What a user (or an attacker on their computer) can and cannot do with the chain they hold:
+
+| Attempt | Result |
+|---|---|
+| Edit an old block on disk (amount, status) | Its hash no longer matches: "Verify now" fails, and the server refuses any block built on it. "Put back my last backup" restores the encrypted backup. |
+| Rewrite history (a different block at an old height) | Refused: the server only accepts blocks that continue its countersigned head. |
+| Invent a deal event ("milestone released") | Refused: events must carry the server's signature and be a known `DealEvent` for that wallet. |
+| Sign a move with another key | Refused: every block and request is checked against the device key. |
+| Replay a captured request | Refused: each request signature is accepted once within its 5-minute window. |
+| Use a stolen `vault.json` | Needs the passphrase (scrypt + AES-GCM). Profile → Desktop app → Remove cuts the device off. |
+| The server quietly swaps a user's head | The device holds every block and the server's countersignature; heads are anchored on-chain hourly, so an earlier anchor would no longer match. |
+
+- Escrow money still moves only by FileEscrow's rules; the chain on the computer records and signs, it does not hold money. A move signed in the app runs through the same checks as the website (KYC limits, group votes, offer expiry, guarantors).
+- The app's local server is reachable only from 127.0.0.1 with the per-launch token, Host-checked, no CORS; other web pages cannot drive it.
+- Known limits: the executables are not code-signed (Windows SmartScreen and macOS Gatekeeper warn once); a forgotten passphrase cannot be reset (link the computer again; deal history stays on the server and in the escrow); the anchor proves the head existed, not who was right in a deal.
+
 ## 5. Application security
 
 - **Sign-in.** Mock Bank login with a 6-digit demo PIN, hashed with scrypt. After **5 wrong PINs the

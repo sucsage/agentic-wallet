@@ -1921,6 +1921,17 @@
 .aw-address-form input,.aw-address-form select{height:38px;padding:0 10px;border:1px solid #333;border-radius:10px;background:#0c0c0c;color:#fff;font-size:14px}
 .aw-address-actions{display:flex;gap:8px}
 @media(max-width:640px){.aw-address-form{grid-template-columns:1fr}}
+.aw-desktop-card>header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.aw-desktop-card h2{margin:0 0 4px}.aw-desktop-card header small{color:#888;display:block;max-width:640px}
+.aw-desktop-code{margin-top:12px;padding:12px 14px;border:1px dashed #3a5bd9;border-radius:12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;color:#bbb}
+.aw-desktop-code b{font:700 22px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:2px;color:#fff}
+.aw-desktop-download{margin-top:12px;display:grid;gap:2px;color:#bbb}.aw-desktop-download a{color:#7ea2ff}.aw-desktop-download small{color:#777}
+.aw-desktop-devices{width:100%;border-collapse:collapse;margin-top:12px;font-size:13px}
+.aw-desktop-devices th,.aw-desktop-devices td{text-align:left;padding:8px 6px;border-bottom:1px solid #262626;vertical-align:top}
+.aw-desktop-devices th{color:#888;font-weight:600}.aw-desktop-devices small{display:block;color:#777}
+.aw-desktop-toggle{display:flex;gap:10px;align-items:flex-start;margin-top:14px;cursor:pointer}
+.aw-desktop-toggle input{margin-top:4px;width:16px;height:16px}.aw-desktop-toggle small{display:block;color:#888}
+@media(max-width:640px){.aw-desktop-card>header{flex-direction:column}.aw-desktop-devices th:nth-child(3),.aw-desktop-devices td:nth-child(3){display:none}}
 .aw-link-access{display:grid;gap:6px;margin-top:12px;padding-top:12px;border-top:1px solid #2a2a2a}
 .aw-link-access small{color:#999;font-size:12px;line-height:1.5}
 .aw-link-otp{display:flex;align-items:center;gap:10px}

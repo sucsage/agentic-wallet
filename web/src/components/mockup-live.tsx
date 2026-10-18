@@ -10,6 +10,7 @@ import { AGENT_LIMIT_RANGE } from "@/lib/send-limits";
 import { fileTypesLabel } from "@/lib/file-types";
 import { SecurityCard } from "./two-factor";
 import { AddressCard } from "./address-card";
+import { DesktopAppCard } from "./desktop-app-card";
 import { PlanCard, planFromParts } from "./plan-card";
 import { PublicPostsPanel } from "./public-posts";
 import { DisplaySizeCard } from "./ui-scale";
@@ -2151,6 +2152,7 @@ export function LivePrivacy() {
           <KycCard />
           <SecurityCard />
           <AddressCard />
+          <DesktopAppCard />
           <DisplaySizeCard />
           <StripeLinkCard />
           <Card className="aw-profile-passbooks">

@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Agentic Wallet Desktop</title>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --ink: #14171c; --muted: #5d6673; --line: #e3e6eb;
+  --accent: #2f6df6; --accent-ink: #ffffff; --ok: #12805c; --ok-bg: #e6f5ee; --bad: #c0392b; --bad-bg: #fbeceb;
+  --warn: #9a6400; --warn-bg: #fff4dc; --chip: #eef1f5; --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0f1216; --panel: #171b21; --ink: #e8ebef; --muted: #98a1ad; --line: #272d36; --accent: #5b8cff; --chip: #222831;
+    --ok: #4cc79a; --ok-bg: #12291f; --bad: #ff7a6b; --bad-bg: #2d1715; --warn: #f0b545; --warn-bg: #2b2210; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Thai", sans-serif; background: var(--bg); color: var(--ink); }
+button, input, textarea, select { font: inherit; color: inherit; }
+button { cursor: pointer; border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 7px 12px; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button.danger { color: var(--bad); }
+button:disabled { opacity: .55; cursor: default; }
+input, textarea, select { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--panel); }
+label { display: block; font-weight: 600; margin: 12px 0 4px; }
+.hint { color: var(--muted); font-size: 12.5px; }
+.mono { font-family: var(--mono); font-size: 12.5px; word-break: break-all; }
+.center { min-height: 100vh; display: grid; place-items: center; padding: 16px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
+.narrow { width: min(460px, 100%); }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px; }
+.logo { width: 30px; height: 30px; border-radius: 8px; background: linear-gradient(135deg, var(--accent), #8a5cf6); display: grid; place-items: center; color: #fff; font-weight: 800; }
+.tabs { display: flex; gap: 6px; margin: 14px 0 4px; }
+.tabs button.on { background: var(--chip); font-weight: 600; }
+.err { background: var(--bad-bg); color: var(--bad); border-radius: 8px; padding: 8px 10px; margin-top: 12px; display: none; }
+.ok-box { background: var(--ok-bg); color: var(--ok); border-radius: 8px; padding: 8px 10px; }
+.layout { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+nav { border-right: 1px solid var(--line); background: var(--panel); padding: 16px 12px; display: flex; flex-direction: column; gap: 4px; }
+nav .brand { margin: 0 6px 16px; }
+nav button { border: 0; text-align: left; background: transparent; padding: 9px 10px; }
+nav button.on { background: var(--chip); font-weight: 600; }
+nav .foot { margin-top: auto; padding: 8px; }
+main { padding: 22px; max-width: 1050px; width: 100%; }
+h1 { font-size: 20px; margin: 0 0 14px; }
+h2 { font-size: 15px; margin: 0 0 10px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.stat .v { font-size: 22px; font-weight: 700; }
+.chip { display: inline-block; padding: 2px 8px; border-radius: 999px; background: var(--chip); font-size: 12px; }
+.chip.ok { background: var(--ok-bg); color: var(--ok); } .chip.bad { background: var(--bad-bg); color: var(--bad); } .chip.warn { background: var(--warn-bg); color: var(--warn); }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.space { justify-content: space-between; }
+.deal { margin-bottom: 12px; }
+.ms { border-top: 1px solid var(--line); padding: 10px 0; display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; font-size: 12.5px; }
+.banner { background: var(--warn-bg); color: var(--warn); border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; }
+.banner .req { background: var(--panel); color: var(--ink); border-radius: 10px; padding: 10px; margin-top: 8px; }
+.check { display: grid; grid-template-columns: 22px 1fr; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+dialog { border: 1px solid var(--line); border-radius: 14px; background: var(--panel); color: var(--ink); width: min(440px, 92vw); }
+dialog::backdrop { background: rgba(0,0,0,.35); }
+.demo { font-size: 11.5px; color: var(--muted); margin-top: 12px; }
+@media (max-width: 760px) {
+  .layout { grid-template-columns: 1fr; }
+  nav { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 8px; }
+  nav .brand, nav .foot { display: none; }
+  main { padding: 16px; }
+}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<dialog id="dlg"><form method="dialog" id="dlg-form"></form></dialog>
+<script>
+"use strict";
+// The token from the URL the app opened (#t=...): every call to the local app carries it.
+(function () {
+  const m = location.hash.match(/t=([\w-]+)/);
+  if (m) { try { sessionStorage.setItem("awt", m[1]); } catch {} history.replaceState(null, "", "/"); }
+})();
+const TOKEN = (() => { try { return sessionStorage.getItem("awt") || ""; } catch { return ""; } })();
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const short = (h) => (h ? `${h.slice(0, 10)}…${h.slice(-6)}` : "");
+const money = (n, cur) => `${Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 })} ${cur || ""}`.trim();
+const when = (t) => (t ? new Date(t).toLocaleString() : "");
+
+async function api(path, method = "GET", body) {
+  const r = await fetch(path, { method, headers: { "x-app-token": TOKEN, "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || `Error ${r.status}`);
+  return j;
+}
+
+const S = { info: null, view: "overview", account: null, deals: null, chain: null, verify: null, busy: false };
+
+function showErr(el, e) { el.textContent = e.message || String(e); el.style.display = "block"; }
+
+async function boot() {
+  if (!TOKEN) { $("#root").innerHTML = `<div class="center"><div class="card narrow"><div class="brand"><div class="logo">A</div>Agentic Wallet</div><p>Open the app from the link it printed in its window (it carries a private token).</p></div></div>`; return; }
+  S.info = await api("/app/state");
+  render();
+}
+
+function render() {
+  const st = S.info.stage;
+  if (st === "setup") return renderSetup();
+  if (st === "locked") return renderUnlock();
+  renderApp();
+}
+
+// ---------------------------------------------------------------- setup / restore / unlock
+function renderSetup(tab = "link") {
+  $("#root").innerHTML = `<div class="center"><div class="card narrow">
+    <div class="brand"><div class="logo">A</div>Agentic Wallet Desktop</div>
+    <p class="hint">Your deals as your own chain on this computer. The website keeps only its latest block, signed by both sides.</p>
+    <div class="tabs"><button data-t="link" class="${tab === "link" ? "on" : ""}">Link this computer</button><button data-t="restore" class="${tab === "restore" ? "on" : ""}">Restore from backup</button></div>
+    ${tab === "link" ? `
+      <form id="f">
+        <label>Server</label><input name="server" value="${esc(S.info.defaultServer)}" />
+        <label>Link code</label><input name="code" placeholder="ABCD-EFGH" autocomplete="off" required />
+        <div class="hint">On the website: Profile → Desktop app → Make a link code.</div>
+        <label>Name of this computer</label><input name="deviceName" value="${esc(S.info.hostname)}" />
+        <label>Passphrase</label><input name="passphrase" type="password" minlength="8" required />
+        <div class="hint">Encrypts your device key on this computer. It is never sent anywhere; nobody can reset it.</div>
+        <label>Passphrase again</label><input name="again" type="password" required />
+        <div class="err" id="e"></div>
+        <div class="row" style="margin-top:16px"><button class="primary" id="go">Link and create my chain</button></div>
+      </form>` : `
+      <form id="f">
+        <label>Key backup file</label><input name="file" type="file" accept=".json,application/json" required />
+        <div class="hint">The file you saved from Settings → Save key backup.</div>
+        <label>Passphrase</label><input name="passphrase" type="password" required />
+        <div class="err" id="e"></div>
+        <div class="row" style="margin-top:16px"><button class="primary" id="go">Restore</button></div>
+      </form>`}
+    <div class="demo">Test mode demo · Mock Bank money only</div>
+  </div></div>`;
+  document.querySelectorAll(".tabs button").forEach((b) => (b.onclick = () => renderSetup(b.dataset.t)));
+  $("#f").onsubmit = async (ev) => {
+    ev.preventDefault();
+    const f = new FormData(ev.target), e = $("#e"), go = $("#go");
+    e.style.display = "none";
+    try {
+      go.disabled = true; go.textContent = "Working…";
+      if (tab === "link") {
+        if (f.get("passphrase") !== f.get("again")) throw new Error("The passphrases differ");
+        await api("/app/setup", "POST", { server: f.get("server"), code: f.get("code"), passphrase: f.get("passphrase"), deviceName: f.get("deviceName") });
+      } else {
+        const text = await f.get("file").text();
+        await api("/app/restore", "POST", { keyBackup: text, passphrase: f.get("passphrase") });
+      }
+      S.info = await api("/app/state");
+      render();
+    } catch (err) { showErr(e, err); go.disabled = false; go.textContent = tab === "link" ? "Link and create my chain" : "Restore"; }
+  };
+}
+
+function renderUnlock() {
+  const d = S.info.device;
+  $("#root").innerHTML = `<div class="center"><div class="card narrow">
+    <div class="brand"><div class="logo">A</div>Agentic Wallet Desktop</div>
+    <p>${esc(d.user)} · <span class="hint">${esc(d.name)}</span></p>
+    <form id="f"><label>Passphrase</label><input name="p" type="password" autofocus required />
+    <div class="err" id="e"></div><div class="row" style="margin-top:14px"><button class="primary" id="go">Unlock</button></div></form>
+    <div class="demo">Test mode demo · Mock Bank money only</div></div></div>`;
+  $("#f").onsubmit = async (ev) => {
+    ev.preventDefault();
+    try { S.info = await api("/app/unlock", "POST", { passphrase: new FormData(ev.target).get("p") }); S.view = "overview"; render(); load(); }
+    catch (err) { showErr($("#e"), err); }
+  };
+}
+
+// ---------------------------------------------------------------- app shell
+const VIEWS = [["overview", "Overview"], ["deals", "Deals"], ["chain", "My chain"], ["settings", "Settings"]];
+function renderApp() {
+  const d = S.info.device;
+  $("#root").innerHTML = `<div class="layout"><nav>
+      <div class="brand"><div class="logo">A</div>Agentic Wallet</div>
+      ${VIEWS.map(([k, l]) => `<button data-v="${k}" class="${S.view === k ? "on" : ""}">${l}</button>`).join("")}
+      <div class="foot hint">${esc(d.user)}<br>${esc(d.name)}<br><button id="lock" style="margin-top:8px">Lock</button></div>
+    </nav><main id="main"></main></div>`;
+  document.querySelectorAll("nav [data-v]").forEach((b) => (b.onclick = () => { S.view = b.dataset.v; renderApp(); load(); }));
+  $("#lock").onclick = async () => { S.info = await api("/app/lock", "POST"); render(); };
+  renderView();
+}
+
+function requestsBanner() {
+  const reqs = S.info.requests || [];
+  if (!reqs.length) return "";
+  return `<div class="banner"><b>Waiting for your signature</b> · moves started on the website
+    ${reqs.map((r) => `<div class="req row space"><div><b>${esc(r.action)}</b> · deal D-${esc(r.dealId)} · milestone ${Number(r.index) + 1}${r.reason ? `<div class="hint">${esc(r.reason)}</div>` : ""}<div class="hint">${when(r.createdAt)}</div></div>
+      <div class="row"><button class="primary" data-sign="${esc(r.id)}">Sign</button><button data-reject="${esc(r.id)}">Reject</button></div></div>`).join("")}</div>`;
+}
+
+function syncLine() {
+  const s = S.info.lastSync;
+  const h = S.info.height;
+  if (!s) return `<span class="chip">Not synced yet</span>`;
+  return s.ok ? `<span class="chip ok">Synced ${new Date(s.at).toLocaleTimeString()}</span> <span class="hint">height ${h ?? "-"}</span>` : `<span class="chip bad" title="${esc(s.error)}">Sync failed</span> <span class="hint" style="max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:bottom">${esc(s.error)}</span>`;
+}
+
+function renderView() {
+  const m = $("#main");
+  if (S.view === "overview") {
+    const a = S.account;
+    m.innerHTML = `${requestsBanner()}<div class="row space"><h1>Overview</h1><div class="row">${syncLine()}<button id="sync">Sync now</button></div></div>
+      <div class="grid">
+        <div class="card stat"><div class="hint">Balance (Mock Bank)</div><div class="v">${a ? money(a.balance, a.currency) : "…"}</div></div>
+        <div class="card stat"><div class="hint">Blocks on this computer</div><div class="v">${S.info.height === null ? "…" : S.info.height + 1}</div></div>
+        <div class="card stat"><div class="hint">Deals</div><div class="v">${S.deals ? S.deals.length : "…"}</div></div>
+      </div>
+      <div class="card"><h2>How this works</h2>
+        <p class="hint" style="margin:0">Every deal event (offer, payment locked, delivery, approval, dispute, ruling) is signed by the server and added as a block to your chain here. Each block names the hash of the one before it and is signed by your device key, so changing any old block breaks every hash after it. The website keeps only your latest block, countersigned. When the other side of a deal also uses the app, the same event sits in both chains: that links them. Deal moves you make here are blocks you sign; the server carries them out.</p>
+      </div>
+      <div class="card" style="margin-top:12px"><div class="row space"><h2 style="margin:0">Integrity check</h2><button id="verify">Verify now</button></div><div id="vres">${verifyHtml()}</div></div>`;
+    $("#sync").onclick = () => doSync();
+    $("#verify").onclick = () => doVerify();
+  } else if (S.view === "deals") {
+    m.innerHTML = `${requestsBanner()}<div class="row space"><h1>Deals</h1><button id="sync">Refresh</button></div>
+      <p class="hint">Delivering files and drafting new deals stay on the website (they carry files and the AI). Approvals, disputes, accepting and refunds are signed here.</p>
+      <div id="deals">${S.deals ? (S.deals.length ? S.deals.map(dealHtml).join("") : `<div class="card hint">No deals yet.</div>`) : `<div class="card hint">Loading…</div>`}</div>`;
+    $("#sync").onclick = () => doSync();
+  } else if (S.view === "chain") {
+    const c = S.chain;
+    const linked = new Map((c?.links || []).map((l) => [l.event, l]));
+    m.innerHTML = `<div class="row space"><h1>My chain</h1><button id="sync">Sync now</button></div>
+      ${c ? `<div class="card" style="margin-bottom:12px"><div class="row space"><div><div class="hint">Server's countersigned head</div><div class="mono">${c.serverHead ? `#${c.serverHead.height} ${esc(c.serverHead.hash)}` : "none yet"}</div></div><span class="chip">${c.total} blocks</span></div></div>
+      <div class="card"><table><thead><tr><th>#</th><th>Block</th><th>Hash</th><th>Linked</th></tr></thead><tbody>
+      ${c.blocks.map((b) => `<tr><td>${b.height}</td><td>${blockText(b)}<div class="hint">${when(b.time)}</div></td><td class="mono">${short(b.hash)}<div class="hint">prev ${short(b.prev)}</div></td>
+        <td>${b.kind === "event" ? (linked.has(b.body.event.id) ? `<span class="chip ok" title="${esc(linked.get(b.body.event.id).block)}">✓ other party #${linked.get(b.body.event.id).height}</span>` : `<span class="chip">only mine</span>`) : ""}</td></tr>`).join("")}
+      </tbody></table>${c.total > c.blocks.length ? `<p class="hint">Showing the latest ${c.blocks.length}.</p>` : ""}</div>` : `<div class="card hint">Loading…</div>`}`;
+    $("#sync").onclick = () => doSync();
+  } else {
+    const d = S.info.device;
+    m.innerHTML = `<h1>Settings</h1>
+      <div class="card"><h2>This computer</h2>
+        <table><tr><th>Account</th><td>${esc(d.user)}</td></tr><tr><th>Computer</th><td>${esc(d.name)}</td></tr>
+        <tr><th>Device key</th><td class="mono">${esc(d.address)}</td></tr><tr><th>Wallet</th><td class="mono">${esc(d.wallet)}</td></tr>
+        <tr><th>Server</th><td>${esc(d.server)}</td></tr><tr><th>Linked</th><td>${when(d.linkedAt)}</td></tr></table></div>
+      <div class="card" style="margin-top:12px"><h2>Backups</h2>
+        <p class="hint">Your chain is backed up to the server after every sync, encrypted with a key only your device key can make: the server cannot read it. To move to a new computer you need the <b>key backup file</b> and your passphrase.</p>
+        <a href="/app/key-backup?t=${encodeURIComponent(TOKEN)}" download><button class="primary">Save key backup</button></a>
+        <p class="hint">Keep the file somewhere safe (it is encrypted with your passphrase). Lost computer? Remove it on the website (Profile → Desktop app).</p></div>`;
+  }
+  wireDealButtons();
+  wireRequestButtons();
+}
+
+function verifyHtml() {
+  const v = S.verify;
+  if (!v) return `<p class="hint">Checks every block's hash, link and signature here, your head against the server's countersigned head, and the latest public anchor.</p>`;
+  const line = (ok, title, detail, extra = "") => `<div class="check"><div>${ok ? "✅" : "⚠️"}</div><div><b>${title}</b><div class="hint">${esc(detail)}</div>${extra}</div></div>`;
+  const repair = v.local.ok ? "" : `<button id="repair" style="margin-top:6px">Put back my last backup</button>`;
+  return line(v.local.ok, "Chain on this computer", v.local.detail, repair) + line(v.server.ok, "Matches the server", v.server.detail) +
+    line(v.anchor.ok, "Public anchor", v.anchor.detail, v.anchor.txHash ? `<div class="mono hint">tx ${esc(v.anchor.txHash)}</div>` : "");
+}
+
+function blockText(b) {
+  if (b.kind === "genesis") return `<b>Genesis</b> · wallet <span class="mono">${short(b.body.wallet)}</span>`;
+  if (b.kind === "intent") return `<b>You signed: ${esc(b.body.action)}</b> · D-${esc(b.body.dealId)}${["cancel", "accept"].includes(b.body.action) ? "" : ` milestone ${Number(b.body.index) + 1}`}${b.body.requestId ? ` <span class="chip">from website</span>` : ""}${b.body.reason ? `<div class="hint">${esc(b.body.reason)}</div>` : ""}`;
+  const e = b.body.event;
+  return e.type === "deal" ? `<b>Deal D-${esc(e.dealId)}</b> → ${esc(e.status)} <span class="hint">total ${esc(e.data.total)}</span>` : `<b>D-${esc(e.dealId)} milestone ${Number(e.index) + 1}</b> → ${esc(e.status)} <span class="hint">${esc(e.data.amount)}</span>`;
+}
+
+const STATUS_CHIP = { Released: "ok", Approved: "ok", KeyReleased: "ok", Active: "ok", Disputed: "bad", Refunded: "warn", Cancelled: "warn", Delivered: "warn", Split: "warn" };
+function dealHtml(d) {
+  const now = Date.now() / 1000;
+  const btn = (action, index, label, cls = "") => `<button class="${cls}" data-act="${action}" data-deal="${d.id}" data-i="${index}">${label}</button>`;
+  const head = [];
+  if (d.status === "Proposed") {
+    if (d.offeredBy === "them") head.push(btn("accept", 0, d.role === "buyer" ? "Accept and pay" : "Accept the offer", "primary"));
+    else head.push(btn("cancel", 0, "Cancel my offer", "danger"));
+  }
+  return `<div class="card deal"><div class="row space"><div><b>${esc(d.title)}</b> <span class="hint">D-${d.id}</span>
+      <div class="hint">${d.role === "buyer" ? "You buy from" : "You sell to"} ${esc(d.counterpartyLabel)} ${d.counterpartyHasApp ? `<span class="chip ok">their app links to your chain</span>` : ""}</div></div>
+      <div class="row"><span class="chip ${STATUS_CHIP[d.status] || ""}">${esc(d.status)}</span><b>${esc(d.total)}</b>${head.join("")}</div></div>
+    ${d.milestones.map((m) => {
+      const acts = [];
+      if (d.status === "Active") {
+        if (d.role === "buyer" && (m.status === "Delivered" || m.status === "KeyReleased")) { acts.push(btn("approve", m.index, "Approve and pay", "primary")); acts.push(btn("dispute", m.index, "Dispute", "danger")); }
+        if (d.role === "buyer" && m.status === "Pending" && m.deadline && m.deadline < now) acts.push(btn("reclaim", m.index, "Reclaim (late)"));
+        if (d.role === "seller" && m.status === "Delivered" && m.deadline && m.deadline < now) acts.push(btn("claim", m.index, "Claim payment", "primary"));
+        if (d.role === "seller" && ["Pending", "Delivered", "Disputed"].includes(m.status)) acts.push(btn("refund", m.index, "Refund buyer", "danger"));
+      }
+      return `<div class="ms"><div>${esc(m.name)} · <b>${esc(m.amount)}</b> <span class="chip ${STATUS_CHIP[m.status] || ""}">${esc(m.status)}</span>${m.split ? `<span class="hint"> seller ${esc(m.split.toSeller)} / buyer ${esc(m.split.toBuyer)}</span>` : ""}</div><div class="row">${acts.join("")}</div></div>`;
+    }).join("")}
+  </div>`;
+}
+
+const ACTION_TEXT = { approve: "Approve this delivery and release its payment to the seller?", accept: "Accept this offer? As the buyer, the full amount is locked in escrow from your Mock Bank balance.", cancel: "Cancel your offer?", reclaim: "Take back this milestone's money (the seller missed the deadline)?", claim: "Claim this milestone's payment (the review window passed with no dispute)?", refund: "Refund this milestone to the buyer?", dispute: "Open a dispute: a neutral arbiter decides from the evidence." };
+
+function confirmMove(action, dealId, index, requestId) {
+  const dlg = $("#dlg"), form = $("#dlg-form");
+  form.innerHTML = `<h2>Sign: ${esc(action)} · D-${esc(dealId)}${["cancel", "accept"].includes(action) ? "" : ` milestone ${Number(index) + 1}`}</h2><p>${esc(ACTION_TEXT[action] || "Sign this move?")}</p>
+    ${action === "dispute" && !requestId ? `<label>What is wrong?</label><textarea name="reason" rows="4" minlength="10" required></textarea>` : ""}
+    <p class="hint">This adds a block signed by your device key to your chain; the server carries it out.</p>
+    <div class="err" id="de"></div><div class="row" style="justify-content:flex-end;margin-top:12px"><button value="cancel" formnovalidate>Back</button><button class="primary" id="dok" value="ok">Sign</button></div>`;
+  dlg.showModal();
+  form.onsubmit = async (ev) => {
+    if (ev.submitter?.value !== "ok") return;
+    ev.preventDefault();
+    const ok = $("#dok"); ok.disabled = true; ok.textContent = "Signing…";
+    try {
+      const reason = new FormData(form).get("reason") || undefined;
+      const r = await api("/app/move", "POST", { dealId: Number(dealId), action, index: Number(index), reason, requestId });
+      if (!r.ok) throw new Error(r.error || "The server could not carry it out (the signed block stays on your chain)");
+      dlg.close();
+      toast(r.result && r.result.groupVote ? "Sent to your group's vote" : "Signed and done");
+      await load();
+    } catch (err) { showErr($("#de"), err); ok.disabled = false; ok.textContent = "Sign"; }
+  };
+}
+
+function wireDealButtons() {
+  document.querySelectorAll("[data-act]").forEach((b) => (b.onclick = () => confirmMove(b.dataset.act, b.dataset.deal, b.dataset.i)));
+}
+function wireRequestButtons() {
+  const reqs = S.info.requests || [];
+  document.querySelectorAll("[data-sign]").forEach((b) => (b.onclick = () => { const r = reqs.find((x) => x.id === b.dataset.sign); confirmMove(r.action, r.dealId, r.index, r.id); }));
+  document.querySelectorAll("[data-reject]").forEach((b) => (b.onclick = async () => {
+    const r = reqs.find((x) => x.id === b.dataset.reject);
+    b.disabled = true;
+    try { await api("/app/move", "POST", { dealId: r.dealId, action: "reject", index: r.index, requestId: r.id }); toast("Rejected"); await load(); } catch (e) { toast(e.message); b.disabled = false; }
+  }));
+}
+
+let toastTimer;
+function toast(text) {
+  let t = $("#toast");
+  if (!t) { t = document.createElement("div"); t.id = "toast"; t.style.cssText = "position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 14px;border-radius:10px;z-index:9;max-width:90vw"; document.body.appendChild(t); }
+  t.textContent = text; t.style.display = "block";
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.style.display = "none"), 3500);
+}
+
+async function doSync() {
+  try { const r = await api("/app/sync", "POST"); toast(r.added ? `Added ${r.added} block(s)` : "Up to date"); } catch (e) { toast(e.message); }
+  await load();
+}
+async function doVerify() {
+  $("#vres").innerHTML = `<p class="hint">Checking…</p>`;
+  try { S.verify = await api("/app/verify", "POST"); } catch (e) { S.verify = null; toast(e.message); }
+  if (S.view === "overview") { $("#vres").innerHTML = verifyHtml(); wireRepair(); }
+}
+function wireRepair() {
+  const b = $("#repair");
+  if (b) b.onclick = async () => { b.disabled = true; try { const r = await api("/app/repair", "POST"); toast(`Chain restored up to block ${r.height}`); await doVerify(); } catch (e) { toast(e.message); b.disabled = false; } };
+}
+
+async function load() {
+  if (S.info.stage !== "ready") return;
+  try {
+    S.info = await api("/app/state");
+    if (S.view === "overview") { const [a, d] = await Promise.all([api("/app/account"), api("/app/deals")]); S.account = a; S.deals = d.deals; }
+    if (S.view === "deals") S.deals = (await api("/app/deals")).deals;
+    if (S.view === "chain") S.chain = await api("/app/chain");
+  } catch (e) { toast(e.message); }
+  if (S.info.stage === "ready") renderApp(); else render();
+}
+
+setInterval(async () => {
+  if (!S.info || S.info.stage !== "ready" || document.querySelector("dialog[open]")) return;
+  const before = JSON.stringify([S.info.height, (S.info.requests || []).length]);
+  try { S.info = await api("/app/state"); } catch { return; }
+  if (JSON.stringify([S.info.height, (S.info.requests || []).length]) !== before) load();
+}, 10_000);
+
+boot().then(load).catch((e) => { $("#root").innerHTML = `<div class="center"><div class="card narrow err" style="display:block">${esc(e.message)}</div></div>`; });
+</script>
+</body>
+</html>
