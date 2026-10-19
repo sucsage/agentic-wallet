@@ -6,7 +6,7 @@
 //   - a manifest with per-monitor DPI awareness (Windows stretched the window at 125%/150%: blurry);
 //   - bun.exe as a Windows GUI program (it opened a terminal window next to the app).
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const [version, rcedit] = process.argv.slice(2);
@@ -15,8 +15,26 @@ if (!version || !rcedit || !existsSync(rcedit)) throw new Error("Usage: win-fini
 const buildRoot = resolve("electrobun/build");
 const stage = readdirSync(buildRoot).find((d) => d.startsWith("stable-win"));
 if (!stage) throw new Error("No stable-win build in electrobun/build");
-const app = readdirSync(join(buildRoot, stage)).map((d) => join(buildRoot, stage, d)).find((d) => existsSync(join(d, "bin", "launcher.exe")));
-if (!app) throw new Error("No app folder with bin\\launcher.exe");
+const stageDir = join(buildRoot, stage);
+/** The app folder (the one with bin\launcher.exe) directly under a folder. */
+const appIn = (dir: string) => (existsSync(dir) ? readdirSync(dir).map((d) => join(dir, d)).find((d) => existsSync(join(d, "bin", "launcher.exe"))) : undefined);
+let app = appIn(stageDir);
+if (!app) {
+  // The stable build keeps only its packed copy (MilestonePay-Setup.tar.zst): unpack it.
+  const packed = readdirSync(stageDir).find((f) => f.endsWith(".tar.zst"));
+  if (!packed) throw new Error(`No app folder and no .tar.zst in ${stageDir}`);
+  const out = join(buildRoot, "win-app");
+  rmSync(out, { recursive: true, force: true });
+  mkdirSync(out, { recursive: true });
+  const tarFile = join(buildRoot, "win-app.tar");
+  writeFileSync(tarFile, Bun.zstdDecompressSync(readFileSync(join(stageDir, packed))));
+  // Windows' own tar (bsdtar) takes C:\ paths; GNU tar from Git Bash would read the colon as a host.
+  const tar = process.platform === "win32" && existsSync("C:\\Windows\\System32\\tar.exe") ? "C:\\Windows\\System32\\tar.exe" : "tar";
+  execFileSync(tar, ["-xf", tarFile, "-C", out], { stdio: "inherit" });
+  rmSync(tarFile, { force: true });
+  app = appIn(out);
+  if (!app) throw new Error(`No bin\\launcher.exe in ${packed}`);
+}
 console.log(`App folder: ${app}`);
 
 const icon = resolve("packaging/icons/icon.ico");
