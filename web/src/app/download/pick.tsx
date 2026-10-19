@@ -38,7 +38,7 @@ export function PickForThisComputer({ items, version }: { items: Item[]; version
         </a>
       ) : (
         <a className="dl-btn dl-big" href="#downloads-list" onClick={(e) => (e.preventDefault(), document.querySelector(".dl-grid")?.scrollIntoView({ behavior: "smooth" }))}>
-          Download MilestonePay {version}
+          Download Kravii {version}
         </a>
       )}
       {mine && <a href={`#${items.find((i) => i.key !== mine.key)?.key ?? ""}`} onClick={(e) => (e.preventDefault(), document.querySelector(".dl-grid")?.scrollIntoView({ behavior: "smooth" }))}>Other computers</a>}

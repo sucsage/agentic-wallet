@@ -287,7 +287,7 @@ export function BankAuthorizeLive({ bank, onCancel, onContinue }: { bank: BankCh
           </form>
         ) : (
           <>
-            <h1>MilestonePay wants to connect to your account</h1>
+            <h1>Kravii Wallet wants to connect to your account</h1>
             <ul className="aw-permissions">
               <li>
                 <b>✓</b>See your account balance
@@ -2201,7 +2201,7 @@ export function LivePrivacy() {
                 <strong>{money(a.balance, a.currency)}</strong>
               </article>
             ))}
-            <p className="aw-profile-passbook-note">E-money (test money) held by Agentic Wallet. Top up with the button above; deals lock money from here and pay out back here.</p>
+            <p className="aw-profile-passbook-note">E-money (test money) held by Kravii Wallet. Top up with the button above; deals lock money from here and pay out back here.</p>
           </Card>
         </div>
         <PreferencesCard currency={currency} />

@@ -5,8 +5,8 @@ import { PickForThisComputer } from "./pick";
 import "./download.css";
 
 export const metadata: Metadata = {
-  title: "Download · MilestonePay",
-  description: "MilestonePay desktop app for macOS, Windows and Linux (test mode demo).",
+  title: "Download · Kravii",
+  description: "Kravii Wallet desktop app for macOS, Windows and Linux (test mode demo).",
 };
 
 const REPO = "sucsage/agentic-wallet";
@@ -32,9 +32,9 @@ async function latest(): Promise<Latest | null> {
 const mb = (n: number) => `${(n / 1024 / 1024).toFixed(0)} MB`;
 
 const HOW: Record<string, string> = {
-  "macos-arm64": "Open the .dmg and drag MilestonePay to Applications, then open it from there (not from the .dmg). First time: right-click → Open (or System Settings → Privacy & Security → Open Anyway); the first start unpacks for about 10 seconds.",
-  "macos-x64": "Open the .dmg and drag MilestonePay to Applications, then open it from there (not from the .dmg). First time: right-click → Open (or System Settings → Privacy & Security → Open Anyway); the first start unpacks for about 10 seconds.",
-  "windows-x64": "Run the Setup file and follow the steps (no administrator rights needed); MilestonePay is then in the Start menu. Older releases came as a .zip: unzip it and run MilestonePay-Setup.exe. If SmartScreen warns about an unknown publisher: More info → Run anyway.",
+  "macos-arm64": "Open the .dmg and drag Kravii to Applications, then open it from there (not from the .dmg). First time: right-click → Open (or System Settings → Privacy & Security → Open Anyway); the first start unpacks for about 10 seconds.",
+  "macos-x64": "Open the .dmg and drag Kravii to Applications, then open it from there (not from the .dmg). First time: right-click → Open (or System Settings → Privacy & Security → Open Anyway); the first start unpacks for about 10 seconds.",
+  "windows-x64": "Run the Setup file and follow the steps (no administrator rights needed); Kravii is then in the Start menu. Older releases came as a .zip: unzip it and run Kravii-Setup.exe. If SmartScreen warns about an unknown publisher: More info → Run anyway.",
   "linux-x64": "Extract it (tar xzf), then run ./installer in that folder. Needs WebKitGTK 4.1 (most desktops have it).",
   "linux-arm64": "Extract it (tar xzf), then run ./installer in that folder. Needs WebKitGTK 4.1 (most desktops have it).",
 };
@@ -51,13 +51,13 @@ export default async function DownloadPage() {
       <header className="dl-top">
         <Link href="/" className="dl-brand">
           <span className="dl-mark" />
-          MilestonePay
+          Kravii
         </Link>
         <Link href="/login">Log in</Link>
       </header>
       <section className="dl-hero">
         <span className="dl-pill">Demo · test money · no real funds</span>
-        <h1>MilestonePay for your computer</h1>
+        <h1>Kravii Wallet for your computer</h1>
         <p>
           Your deals as your own signed chain on your computer: deliver, approve and sign every move with your device key, chat with the AI, and let Claude Desktop or Cursor
           help through MCP. The money stays in the escrow smart contract. It runs in its own window, with an icon in the menu bar or tray.
@@ -102,7 +102,7 @@ export default async function DownloadPage() {
         <div>
           <h2>After installing</h2>
           <ol>
-            <li>Open MilestonePay: it opens in its own window.</li>
+            <li>Open Kravii: it opens in its own window.</li>
             <li>Sign up or sign in (the account is made on this website), or link with a code from Profile → Desktop app.</li>
             <li>Choose a passphrase: it encrypts your device key on this computer.</li>
           </ol>

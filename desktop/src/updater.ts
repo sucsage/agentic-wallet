@@ -63,7 +63,7 @@ async function manifest(force = false): Promise<Manifest | null> {
     return last.manifest;
   }
   try {
-    const res = await fetch(MANIFEST_URL, { redirect: "follow", signal: AbortSignal.timeout(10_000), headers: { "user-agent": `MilestonePay-Desktop/${VERSION}` } });
+    const res = await fetch(MANIFEST_URL, { redirect: "follow", signal: AbortSignal.timeout(10_000), headers: { "user-agent": `Kravii-Desktop/${VERSION}` } });
     if (res.status === 404) {
       last = { at: Date.now(), manifest: null, error: null };
       return null;
@@ -91,7 +91,7 @@ export async function checkUpdate(force = false) {
     const win = m.windowed?.[platformKey()];
     const download = win && /^[\w.-]+$/.test(win.file) ? `https://github.com/${RELEASE_REPO}/releases/download/${encodeURIComponent(m.tag)}/${win.file}` : undefined;
     const reason = process.env.AW_SHELL === "electrobun"
-      ? "Download the new version and install it over this one (quit MilestonePay first): your wallet data stays"
+      ? "Download the new version and install it over this one (quit Kravii first): your wallet data stays"
       : !compiled()
       ? "Running from source: update with git pull"
       : !asset
@@ -118,7 +118,7 @@ export async function installUpdate(): Promise<string> {
   if (process.env.AW_SHELL === "electrobun" || !compiled() || !writable()) throw new Error("This copy of the app cannot update itself: install the new version from the release page");
   if (!/^[\w.-]+$/.test(asset.file) || !/^[0-9a-f]{64}$/.test(asset.sha256)) throw new Error("The release information is not readable");
   const url = `https://github.com/${RELEASE_REPO}/releases/download/${encodeURIComponent(m.tag)}/${asset.file}`;
-  const res = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(10 * 60_000), headers: { "user-agent": `MilestonePay-Desktop/${VERSION}` } });
+  const res = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(10 * 60_000), headers: { "user-agent": `Kravii-Desktop/${VERSION}` } });
   if (!res.ok) throw new Error(`The download failed (${res.status})`);
   const bytes = new Uint8Array(await res.arrayBuffer());
   if (bytes.length > MAX_SIZE || (asset.size && bytes.length !== asset.size)) throw new Error("The download has the wrong size: nothing was changed");

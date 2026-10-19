@@ -20,7 +20,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Agentic Wallet",
+  title: "Kravii",
   description:
     "An AI agent wallet that pays SME contractors milestone by milestone. Smart contracts enforce every rule.",
 };

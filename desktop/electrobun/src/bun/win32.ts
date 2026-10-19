@@ -3,7 +3,7 @@
  * - per-monitor DPI awareness before any window exists, so Windows does not stretch a 100% bitmap
  *   (blurry text at 125%/150%; the executables also carry it in their manifest);
  * - the app's taskbar identity (the Start menu shortcut has the same one), so the taskbar shows
- *   MilestonePay and its icon, not Bun's;
+ *   Kravii and its icon, not Bun's;
  * - a dark title bar (black on Windows 11) and the app's icon on the window.
  * Every call is best effort: an older Windows without one of them keeps its default.
  */

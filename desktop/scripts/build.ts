@@ -25,10 +25,10 @@ for (const name of names) {
     args.push(
       "--windows-hide-console",
       "--windows-icon=packaging/icons/icon.ico",
-      "--windows-title=MilestonePay",
-      "--windows-publisher=MilestonePay (FinTechathon 2026 demo)",
+      "--windows-title=Kravii",
+      "--windows-publisher=Kravii (FinTechathon 2026 demo)",
       `--windows-version=${version}.0`,
-      "--windows-description=MilestonePay desktop app",
+      "--windows-description=Kravii desktop app",
     );
   }
   console.log(`> bun ${args.join(" ")}`);

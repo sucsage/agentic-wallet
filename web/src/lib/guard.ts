@@ -30,7 +30,7 @@ export async function demoWallet(raw: string): Promise<Address> {
     const owner = await publicClient().readContract({ address: wallet, abi: agentWalletAbi, functionName: "owner" });
     if (owner.toLowerCase() !== roleAddresses().owner.toLowerCase()) throw new Error("not ours");
   } catch {
-    throw new HttpError(404, "Not an Agentic Wallet sandbox on this network");
+    throw new HttpError(404, "Not an Kravii sandbox on this network");
   }
   return wallet;
 }

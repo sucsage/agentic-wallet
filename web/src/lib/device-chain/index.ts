@@ -573,7 +573,7 @@ export async function deviceActivity(device: DeviceRow) {
         label: KIND_LABEL[t.kind] ?? t.kind,
         direction: incoming ? "in" : "out",
         amount: Number(t.amount) / 100,
-        counterparty: !other ? "Mock Bank" : other.kind === "RESERVE" ? "Agentic Wallet escrow" : other.label,
+        counterparty: !other ? "Mock Bank" : other.kind === "RESERVE" ? "Kravii escrow" : other.label,
         txHash: t.txHash,
         at: t.createdAt,
       };

@@ -12,7 +12,7 @@ install -m 644 packaging/icons/icon.png "$ROOT/usr/share/icons/hicolor/512x512/a
 cat > "$ROOT/usr/share/applications/milestonepay.desktop" <<DESK
 [Desktop Entry]
 Type=Application
-Name=MilestonePay
+Name=Kravii
 Comment=Milestone payments with your own deal chain (test mode)
 Exec=/opt/milestonepay/milestonepay
 Icon=milestonepay
@@ -25,9 +25,9 @@ Version: $VERSION
 Section: misc
 Priority: optional
 Architecture: $DEBARCH
-Maintainer: MilestonePay team <noreply@github.com>
+Maintainer: Kravii team <noreply@github.com>
 Homepage: https://agentic-wallet-inky.vercel.app/download
-Description: MilestonePay desktop app (FinTechathon 2026 demo, test money only)
+Description: Kravii desktop app (FinTechathon 2026 demo, test money only)
  Holds your deals as your own signed chain on this computer; the money stays in the
  escrow smart contract. Its screen opens in your browser.
 CTRL

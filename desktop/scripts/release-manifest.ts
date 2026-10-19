@@ -1,7 +1,7 @@
 // Writes dist/SHA256SUMS.txt and dist/latest.json for a release (run after every file is in dist/).
 //   bun run scripts/release-manifest.ts <version> [notes-file]
 // latest.json is what the apps and the website's download page read: for each platform the installer
-// people download (the windowed app, MilestonePay-<v>-window-<platform>…) with its SHA-256 and size.
+// people download (the windowed app, Kravii-<v>-window-<platform>…) with its SHA-256 and size.
 import { createHash } from "node:crypto";
 import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 
@@ -24,7 +24,7 @@ const PLATFORMS: Record<string, { exe: string; installer: RegExp; label: string 
 };
 const assets: Record<string, { file: string; sha256: string; size: number }> = {};
 const installers: Record<string, { label: string; file: string; sha256: string; size: number }> = {};
-// The same app in its own window (Electrobun): MilestonePay-<v>-window-<platform>…
+// The same app in its own window (Electrobun): Kravii-<v>-window-<platform>…
 const windowed: Record<string, { label: string; file: string; sha256: string; size: number }> = {};
 for (const [key, p] of Object.entries(PLATFORMS)) {
   if (sums[p.exe]) assets[key] = { file: p.exe, sha256: sums[p.exe], size: statSync(`dist/${p.exe}`).size };

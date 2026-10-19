@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { MockupApp } from "@/components/mockup-app";
 
 export const metadata: Metadata = {
-  title: "Log in · MilestonePay",
-  description: "Log in to MilestonePay with your bank.",
+  title: "Log in · Kravii",
+  description: "Log in to Kravii with your bank.",
 };
 
 export default function LoginPage() {

@@ -1,9 +1,9 @@
 {
   "name": "agentic-wallet-desktop",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
-  "description": "Agentic Wallet desktop app: your own deal chain on your computer (macOS, Windows, Linux).",
+  "description": "Kravii desktop app: your own deal chain on your computer (macOS, Windows, Linux).",
   "scripts": {
     "dev": "bun run src/main.ts",
     "build": "bun run scripts/build.ts",

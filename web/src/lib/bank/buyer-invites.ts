@@ -164,7 +164,7 @@ export async function startBuyerPayment(invite: BuyerInvite, token: string, deal
       "line_items[0][price_data][currency]": invite.currency.toLowerCase(),
       "line_items[0][price_data][unit_amount]": String(need),
       "line_items[0][price_data][product_data][name]": `Deal D-${dealId} · held in escrow until you approve`,
-      "line_items[0][price_data][product_data][description]": "Demo payment for Agentic Wallet (Stripe test mode)",
+      "line_items[0][price_data][product_data][description]": "Demo payment for Kravii (Stripe test mode)",
       success_url: `${origin}/pay/${token}?paid={CHECKOUT_SESSION_ID}&deal=${dealId}`,
       cancel_url: `${origin}/pay/${token}`,
     }),

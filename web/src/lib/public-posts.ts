@@ -88,7 +88,7 @@ export async function publicView(slug: string) {
     summary: p.summary,
     requirements: p.requirements,
     kind: p.kind,
-    owner: owner?.name ?? "An Agentic Wallet user",
+    owner: owner?.name ?? "A Kravii user",
     currency,
     budget: total(terms),
     milestones: terms.milestones.map((m) => ({ name: m.name, amount: Number(m.amount), acceptance: m.acceptance })),

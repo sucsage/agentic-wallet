@@ -155,3 +155,7 @@ html{--aw-zoom:1;zoom:var(--aw-zoom)}
 .aw-shield-blur .aw-protect,.aw-devtools .aw-protect{filter:blur(18px) saturate(.4);transition:filter .1s}
 .aw-capture-blank{position:fixed;inset:0;z-index:2147483647;display:grid;place-items:center;background:#000;color:#fff;font:600 18px system-ui,sans-serif}
 @media print{.aw-app,.inv-page{display:none!important}}
+
+/* Kravii logo in place of the old triangle mark (top bars, links pages, download page). */
+.aw-mark, .aw-v08 .aw-mark, .inv-mark, .dl-mark { width: 30px !important; height: 30px !important; border: 0 !important; margin-top: 0 !important; background: url(/kravii-logo.png) center / contain no-repeat !important; clip-path: none !important; filter: none !important; flex: none; }
+@media (max-width: 760px) { .aw-mark, .aw-v08 .aw-mark { width: 26px !important; height: 26px !important; } }

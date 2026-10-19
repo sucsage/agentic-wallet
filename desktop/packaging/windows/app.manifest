@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<!-- MilestonePay's bun.exe and launcher.exe: Bun's own settings plus per-monitor DPI awareness, so
+<!-- Kravii's bun.exe and launcher.exe: Bun's own settings plus per-monitor DPI awareness, so
      Windows draws the window sharp at 125%/150% scaling instead of stretching a 100% bitmap. -->
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" xmlns:asmv3="urn:schemas-microsoft-com:asm.v3" manifestVersion="1.0">
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">

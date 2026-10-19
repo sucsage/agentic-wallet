@@ -30,8 +30,8 @@ async function registerDevice(email: string, platform: boolean): Promise<string>
   const cred = (await navigator.credentials.create({
     publicKey: {
       challenge: crypto.getRandomValues(new Uint8Array(32)),
-      rp: { name: "Agentic Wallet", id: location.hostname },
-      user: { id: crypto.getRandomValues(new Uint8Array(16)), name: email || "user", displayName: email || "Agentic Wallet user" },
+      rp: { name: "Kravii", id: location.hostname },
+      user: { id: crypto.getRandomValues(new Uint8Array(16)), name: email || "user", displayName: email || "Kravii user" },
       pubKeyCredParams: [
         { type: "public-key", alg: -7 },
         { type: "public-key", alg: -257 },

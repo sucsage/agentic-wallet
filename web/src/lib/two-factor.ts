@@ -134,7 +134,7 @@ export async function startCode(userId: string, email: string, method: "email" |
   const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
   await db.userSecurity.update({ where: { userId }, data: { otpHash: hashSecret(code), otpExpires: new Date(Date.now() + 10 * 60_000), otpTries: 0 } });
   if (method === "email" && emailEnabled) {
-    await sendEmail({ to: email, subject: "Your Agentic Wallet sign-in code", text: `Your code is ${code}. It expires in 10 minutes. If you did not try to sign in, change your password.` });
+    await sendEmail({ to: email, subject: "Your Kravii sign-in code", text: `Your code is ${code}. It expires in 10 minutes. If you did not try to sign in, change your password.` });
     return { sentTo: email.replace(/^(.).*(@.*)$/, "$1•••$2"), demoCode: null };
   }
   return { sentTo: method === "sms" ? `•••${s.phone?.slice(-3) ?? ""} (simulated SMS)` : `${email.replace(/^(.).*(@.*)$/, "$1•••$2")} (no mailer: demo)`, demoCode: code };

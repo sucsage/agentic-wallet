@@ -262,6 +262,6 @@ footer{margin-top:28px;font-size:10.5px;color:#777;border-top:1px solid #ddd;pad
 <span class="demo">DEMO · TEST MONEY</span>
 <header><h1>${th}<small>${en}</small></h1><div>No. <b>${no}</b><br>Deal D-${d.dealId}<br>Date ${today}</div></header>
 ${body}
-<footer>Agentic Wallet · generated from the deal's terms and the escrow contract's on-chain state. Demo document with test money: not a legal contract, receipt, tax invoice or legal advice.</footer>
+<footer>Kravii · generated from the deal's terms and the escrow contract's on-chain state. Demo document with test money: not a legal contract, receipt, tax invoice or legal advice.</footer>
 </main></body></html>`;
 }

@@ -5,7 +5,7 @@ import type { ServerEntry, ToolDef } from "./mcp-host";
 import { VERSION } from "./version";
 
 /**
- * The app's own web tools for MilestonePay's AI: search the web and read a page. They run on this
+ * The app's own web tools for Kravii's AI: search the web and read a page. They run on this
  * computer like the user's MCP servers (the AI sees them as mcp__web__search and mcp__web__read_page),
  * with no API key: search uses DuckDuckGo's HTML results. What they return is untrusted data; the
  * server fences it for the AI like any MCP result.
@@ -19,18 +19,18 @@ export const WEB_TOOLS: ToolDef[] = [
   {
     name: "mcp__web__search",
     description:
-      "[Built into the MilestonePay app, runs on the user's computer] Search the web (DuckDuckGo). Use it for facts the wallet does not hold: market prices for a job, a company's public site, how a service usually works. Never put the user's personal data, balances, account numbers, addresses or deal details in the query. Returns titles, links and snippets.",
+      "[Built into the Kravii app, runs on the user's computer] Search the web (DuckDuckGo). Use it for facts the wallet does not hold: market prices for a job, a company's public site, how a service usually works. Never put the user's personal data, balances, account numbers, addresses or deal details in the query. Returns titles, links and snippets.",
     input_schema: { type: "object", properties: { query: { type: "string", description: "What to search for (no personal data)" }, max: { type: "number", description: "Results, 1-10 (default 6)" } }, required: ["query"] },
   },
   {
     name: "mcp__web__read_page",
     description:
-      "[Built into the MilestonePay app, runs on the user's computer] Read a public web page (http/https) as plain text, e.g. a result from mcp__web__search. Never add the user's data to the URL.",
+      "[Built into the Kravii app, runs on the user's computer] Read a public web page (http/https) as plain text, e.g. a result from mcp__web__search. Never add the user's data to the URL.",
     input_schema: { type: "object", properties: { url: { type: "string", description: "The page's full URL" } }, required: ["url"] },
   },
 ];
 
-const UA = `Mozilla/5.0 (compatible; MilestonePay-Desktop/${VERSION})`;
+const UA = `Mozilla/5.0 (compatible; Kravii-Desktop/${VERSION})`;
 const decode = (s: string) =>
   s
     .replace(/<[^>]+>/g, "")

@@ -216,7 +216,7 @@ export function PayPage({ token }: { token: string }) {
         <header className="inv-head">
           <span className="inv-mark" aria-hidden />
           <div>
-            <small>Agentic Wallet · buyer link</small>
+            <small>Kravii Pay · buyer link</small>
             <h1>{view ? `Hi ${view.name}` : gate ? "Protected link" : error ? "Link unavailable" : "Loading…"}</h1>
             {view && <BuyerNameEditor token={token} name={view.name} onDone={load} />}
             {view && (
@@ -311,7 +311,7 @@ export function PayPage({ token }: { token: string }) {
         ))}
         {view && (
           <section className="inv-card inv-app">
-            <p className="inv-muted">No account needed to pay here. Want your own Agentic Wallet to hire and get paid with escrow?</p>
+            <p className="inv-muted">No account needed to pay here. Want your own Kravii Wallet to hire and get paid with escrow?</p>
             <div className="inv-actions">
               <Link className="inv-linkbtn" href="/login?mode=login&next=%2Fchat">
                 Open the app

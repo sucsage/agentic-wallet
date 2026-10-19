@@ -1,4 +1,4 @@
-# MilestonePay desktop (the app in its own window): installers for macOS, Windows and Linux, published as a GitHub Release.
+# Kravii desktop (the app in its own window): installers for macOS, Windows and Linux, published as a GitHub Release.
 # Runs when a tag desktop-v<version> is pushed (the version must match desktop/package.json).
 # The app's updater and the website's /download page read the release's latest.json.
 name: Desktop release
@@ -81,8 +81,8 @@ jobs:
           mkdir -p out
           for f in artifacts/*; do
             case "$f" in *update.json|*.tar.zst) continue ;; esac
-            base=$(basename "$f"); rest="${base#*MilestonePay}"
-            name="MilestonePay-$V-window-${{ matrix.name }}"
+            base=$(basename "$f"); rest="${base#*Kravii}"
+            name="Kravii-$V-window-${{ matrix.name }}"
             case "$rest" in .*) out="$name$rest" ;; -*) out="$name$rest" ;; *) out="$name-$rest" ;; esac
             cp "$f" "out/$out"
           done
@@ -112,4 +112,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           V=${GITHUB_REF_NAME#desktop-v}
-          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "MilestonePay Desktop $V (test mode demo)" --notes-file "release-notes/$V.md" --latest
+          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "Kravii Wallet $V (test mode demo)" --notes-file "release-notes/$V.md" --latest

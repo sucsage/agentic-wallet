@@ -16,7 +16,7 @@ export default function ExplorerLayout({ children }: { children: ReactNode }) {
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <Link href="/explorer" className="text-lg font-semibold">
-            Agentic Wallet chain explorer
+            Kravii chain explorer
           </Link>
           <p className="text-xs text-muted">
             {config.chain.name} · chain id {config.chain.id} · public, read-only · JSON-RPC: <code>/api/rpc</code>

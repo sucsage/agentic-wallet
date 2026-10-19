@@ -589,7 +589,7 @@ export function LiveFriends() {
         <header className="aw-friends-heading">
           <div>
             <h1>Contacts</h1>
-            <p>Add contacts who use Agentic Wallet to invite them to groups and make them payees</p>
+            <p>Add contacts who use Kravii to invite them to groups and make them payees</p>
           </div>
           <Button onClick={() => setSending(true)} disabled={!!me?.acting} title={me?.acting ? "Switch to Personal to send from your own wallet" : undefined}>
             ⇄ Send money

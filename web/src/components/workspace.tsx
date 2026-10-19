@@ -53,7 +53,7 @@ export function Workspace({ address }: { address: string }) {
       <header className="flex flex-wrap items-center justify-between gap-3">
         <Link href="/" className="flex items-center gap-2 font-semibold">
           <span className="grid h-8 w-8 place-items-center rounded-lg bg-accent text-accent-fg">AW</span>
-          Agentic Wallet
+          Kravii
           <span className="pill bg-surface-2 font-normal text-muted">{t("brand.sandbox")}</span>
         </Link>
         <div className="flex items-center gap-2">

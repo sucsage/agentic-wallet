@@ -55,8 +55,8 @@ export const auth = betterAuth({
       sendResetPassword: async ({ user, url }) => {
         await sendEmail({
           to: user.email,
-          subject: "Reset your MilestonePay password",
-          text: `Hi ${user.name},\n\nSomeone asked to reset the password of your MilestonePay account. To choose a new one, open this link within 30 minutes:\n\n${url}\n\nIf it was not you, ignore this email: your password stays the same.`,
+          subject: "Reset your Kravii password",
+          text: `Hi ${user.name},\n\nSomeone asked to reset the password of your Kravii account. To choose a new one, open this link within 30 minutes:\n\n${url}\n\nIf it was not you, ignore this email: your password stays the same.`,
         });
       },
     }),
@@ -141,7 +141,7 @@ async function deviceSession(value: string) {
   const now = new Date();
   return {
     user,
-    session: { id: `device:${device.address}`, userId: device.userId, token: "", expiresAt: new Date(now.getTime() + 60_000), createdAt: now, updatedAt: now, ipAddress: null, userAgent: "MilestonePay desktop" },
+    session: { id: `device:${device.address}`, userId: device.userId, token: "", expiresAt: new Date(now.getTime() + 60_000), createdAt: now, updatedAt: now, ipAddress: null, userAgent: "Kravii desktop" },
     device: { address: device.address, acting: v.acting },
   };
 }

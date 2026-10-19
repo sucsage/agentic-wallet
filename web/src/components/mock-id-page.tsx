@@ -18,7 +18,7 @@ const COPY = {
     sub: "Thailand · digital ID (DOPA-style) · DEMO",
     scan: "Scan with the ThaID app to approve",
     asks: ["Citizen ID number (pid)", "Name (Thai and English)", "Date of birth"],
-    note: "Agentic Wallet keeps only a masked id (1-2345-xxxxx-xx-6) and a hash that stops one person verifying several accounts.",
+    note: "Kravii keeps only a masked id (1-2345-xxxxx-xx-6) and a hash that stops one person verifying several accounts.",
     accent: "#2f6fed",
   },
   netid: {
@@ -26,7 +26,7 @@ const COPY = {
     sub: "China · 网号 / 网证 · 演示 DEMO",
     scan: "使用国家网络身份认证 App 扫码授权 · Scan with the app to approve",
     asks: ["网号 (your network ID number, no ID number inside)", "姓名核验 (yes/no: is the person opening the wallet you?)"],
-    note: "Privacy by design: Agentic Wallet never receives your resident ID number or your name, only the 网号 and a name-match result.",
+    note: "Privacy by design: Kravii never receives your resident ID number or your name, only the 网号 and a name-match result.",
     accent: "#c8102e",
   },
 } as const;
@@ -111,7 +111,7 @@ export function MockIdPage({ provider, request }: { provider: "thaid" | "netid";
           </div>
         </header>
         <p className="text-sm">
-          <b>Agentic Wallet</b> asks to verify your identity{request.login_hint ? <> as <b>{request.login_hint}</b>, who is opening a wallet</> : null}. It will receive:
+          <b>Kravii</b> asks to verify your identity{request.login_hint ? <> as <b>{request.login_hint}</b>, who is opening a wallet</> : null}. It will receive:
         </p>
         <ul className="my-3 list-disc pl-5 text-sm text-[#cfcfcf]">
           {c.asks.map((a) => (

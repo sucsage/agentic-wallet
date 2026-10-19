@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { ApplyPage } from "@/components/apply-page";
 
 export const metadata: Metadata = {
-  title: "Open call · Agentic Wallet",
+  title: "Open call · Kravii",
   robots: { index: false, follow: false },
 };
 

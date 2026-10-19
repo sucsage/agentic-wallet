@@ -1,24 +1,24 @@
 #!/bin/bash
-# Wraps a built macOS executable in MilestonePay.app and a .dmg (drag to Applications).
+# Wraps a built macOS executable in Kravii.app and a .dmg (drag to Applications).
 #   packaging/macos/make-dmg.sh <arm64|x64> <version>     (run from desktop/, on macOS)
 set -euo pipefail
 ARCH=$1; VERSION=$2
 BIN=dist/AgenticWallet-macos-$ARCH
 WORK=$(mktemp -d)
-APP="$WORK/MilestonePay.app"
+APP="$WORK/Kravii.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$BIN" "$APP/Contents/MacOS/MilestonePay"
-chmod 755 "$APP/Contents/MacOS/MilestonePay"
-cp packaging/icons/icon.icns "$APP/Contents/Resources/MilestonePay.icns"
+cp "$BIN" "$APP/Contents/MacOS/Kravii"
+chmod 755 "$APP/Contents/MacOS/Kravii"
+cp packaging/icons/icon.icns "$APP/Contents/Resources/Kravii.icns"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-  <key>CFBundleName</key><string>MilestonePay</string>
-  <key>CFBundleDisplayName</key><string>MilestonePay</string>
+  <key>CFBundleName</key><string>Kravii</string>
+  <key>CFBundleDisplayName</key><string>Kravii</string>
   <key>CFBundleIdentifier</key><string>app.milestonepay.desktop</string>
-  <key>CFBundleExecutable</key><string>MilestonePay</string>
-  <key>CFBundleIconFile</key><string>MilestonePay</string>
+  <key>CFBundleExecutable</key><string>Kravii</string>
+  <key>CFBundleIconFile</key><string>Kravii</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>CFBundleVersion</key><string>$VERSION</string>
@@ -33,9 +33,9 @@ PLIST
 STAGE="$WORK/dmg"; mkdir -p "$STAGE"
 cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
-OUT="dist/MilestonePay-$VERSION-macos-$ARCH.dmg"
+OUT="dist/Kravii-$VERSION-macos-$ARCH.dmg"
 rm -f "$OUT"
 # An explicit size: hdiutil's own guess is sometimes too small on CI machines ("No space left on device").
 SIZE_MB=$(( $(du -sm "$STAGE" | cut -f1) + 40 ))
-hdiutil create -volname "MilestonePay $VERSION" -srcfolder "$STAGE" -fs HFS+ -size "${SIZE_MB}m" -ov -format UDZO "$OUT" >/dev/null
+hdiutil create -volname "Kravii $VERSION" -srcfolder "$STAGE" -fs HFS+ -size "${SIZE_MB}m" -ov -format UDZO "$OUT" >/dev/null
 echo "$OUT"

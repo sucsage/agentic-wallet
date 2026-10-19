@@ -48,7 +48,7 @@ export async function GET(req: Request, ctx: RouteContext<"/api/bank/accounts/[i
           label: KIND_LABEL[t.kind],
           direction: incoming ? "in" : "out",
           amount: t.amount.toString(),
-          counterparty: !other ? "Mock Bank" : other.kind === "RESERVE" ? "Agentic Wallet escrow" : maskAccountNo(other.accountNo),
+          counterparty: !other ? "Mock Bank" : other.kind === "RESERVE" ? "Kravii Pay escrow" : maskAccountNo(other.accountNo),
           txHash: t.txHash,
           explorer: t.txHash ? explorerTx(t.txHash) : null,
           createdAt: t.createdAt,

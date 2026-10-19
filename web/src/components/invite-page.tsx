@@ -207,7 +207,7 @@ export function InvitePage({ token }: { token: string }) {
         <header className="inv-head">
           <span className="inv-mark" aria-hidden />
           <div>
-            <small>Agentic Wallet · seller link</small>
+            <small>Kravii Pay · seller link</small>
             <h1>{view ? `Hi ${view.name}` : gate ? "Protected link" : error ? "Link unavailable" : "Loading…"}</h1>
             {view && <NameEditor base={base} name={view.name} onDone={load} />}
             {view && (
@@ -222,7 +222,7 @@ export function InvitePage({ token }: { token: string }) {
         {gate && <LinkGate key={gate.state} kind={KIND} token={token} state={gate.state} inviter={gate.inviter} onOpen={() => void load()} />}
         {view?.linked?.toYou && (
           <section className="inv-card inv-linked">
-            <b>✓ Linked to your Agentic Wallet account</b>
+            <b>✓ Linked to your Kravii account</b>
             {offerWaiting ? (
               <p className="inv-muted">
                 <b>Accept the offer below first</b>: then the app opens with this deal in it.
@@ -241,7 +241,7 @@ export function InvitePage({ token }: { token: string }) {
         {view?.linked?.error && <p className="inv-muted">Not linked to your account: {view.linked.error}</p>}
         {view && !view.linked?.signedIn && (
           <section className="inv-card inv-app">
-            <p className="inv-muted">Already have an Agentic Wallet account? Log in: this deal then links to your account and pays into your wallet. No account? You can keep using this page, or create one.</p>
+            <p className="inv-muted">Already have an Kravii account? Log in: this deal then links to your account and pays into your wallet. No account? You can keep using this page, or create one.</p>
             <div className="inv-actions">
               <a className="inv-linkbtn" href={`/login?mode=login&next=${encodeURIComponent(`/invite/${token}`)}`}>
                 Log in

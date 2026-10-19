@@ -1,4 +1,4 @@
-/* MilestonePay desktop: the website's features in the app. Each screen calls the website's own
+/* Kravii desktop: the website's features in the app. Each screen calls the website's own
  * API through the app (/app/web/…), signed by this computer's device key (server side:
  * web/src/lib/device-chain/bridge.ts). Globals used: S, $, esc, api, toast, busy, idle, money, when,
  * go, renderView, renderApp, load, TOKEN, showErr. */

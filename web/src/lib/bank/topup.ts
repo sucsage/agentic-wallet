@@ -79,7 +79,7 @@ export async function startTopup(userId: string, amount: number, origin: string,
       "line_items[0][price_data][currency]": currency.toLowerCase(),
       "line_items[0][price_data][unit_amount]": String(minor),
       "line_items[0][price_data][product_data][name]": `Mock Bank top-up · account ··${(account.accountNo ?? "").replace(/\D/g, "").slice(-4)}`,
-      "line_items[0][price_data][product_data][description]": "Demo money for Agentic Wallet (Stripe test mode)",
+      "line_items[0][price_data][product_data][description]": "Demo money for Kravii (Stripe test mode)",
       // The desktop app gets the browser back on its own local page (back), the website on /chat.
       success_url: back?.success ?? `${origin}/chat?topup={CHECKOUT_SESSION_ID}`,
       cancel_url: back?.cancel ?? `${origin}/chat?topup=cancelled`,

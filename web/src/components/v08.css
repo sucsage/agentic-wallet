@@ -1,4 +1,4 @@
-/* Agentic Wallet — v0.8, page 122:8. Desktop reference: 1440px. */
+/* Kravii — v0.8, page 122:8. Desktop reference: 1440px. */
 .aw-app.aw-v08{--v08-header:80px;--v08-sidebar:248px;--v08-gutter:40px;background:#000;color:#eee;font-family:var(--font-thai),var(--font-geist-sans),Arial,sans-serif;font-size:14px;line-height:1.5;min-height:calc(100dvh / var(--aw-zoom,1))}
 .aw-v08 :is(button,input,textarea,select){font:inherit}
 .aw-v08 button{cursor:pointer}

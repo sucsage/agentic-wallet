@@ -74,7 +74,7 @@ function unseal(state: string, bind: string): Paused {
 }
 
 const NOTE =
-  "The user is in the MilestonePay desktop app: previews you make appear in the chat and on Deals there, and the user confirms them with their device key. The app shows no forms or buttons inside your messages: when you need details, ask for them in plain text, one short list. Format replies in Markdown (short paragraphs, lists, tables when they help).";
+  "The user is in the Kravii desktop app: previews you make appear in the chat and on Deals there, and the user confirms them with their device key. The app shows no forms or buttons inside your messages: when you need details, ask for them in plain text, one short list. Format replies in Markdown (short paragraphs, lists, tables when they help).";
 
 /**
  * The AI agent from the desktop app: the same agent and tools as the website's chat, the same saved

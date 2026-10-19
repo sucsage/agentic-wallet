@@ -27,7 +27,7 @@ const PAGE = (indexHtml as unknown as string)
   .replace("/*EXTRAS*/", () => `window.TH_DICT = ${TH_DICT};\n${extrasJs as unknown as string}`);
 
 /**
- * Agentic Wallet desktop app. One file per OS (bun build --compile): it serves its screen on
+ * Kravii desktop app. One file per OS (bun build --compile): it serves its screen on
  * 127.0.0.1 and opens it in the default browser. Only this computer can reach it, and only with the
  * token in the opened URL: other web pages cannot call it (no CORS, a custom header, Host checked).
  */
@@ -208,7 +208,7 @@ async function route(req: Request, path: string, port: number): Promise<Response
   if (m === "GET" && path === "/app/chat") return json(await wallet.chatHistory(String(new URL(req.url).searchParams.get("id") ?? "")));
   if (m === "POST" && path === "/app/chat") return chatResponse(await body(req));
   if (m === "POST" && path === "/app/chat/delete") return json(await wallet.deleteChat(String((await body<{ id: string }>(req)).id ?? "")));
-  // MCP servers for MilestonePay's AI (the app is their client).
+  // MCP servers for Kravii's AI (the app is their client).
   if (m === "GET" && path === "/app/mcp/servers") return json(await mcpServersView());
   if (m === "POST" && path === "/app/mcp/servers/add") {
     const b = await body<{ source: string; name?: string }>(req);
@@ -282,7 +282,7 @@ async function route(req: Request, path: string, port: number): Promise<Response
   }
   if (m === "GET" && path === "/app/key-backup")
     return new Response(wallet.keyBackup(), {
-      headers: { "content-type": "application/json", "content-disposition": 'attachment; filename="agentic-wallet-key-backup.json"', "cache-control": "no-store" },
+      headers: { "content-type": "application/json", "content-disposition": 'attachment; filename="kravii-key-backup.json"', "cache-control": "no-store" },
     });
   return json({ error: "Not found" }, 404);
 }
@@ -341,13 +341,13 @@ function agentTool(m: string, path: string): { tool: string; group: "read" | "as
 async function agentRoute(req: Request, path: string): Promise<Response> {
   agentCalls++;
   const client = (req.headers.get("x-agent-client") ?? "an AI agent").slice(0, 60);
-  if (wallet.stage() !== "ready") return json({ error: "The Agentic Wallet app is locked: ask the user to open and unlock it" }, 423);
+  if (wallet.stage() !== "ready") return json({ error: "The Kravii app is locked: ask the user to open and unlock it" }, 423);
   const { tool, group } = agentTool(req.method, path);
   const named = req.method === "POST" && path === "/agent/request" ? `request_${String((await req.clone().json().catch(() => ({})) as { kind?: unknown }).kind ?? "?").slice(0, 20)}` : tool;
   const settings = wallet.mcpSettings();
   const started = Date.now();
   let res: Response;
-  if (!settings.enabled) res = json({ error: "The user turned the MCP server off in the Agentic Wallet app" }, 403);
+  if (!settings.enabled) res = json({ error: "The user turned the MCP server off in the Kravii app" }, 403);
   else if (!settings[group]) res = json({ error: `The user does not allow ${group === "read" ? "reading the wallet" : group === "ask" ? "asking the wallet's AI" : "requests for their signature"} (MCP server page in the app)` }, 403);
   else res = await agentAnswer(req, path, client).catch(fail);
   const out = (await res.clone().json().catch(() => ({}))) as { error?: string; tokens?: number };
@@ -377,7 +377,7 @@ async function agentAnswer(req: Request, path: string, client: string): Promise<
   }
   if (m === "POST" && path === "/agent/request") {
     const r = wallet.addAgentRequest(client, await body(req));
-    return json({ requestId: r.id, status: r.status, note: "Waiting for the user to press Sign in the Agentic Wallet app. Check with request_status." });
+    return json({ requestId: r.id, status: r.status, note: "Waiting for the user to press Sign in the Kravii app. Check with request_status." });
   }
   if (m === "GET" && path.startsWith("/agent/request/")) {
     const r = wallet.agentRequests().find((x) => x.id === decodeURIComponent(path.slice("/agent/request/".length)));
@@ -438,7 +438,7 @@ export async function startApp(opts: { browser: boolean }): Promise<{ url: strin
   if (!restarted) {
     const running = await alreadyRunning();
     if (running) {
-      console.log(`Agentic Wallet is already running: ${running}`);
+      console.log(`Kravii is already running: ${running}`);
       if (opts.browser) openBrowser(running);
       return { url: running, already: true };
     }
@@ -476,7 +476,7 @@ export async function startApp(opts: { browser: boolean }): Promise<{ url: strin
         }
       } else if (session) text = "Unlock the app, then the top-up is added on its next check.";
       return new Response(
-        `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Top-up</title><body style="font:15px system-ui;background:#0f1216;color:#e8ebef;display:grid;place-items:center;min-height:100vh;margin:0"><div style="max-width:420px;padding:22px;border:1px solid #272d36;border-radius:14px;background:#171b21"><h1 style="font-size:18px;margin:0 0 8px">MilestonePay</h1><p>${text.replace(/[&<>"']/g, "")}</p><p style="color:#98a1ad;font-size:13px">You can close this tab and go back to the MilestonePay app. (Test mode)</p></div></body>`,
+        `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Top-up</title><body style="font:15px system-ui;background:#0f1216;color:#e8ebef;display:grid;place-items:center;min-height:100vh;margin:0"><div style="max-width:420px;padding:22px;border:1px solid #272d36;border-radius:14px;background:#171b21"><h1 style="font-size:18px;margin:0 0 8px">Kravii</h1><p>${text.replace(/[&<>"']/g, "")}</p><p style="color:#98a1ad;font-size:13px">You can close this tab and go back to the Kravii app. (Test mode)</p></div></body>`,
         { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'" } },
       );
     }
@@ -508,7 +508,7 @@ export async function startApp(opts: { browser: boolean }): Promise<{ url: strin
   }
   writeFileSync(sessionPath(), JSON.stringify({ port: server.port, token, agentToken, pid: process.pid }), { mode: 0o600 });
   const url = `http://127.0.0.1:${server.port}/#t=${token}`;
-  console.log(`Agentic Wallet desktop ${VERSION}`);
+  console.log(`Kravii desktop ${VERSION}`);
   console.log(`Data: ${dataDir()}`);
   console.log(`Open: ${url}`);
   console.log("Keep this window open while you use the app; close it to quit.");

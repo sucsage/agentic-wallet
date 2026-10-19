@@ -17,6 +17,6 @@ export async function GET(req: Request, ctx: RouteContext<"/api/mock-id/[provide
     token_endpoint_auth_methods_supported: ["client_secret_post"],
     scopes_supported: thai ? ["openid", "pid", "name", "birthdate"] : ["openid", "wh", "name_match"],
     claims_supported: thai ? ["sub", "pid", "given_name", "family_name", "name_th", "birthdate"] : ["sub", "wh", "name_match"],
-    note: "Demo identity provider inside Agentic Wallet. Not connected to DOPA or the Ministry of Public Security.",
+    note: "Demo identity provider inside Kravii. Not connected to DOPA or the Ministry of Public Security.",
   });
 }

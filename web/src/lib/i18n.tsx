@@ -5,7 +5,7 @@ import { Children, cloneElement, isValidElement, useEffect, useSyncExternalStore
 export type Lang = "en" | "th";
 
 const mockupTh: Record<string, string> = {
-  "MilestonePay preview": "ตัวอย่าง MilestonePay",
+  "Kravii preview": "ตัวอย่าง Kravii",
   "Fictional names, addresses and activity": "ชื่อ ที่อยู่ และกิจกรรมเป็นข้อมูลสมมติ",
   "All actions stay in this browser page": "ทุกการทำงานจำลองอยู่ในหน้านี้",
   "Overview": "ภาพรวม",
@@ -184,9 +184,9 @@ const mockupTh: Record<string, string> = {
   "Opened the sample approval queue.": "เปิดคิวอนุมัติตัวอย่างแล้ว",
   "Explorer links are disabled in mockup mode.": "ลิงก์ explorer ปิดใช้งานในโหมดจำลอง",
   "You’re all caught up.": "ไม่มีการแจ้งเตือนใหม่",
-  "Thanks for your feedback on the MilestonePay preview.": "ขอบคุณสำหรับข้อเสนอแนะเกี่ยวกับตัวอย่าง MilestonePay",
+  "Thanks for your feedback on the Kravii preview.": "ขอบคุณสำหรับข้อเสนอแนะเกี่ยวกับตัวอย่าง Kravii",
   "Notifications": "การแจ้งเตือน",
-  "MilestonePay preview · Fictional names, addresses and activity · All actions stay in this browser page": "ตัวอย่าง MilestonePay · ชื่อ ที่อยู่ และกิจกรรมเป็นข้อมูลสมมติ · ทุกการทำงานจำลองอยู่ในหน้านี้",
+  "Kravii preview · Fictional names, addresses and activity · All actions stay in this browser page": "ตัวอย่าง Kravii · ชื่อ ที่อยู่ และกิจกรรมเป็นข้อมูลสมมติ · ทุกการทำงานจำลองอยู่ในหน้านี้",
 };
 
 const mockupEn: Record<string, string> = {
@@ -228,7 +228,7 @@ const aiChatThai: Record<string, string> = {
   "Hire a logo designer · ฿5,000 · 2 milestones": "จ้างออกแบบโลโก้ · 5,000 บาท · 2 งวด", "Sell CAD files to Somchai": "ขายไฟล์ CAD ให้ Somchai", "Split a group payment": "แบ่งจ่ายในกลุ่ม", "Summarize my spending this month": "สรุปรายจ่ายเดือนนี้",
   "You · 10:38": "คุณ · 10:38", "Hire a logo designer for ฿5,000, paid in 2 milestones. The designer is Lin Wei, she is in China.": "จ้างออกแบบโลโก้ 5,000 บาท แบ่งจ่าย 2 งวด ผู้ต่อออกแบบคือ Lin Wei อยู่ที่จีน",
   "Agent · 10:39": "Agent · 10:39", "Here is the draft. Lin is paid in yuan at the fixed rate. Nothing leaves your bank until you approve.": "นี่คือร่างดีลครับ Lin จะได้รับเป็นหยวนตามอัตราคงที่ ยังไม่มีเงินออกจากบัญชีคุณจนกว่าคุณจะอนุมัติ",
-  "DRAFT DEAL · D-021 · PERSONAL": "ร่างดีล · D-021 · ส่วนตัว", "Needs your approval · Tier 1": "รอคุณอนุมัติ · Tier 1", "Logo design for MilestonePay": "ออกแบบโลโก้ MilestonePay", "Seller": "ผู้ขาย", "Friend": "เพื่อน", "On allow transfer list ✓": "อยู่ในรายชื่อที่อนุญาตให้โอน ✓", "· paid in CNY": "· รับเป็นหยวน",
+  "DRAFT DEAL · D-021 · PERSONAL": "ร่างดีล · D-021 · ส่วนตัว", "Needs your approval · Tier 1": "รอคุณอนุมัติ · Tier 1", "Logo design for Kravii": "ออกแบบโลโก้ Kravii", "Seller": "ผู้ขาย", "Friend": "เพื่อน", "On allow transfer list ✓": "อยู่ในรายชื่อที่อนุญาตให้โอน ✓", "· paid in CNY": "· รับเป็นหยวน",
   "Concepts · 3 options": "แนวคิด · 3 แบบ", "Due in 5 days": "ส่งภายใน 5 วัน", "Final files · AI, PNG, SVG": "ไฟล์สุดท้าย · AI, PNG, SVG", "Due in 10 days after M1": "ส่งภายใน 10 วันหลังงวด 1", "Total": "รวม", "≈ ¥1,020.41 · ¥1 = ฿4.90 fixed": "≈ ¥1,020.41 · อัตราคงที่ ¥1 = ฿4.90",
   "Bank balance is enough (฿48,250.00 available)": "ยอดในบัญชีพอ (คงเหลือ ฿48,250.00)", "No hidden instructions found in the brief": "ไม่พบคำสั่งแอบแฝงในเอกสาร", "Personal data removed before sending to the AI": "ตัดข้อมูลส่วนบุคคลก่อนส่งให้ AI แล้ว", "Only milestone 1 (฿2,500) is debited when you approve. Milestone 2 is debited when it starts.": "เมื่ออนุมัติ ธนาคารจะหักเฉพาะงวด 1 (฿2,500) ส่วนงวด 2 หักเมื่อเริ่มงวด",
   "Approved · ฿2,500 locked": "อนุมัติแล้ว · ล็อก ฿2,500", "Approve & lock ฿2,500": "อนุมัติ & ล็อก ฿2,500", "Edit draft": "แก้ไขร่าง", "Edit the logo design draft": "แก้ไขร่างดีไซน์โลโก้",
@@ -236,7 +236,7 @@ const aiChatThai: Record<string, string> = {
   "Agent · 10:53": "Agent · 10:53", "company_approvers · 2 of 3": "ผู้อนุมัติบริษัท · 2 ใน 3", "Here is the draft for Gun Studio Co., Ltd. Company deals need 2 of 3 company approvers before the bank debits anything.": "นี่คือร่างดีลในนาม Gun Studio Co., Ltd. ครับ ดีลของบริษัทต้องได้รับอนุมัติ 2 ใน 3 จากผู้อนุมัติของบริษัทก่อนธนาคารจะหักเงิน",
   "DRAFT DEAL · D-022 · COMPANY": "ร่างดีล · D-022 · บริษัท", "Needs 2 of 3 company approvers": "รอผู้อนุมัติบริษัท 2 ใน 3", "PLC control panel wiring": "เดินสายตู้ควบคุม PLC", "Buyer": "ผู้ซื้อ", "Company": "บริษัท", "· Company passbook ··9033": "· สมุดบัญชีบริษัท ··9033", "Somchai Automation": "Somchai Automation", "Panel layout & BOM": "ออกแบบตู้ & BOM", "Due in 7 days": "ส่งภายใน 7 วัน", "Wiring & labelling": "เดินสาย & ติดป้าย", "Due in 14 days after M1": "ส่งภายใน 14 วันหลังงวด 1", "Testing & handover (FAT)": "ทดสอบ & ส่งมอบ (FAT)", "Due in 7 days after M2": "ส่งภายใน 7 วันหลังงวด 2", "Company balance is enough (฿310,400.00 available)": "ยอดบัญชีบริษัทพอ (คงเหลือ ฿310,400.00)", "Tax invoice in company name · Tax ID 0105•••••1234": "ออกใบกำกับภาษีในนามบริษัท · เลขผู้เสียภาษี 0105•••••1234", "Somchai Automation is in the company allowlist": "Somchai Automation อยู่ในรายชื่อที่อนุญาตให้โอน ของบริษัท", "Company approvers · 1 / 2": "ผู้อนุมัติของบริษัท · 1/2", "Gun ✓   Finance pending": "Gun ✓ · การเงิน · รออนุมัติ",
   "You · just now": "คุณ · เมื่อสักครู่", "Message AI agent…": "พิมพ์ข้อความถึง AI agent…", "Attach file": "แนบไฟล์", "Send message": "ส่งข้อความ", "AI checks bank balance and policy before any debit.": "AI จะตรวจยอดธนาคารและนโยบายก่อนหักเงิน",
-  "Confirm bank debit": "ยืนยันการหักเงินจากธนาคาร", "D-021 · Logo design for MilestonePay · milestone 1 of 2": "D-021 · ออกแบบโลโก้ MilestonePay · งวด 1 จาก 2", "Lin receives ¥510.20 · ¥1 = ฿4.90 fixed": "Lin ได้รับ ¥510.20 · อัตราคงที่ ¥1 = ฿4.90", "From": "จาก", "Savings passbook ··4821 · Personal": "สมุดบัญชีออมทรัพย์ ··4821 · ส่วนตัว", "Balance after": "ยอดเงินหลังรายการ", "Milestone 2": "งวดที่ 2", "฿2,500.00 · debited later": "฿2,500.00 · หักภายหลัง", "Layer 1 policy passed · within your limits": "ผ่านนโยบายด่าน 1 · อยู่ในวงเงินของคุณ", "Recipient Lin Wei is on your allow transfer list": "ผู้รับ Lin Wei อยู่ในรายชื่อที่อนุญาตให้โอน ของคุณ", "If anything fails after the debit, the money is refunded to your bank automatically.": "หากเกิดข้อผิดพลาดหลังหักเงิน ระบบจะคืนเงินเข้าธนาคารของคุณโดยอัตโนมัติ", "Cancel": "ยกเลิก", "Approve & debit ฿2,500": "อนุมัติและหัก ฿2,500", "Close confirmation": "ปิดหน้าต่างยืนยัน",
+  "Confirm bank debit": "ยืนยันการหักเงินจากธนาคาร", "D-021 · Logo design for Kravii · milestone 1 of 2": "D-021 · ออกแบบโลโก้ Kravii · งวด 1 จาก 2", "Lin receives ¥510.20 · ¥1 = ฿4.90 fixed": "Lin ได้รับ ¥510.20 · อัตราคงที่ ¥1 = ฿4.90", "From": "จาก", "Savings passbook ··4821 · Personal": "สมุดบัญชีออมทรัพย์ ··4821 · ส่วนตัว", "Balance after": "ยอดเงินหลังรายการ", "Milestone 2": "งวดที่ 2", "฿2,500.00 · debited later": "฿2,500.00 · หักภายหลัง", "Layer 1 policy passed · within your limits": "ผ่านนโยบายด่าน 1 · อยู่ในวงเงินของคุณ", "Recipient Lin Wei is on your allow transfer list": "ผู้รับ Lin Wei อยู่ในรายชื่อที่อนุญาตให้โอน ของคุณ", "If anything fails after the debit, the money is refunded to your bank automatically.": "หากเกิดข้อผิดพลาดหลังหักเงิน ระบบจะคืนเงินเข้าธนาคารของคุณโดยอัตโนมัติ", "Cancel": "ยกเลิก", "Approve & debit ฿2,500": "อนุมัติและหัก ฿2,500", "Close confirmation": "ปิดหน้าต่างยืนยัน",
 };
 
 Object.assign(mockupTh, {
@@ -280,7 +280,7 @@ const summaryThai: Record<string, string> = {
 };
 
 const friendsThai: Record<string, string> = {
-  "Contacts": "รายชื่อผู้ติดต่อ", "Add a contact": "เพิ่มผู้ติดต่อ", "Contact requests": "คำขอจากผู้ติดต่อ", "Remove contact": "ลบผู้ติดต่อ", "Search contacts": "ค้นหารายชื่อผู้ติดต่อ", "Add contacts who use Agentic Wallet to invite them to groups and make them payees": "เพิ่มผู้ติดต่อที่ใช้ Agentic Wallet เพื่อเชิญเข้ากลุ่มและตั้งเป็นผู้รับเงิน", "A contact is not automatically on your allow transfer list. Making someone a payee is an on-chain action you approve.": "ผู้ติดต่อไม่ได้อยู่ในรายชื่อที่อนุญาตให้โอน โดยอัตโนมัติ การตั้งใครเป็นผู้รับเงินเป็นรายการบน chain ที่คุณต้องอนุมัติ",
+  "Contacts": "รายชื่อผู้ติดต่อ", "Add a contact": "เพิ่มผู้ติดต่อ", "Contact requests": "คำขอจากผู้ติดต่อ", "Remove contact": "ลบผู้ติดต่อ", "Search contacts": "ค้นหารายชื่อผู้ติดต่อ", "Add contacts who use Kravii to invite them to groups and make them payees": "เพิ่มผู้ติดต่อที่ใช้ Kravii เพื่อเชิญเข้ากลุ่มและตั้งเป็นผู้รับเงิน", "A contact is not automatically on your allow transfer list. Making someone a payee is an on-chain action you approve.": "ผู้ติดต่อไม่ได้อยู่ในรายชื่อที่อนุญาตให้โอน โดยอัตโนมัติ การตั้งใครเป็นผู้รับเงินเป็นรายการบน chain ที่คุณต้องอนุมัติ",
   "Friends": "เพื่อน", "Add friends to start deals faster and invite them to groups": "เพิ่มเพื่อนเพื่อเริ่มดีลได้เร็วขึ้นและเชิญเข้ากลุ่ม", "Add friend": "เพิ่มเพื่อน", "Add a friend": "เพิ่มเพื่อน", "Search by username, email or phone. No wallet address needed.": "ค้นหาด้วยชื่อผู้ใช้ อีเมล หรือเบอร์โทร ไม่ต้องใช้ที่อยู่กระเป๋า", "Search": "ค้นหา", "Search friends": "ค้นหาเพื่อน", "My code": "โค้ดของฉัน", "Friends scan this QR to add you": "ให้เพื่อนสแกน QR นี้เพื่อเพิ่มคุณ", "Friend requests": "คำขอเป็นเพื่อน", "Decline": "ปฏิเสธ", "Accept": "ยอมรับ", "My friends · 12": "เพื่อนของฉัน · 12", "All 12": "ทั้งหมด 12", "Same group 4": "กลุ่มเดียวกัน 4", "Allowlisted 3": "อยู่ในรายชื่อที่อนุญาตให้โอน 3", "A friend is not automatically on your allow transfer list. Adding someone to the allowlist is a Tier 1 action you approve.": "การเป็นเพื่อนไม่ได้เพิ่มใน allowlist โดยอัตโนมัติ การเพิ่มคนใน allowlist เป็นรายการ Tier 1 ที่คุณต้องอนุมัติ", "2 mutual friends": "เพื่อนร่วมกัน 2 คน", "Request sent": "ส่งคำขอแล้ว", "New deal": "สร้างดีล", "Allowlisted ✓": "อยู่ในรายชื่อที่อนุญาตให้โอน ✓", "Add to allow transfer list": "เพิ่มในรายชื่อที่อนุญาตให้โอน", "Pays in CNY": "รับเงินเป็น CNY", "Company account": "บัญชีบริษัท", "Personal account": "บัญชีส่วนตัว", "1 deal": "1 ดีล", "2 deals": "2 ดีล", "3 mutual friends": "เพื่อนร่วมกัน 3 คน", "in PLC Team": "อยู่ในทีม PLC", "Lin Wei added to your friends": "เพิ่ม Lin Wei เป็นเพื่อนแล้ว", "Non added to your friends": "เพิ่ม Non เป็นเพื่อนแล้ว", "Somchai A.": "Somchai A.", "Nok Engineering": "Nok Engineering", "Wanchai Design": "Wanchai Design",
 };
 
@@ -441,7 +441,7 @@ const en = {
   "landing.title.a": "An AI agent that pays your contractors,",
   "landing.title.b": "and can't be talked into anything else.",
   "landing.lead":
-    "Industrial SMEs pay in milestones: deposit, delivery, factory test, site test. Agentic Wallet reads the contract, checks the delivery evidence and releases each payment. A smart contract enforces every limit, so a forged invoice or a prompt injection still cannot move money.",
+    "Industrial SMEs pay in milestones: deposit, delivery, factory test, site test. Kravii reads the contract, checks the delivery evidence and releases each payment. A smart contract enforces every limit, so a forged invoice or a prompt injection still cannot move money.",
   "landing.guards": "Two independent guards",
   "landing.guard.agent": "AI agent (LLM)",
   "landing.guard.agent.d": "Understands documents, decides what should happen",
@@ -489,7 +489,7 @@ const en = {
   // auth + profile
   "auth.signIn": "Sign in",
   "auth.signOut": "Sign out",
-  "auth.title": "Sign in to Agentic Wallet",
+  "auth.title": "Sign in to Kravii",
   "auth.lead": "An account is required. Your sandbox wallets and basic details stay on your profile, on any device.",
   "auth.google": "Continue with Google",
   "auth.apple": "Continue with Apple",
@@ -657,7 +657,7 @@ const th: Record<Key, string> = {
   "landing.title.a": "AI ที่จ่ายเงินให้ผู้รับเหมาของคุณ",
   "landing.title.b": "และไม่มีใครหลอกให้ทำอย่างอื่นได้",
   "landing.lead":
-    "SME ในงานอุตสาหกรรมจ่ายเงินเป็นงวด: มัดจำ ส่งของ ทดสอบที่โรงงาน (FAT) และทดสอบหน้างาน (SAT) Agentic Wallet อ่านสัญญา ตรวจหลักฐานการส่งมอบ แล้วจ่ายเงินทีละงวด โดยมี smart contract บังคับทุกวงเงิน ใบแจ้งหนี้ปลอมหรือ prompt injection จึงขยับเงินไม่ได้",
+    "SME ในงานอุตสาหกรรมจ่ายเงินเป็นงวด: มัดจำ ส่งของ ทดสอบที่โรงงาน (FAT) และทดสอบหน้างาน (SAT) Kravii อ่านสัญญา ตรวจหลักฐานการส่งมอบ แล้วจ่ายเงินทีละงวด โดยมี smart contract บังคับทุกวงเงิน ใบแจ้งหนี้ปลอมหรือ prompt injection จึงขยับเงินไม่ได้",
   "landing.guards": "การป้องกัน 2 ชั้นที่แยกจากกัน",
   "landing.guard.agent": "AI agent (LLM)",
   "landing.guard.agent.d": "เข้าใจเอกสาร และตัดสินใจว่าควรทำอะไร",
@@ -702,7 +702,7 @@ const th: Record<Key, string> = {
 
   "auth.signIn": "เข้าสู่ระบบ",
   "auth.signOut": "ออกจากระบบ",
-  "auth.title": "เข้าสู่ระบบ Agentic Wallet",
+  "auth.title": "เข้าสู่ระบบ Kravii",
   "auth.lead": "ต้องเข้าสู่ระบบก่อนใช้งาน sandbox wallet และข้อมูลพื้นฐานของคุณจะถูกเก็บไว้ในโปรไฟล์ เปิดจากเครื่องไหนก็ได้",
   "auth.google": "เข้าสู่ระบบด้วย Google",
   "auth.apple": "เข้าสู่ระบบด้วย Apple",

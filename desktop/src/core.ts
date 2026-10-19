@@ -269,7 +269,7 @@ class Wallet {
       vault = JSON.parse(input.keyBackup);
       if (vault.v !== 1 || !vault.key) throw new Error();
     } catch {
-      throw new ApiError(400, "That is not an Agentic Wallet key backup file");
+      throw new ApiError(400, "That is not an Kravii key backup file");
     }
     if (listAccounts().some((a) => a.address.toLowerCase() === String(vault.address).toLowerCase())) throw new ApiError(409, "This account is already on this computer: choose it on the unlock screen");
     const was = this.leaveCurrent();
@@ -592,7 +592,7 @@ class Wallet {
     return signedRaw(vault.server, account, "POST", this.asPath("/api/device/chat"), new TextEncoder().encode(JSON.stringify(body)), "application/json", "text/event-stream");
   }
 
-  /** The MCP servers the user added for MilestonePay's AI (kept on this computer, per account). */
+  /** The MCP servers the user added for Kravii's AI (kept on this computer, per account). */
   mcpServers(): Record<string, ServerConfig> {
     return JSON.parse(store.getMeta("mcpServers") ?? "{}");
   }

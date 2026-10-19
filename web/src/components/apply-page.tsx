@@ -75,12 +75,12 @@ export function ApplyPage({ slug }: { slug: string }) {
 
   return (
     <div className="inv-page">
-      <div className="inv-banner">DEMO · simulated money · an open call on Agentic Wallet</div>
+      <div className="inv-banner">DEMO · simulated money · an open call on Kravii</div>
       <main className="inv-main">
         <header className="inv-head">
           <span className="inv-mark" aria-hidden />
           <div>
-            <small>Agentic Wallet · open call</small>
+            <small>Kravii · open call</small>
             <h1>{post ? post.title : error ? "Not available" : "Loading…"}</h1>
             {post && (
               <p>

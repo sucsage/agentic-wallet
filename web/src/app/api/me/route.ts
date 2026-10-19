@@ -31,7 +31,7 @@ export async function GET() {
       // username: how contacts find this person (their "My code" QR).
       user: { id: user.id, name: user.name, username: customer.username },
       bank: {
-        name: customer.currency === "THB" ? "Agentic Wallet · THB e-money" : "Agentic Wallet · CNY e-money",
+        name: customer.currency === "THB" ? "Kravii Wallet · THB e-money" : "Kravii Wallet · CNY e-money",
         currency: shown.currency,
         token: shown.currency === "THB" ? "mTHB" : "mCNY",
         customerType: shown.type,

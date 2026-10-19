@@ -27,10 +27,10 @@ function key(name: string): Hex {
  */
 const besu = defineChain({
   id: 20261020,
-  name: "Agentic Wallet private chain",
+  name: "Kravii private chain",
   nativeCurrency: { name: "Gas (no value)", symbol: "GAS", decimals: 18 },
   rpcUrls: { default: { http: ["http://127.0.0.1:8555"] } },
-  blockExplorers: { default: { name: "Agentic Wallet explorer", url: "/explorer" } },
+  blockExplorers: { default: { name: "Kravii explorer", url: "/explorer" } },
 });
 
 const chains: Record<string, Chain> = { baseSepolia, hardhat, besu };

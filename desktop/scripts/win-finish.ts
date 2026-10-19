@@ -20,7 +20,7 @@ const stageDir = join(buildRoot, stage);
 const appIn = (dir: string) => (existsSync(dir) ? readdirSync(dir).map((d) => join(dir, d)).find((d) => existsSync(join(d, "bin", "launcher.exe"))) : undefined);
 let app = appIn(stageDir);
 if (!app) {
-  // The stable build keeps only its packed copy (MilestonePay-Setup.tar.zst): unpack it.
+  // The stable build keeps only its packed copy (Kravii-Setup.tar.zst): unpack it.
   const packed = readdirSync(stageDir).find((f) => f.endsWith(".tar.zst"));
   if (!packed) throw new Error(`No app folder and no .tar.zst in ${stageDir}`);
   const out = join(buildRoot, "win-app");
@@ -45,9 +45,9 @@ for (const exe of ["launcher.exe", "bun.exe"]) {
   execFileSync(rcedit, [
     file,
     "--set-icon", icon,
-    "--set-version-string", "FileDescription", "MilestonePay",
-    "--set-version-string", "ProductName", "MilestonePay",
-    "--set-version-string", "CompanyName", "MilestonePay (FinTechathon 2026 demo)",
+    "--set-version-string", "FileDescription", "Kravii",
+    "--set-version-string", "ProductName", "Kravii",
+    "--set-version-string", "CompanyName", "Kravii (FinTechathon 2026 demo)",
     "--set-version-string", "OriginalFilename", exe,
     "--set-file-version", v4,
     "--set-product-version", v4,

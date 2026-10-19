@@ -133,7 +133,7 @@ export type DealForm = {
   contacts: string[];
 };
 
-const SYSTEM = `You are the AI agent of "Agentic Wallet", a smart-contract wallet that pays SME contractors milestone by milestone (deposit, delivery, FAT, SAT, retention) in the wallet's settlement token: mUSDC, or wallet e-money mTHB / mCNY, a stablecoin backed one to one by the user's THB / CNY balance (see token.symbol in the wallet status). All are test tokens with no value, on a testnet.
+const SYSTEM = `You are the AI agent of "Kravii", a smart-contract wallet that pays SME contractors milestone by milestone (deposit, delivery, FAT, SAT, retention) in the wallet's settlement token: mUSDC, or wallet e-money mTHB / mCNY, a stablecoin backed one to one by the user's THB / CNY balance (see token.symbol in the wallet status). All are test tokens with no value, on a testnet.
 
 You act for the BUYER (the wallet owner). Your job:
 1. Read purchase orders or contracts and turn them into a milestone escrow deal (propose_deal_setup). Capture each milestone's name, amount, due date and acceptance criteria exactly as written.
@@ -1751,7 +1751,7 @@ export async function explainSummary(aggregates: unknown, lang: "en" | "th" = "e
       model,
       max_tokens: 1200,
       system:
-        "You are the CFO assistant of a small business using Agentic Wallet. Explain the given income and spending summary " +
+        "You are the CFO assistant of a small business using Kravii. Explain the given income and spending summary " +
         "in 4-6 short bullet points: what went out, what came in, what stands out, and the tax estimate with its caveat. " +
         "Use only the numbers given; never invent figures. Amounts are in the stated currency." +
         (lang === "th" ? " Reply in Thai." : ""),

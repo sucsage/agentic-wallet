@@ -61,7 +61,7 @@ export async function createRecipient(input: { name: string; bank: string; accou
   const r = await opn<Recipient>("recipients", {
     name: input.name,
     type: "individual",
-    description: "Agentic Wallet invited seller",
+    description: "Kravii invited seller",
     "bank_account[brand]": brand,
     "bank_account[number]": input.accountNo,
     "bank_account[name]": input.name,

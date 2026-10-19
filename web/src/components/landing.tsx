@@ -34,7 +34,7 @@ export function Landing() {
       <header className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 font-semibold">
           <span className="grid h-8 w-8 place-items-center rounded-lg bg-accent text-accent-fg">AW</span>
-          Agentic Wallet
+          Kravii
         </div>
         <div className="flex items-center gap-2">
           <span className="pill hidden bg-surface-2 text-muted md:inline-flex">{t("landing.badge")}</span>

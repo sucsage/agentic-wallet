@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { InvitePage } from "@/components/invite-page";
 
 export const metadata: Metadata = {
-  title: "Seller link · Agentic Wallet",
+  title: "Seller link · Kravii Pay",
   // The link is a credential: never leak it to other sites or search engines.
   referrer: "no-referrer",
   robots: { index: false, follow: false },

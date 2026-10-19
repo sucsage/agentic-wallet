@@ -1,5 +1,5 @@
 /**
- * MilestonePay in its own window (Electrobun). The app itself is ../../../src/main.ts: started here
+ * Kravii in its own window (Electrobun). The app itself is ../../../src/main.ts: started here
  * without a browser tab, its local page is shown in a native window. A tray icon reopens the window
  * and quits the app; links the page opens in a new window go to the system browser (Stripe, GitHub,
  * printable documents). `--mcp` still runs the MCP server for other AI apps, without a window.
@@ -68,7 +68,7 @@ if (process.argv.includes("--mcp")) {
       return;
     }
     win = new BrowserWindow({
-      title: "MilestonePay",
+      title: "Kravii",
       url: pageUrl,
       frame: startFrame(),
       titleBarStyle: chrome ? "hiddenInset" : "default",
@@ -119,7 +119,7 @@ if (process.argv.includes("--mcp")) {
         { role: "hide" },
         { role: "hideOthers" },
         { type: "divider" },
-        { label: "Quit MilestonePay", action: "quit", accelerator: "q" },
+        { label: "Quit Kravii", action: "quit", accelerator: "q" },
       ],
     },
   ]);
@@ -133,9 +133,9 @@ if (process.argv.includes("--mcp")) {
     if (action === "show") openWindow();
   });
 
-  const tray = new Tray({ title: "MilestonePay", image: "views://icon.png", template: false, width: 18, height: 18 });
+  const tray = new Tray({ title: "Kravii", image: "views://icon.png", template: false, width: 18, height: 18 });
   tray.setMenu([
-    { type: "normal", label: "Open MilestonePay", action: "show" },
+    { type: "normal", label: "Open Kravii", action: "show" },
     { type: "divider" },
     { type: "normal", label: "Quit", action: "quit" },
   ]);

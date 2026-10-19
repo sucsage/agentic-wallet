@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { dataDir } from "./paths";
 
 /**
- * MCP servers the user adds for MilestonePay's own AI (the app is the MCP client here). Same entry
+ * MCP servers the user adds for Kravii's own AI (the app is the MCP client here). Same entry
  * shape as other MCP clients' config ("mcpServers": { name: { command, args, env } } or { url }), so
  * a config copied from a server's README works as is. Sources:
  *   - a GitHub link or an npm package: run with the app's built-in Bun (`bun x`), no Node needed;
@@ -89,7 +89,7 @@ class Connection {
     if (this.ready) return this.ready;
     this.ready = (async () => {
       if (!this.entry.url) this.spawn();
-      await this.request("initialize", { protocolVersion: PROTOCOL, capabilities: {}, clientInfo: { name: "MilestonePay Desktop", version: "1" } });
+      await this.request("initialize", { protocolVersion: PROTOCOL, capabilities: {}, clientInfo: { name: "Kravii Wallet", version: "1" } });
       await this.notify("notifications/initialized", {});
       const r = (await this.request("tools/list", {})) as { tools?: Connection["tools"] };
       this.tools = Array.isArray(r?.tools) ? r.tools.slice(0, 64) : [];
