@@ -165,3 +165,29 @@ On-chain evidence:
 ## Security
 
 Permission tiers, money-flow controls, tests and the known-risk list are in [SECURITY.md](SECURITY.md).
+
+## Third-party components and AI assistance
+
+Kravii's design, architecture, smart contracts, security model and product decisions are the team's own work for this competition. It is built on the open-source components below, used under their licences without modification, and on AI services and tools, which are listed here so that reviewers can see what is ours and what is not.
+
+**Open-source components**
+
+| Component | Used for | Licence |
+|---|---|---|
+| OpenZeppelin Contracts 5 | Base contracts: ERC-20, access control, ownership, pause, reentrancy guard, signature checks | MIT |
+| Hardhat 3, viem | Contract build and tests; chain access from the web and desktop apps | MIT |
+| Hyperledger Besu | The private chain (QBFT) | Apache-2.0 |
+| Next.js 16, React 19 | Web app | MIT |
+| Prisma 7 | Database access (PostgreSQL) | Apache-2.0 |
+| better-auth, jose | Sessions; OpenID Connect and JWT | MIT |
+| zod | Input and tool-call validation | MIT |
+| Anthropic TypeScript SDK | Calls to the language models | MIT |
+| Bun, Electrobun 1.18 | Desktop app runtime and native window | MIT |
+| sharp, unpdf, jsQR, qrcode, react-markdown, remark-gfm, Tailwind CSS | Image previews, PDF text, QR codes, Markdown, styling | Apache-2.0 / MIT |
+| Inno Setup, rcedit | Windows installer and executable resources | Inno Setup licence / MIT |
+
+Third-party services used in test mode only: Vercel (hosting), Neon (PostgreSQL), Stripe (test-mode payments), GitHub Actions and Releases (desktop builds), Tailscale Funnel (access to the chain server). The Mock Bank, mock ThaID and mock 国家网络身份认证, Mock Post and the AI arbiter flow are the team's own simulations; they do not imitate any real institution's branding.
+
+**AI in the product.** The wallet's assistant, the terms review and the dispute arbiter call large language models through the Anthropic Messages API (Anthropic, OpenRouter or a university LLM gateway; users may bring their own key). The models only draft and advise: every payment needs the user's signed approval, and on-chain policy (caps, recipient allowlist, N-of-M approval) is enforced by the contracts, not by the model.
+
+**AI assistance in development.** The team used AI coding assistants (Anthropic's Claude) to help write and review code, tests and documentation. The team chose the problem, designed the system and its security model, reviewed and tested the output, and made every product and architecture decision.
