@@ -1,6 +1,7 @@
 {
   "name": "milestonepay-desktop-window",
   "version": "0.4.0",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "description": "Kravii in its own window (Electrobun): the same app as desktop/, shown in a native window instead of a browser tab.",
