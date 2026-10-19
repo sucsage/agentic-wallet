@@ -249,7 +249,8 @@ async function api(path, method = "GET", body) {
 // ---------------------------------------------------------------- window: title bar and display size
 const ZOOMS = [0.8, 0.9, 1, 1.1, 1.25, 1.4];
 /** Display size that fits the screen: smaller on laptops (or high Windows scaling), larger on big screens. */
-const autoZoom = () => { const w = screen.availWidth || innerWidth; return w < 1300 ? 0.85 : w < 1500 ? 0.9 : w > 2300 ? 1.1 : 1; };
+// Whole steps only on usual screens: 1080p at 100% or 125% scaling stays at 100% (sharper text).
+const autoZoom = () => { const w = screen.availWidth || innerWidth; return w < 1250 ? 0.9 : w > 2300 ? 1.1 : 1; };
 const zoomPref = () => { try { return localStorage.getItem("awzoom") || "auto"; } catch { return "auto"; } };
 const zoomNow = () => { const p = zoomPref(); return p === "auto" ? autoZoom() : Number(p) || 1; };
 function applyZoom() {
@@ -272,6 +273,14 @@ function windowChrome() {
   }
   applyZoom();
   addEventListener("resize", applyZoom);
+  // Right-click: no browser menu (Back, Reload, Inspect…) on the app's screens; text boxes and
+  // selected text keep the system's Cut / Copy / Paste menu.
+  addEventListener("contextmenu", (e) => {
+    const t = e.target;
+    const editable = t && t.closest && t.closest("input, textarea, select, [contenteditable=''], [contenteditable=true]");
+    const selected = String(getSelection && getSelection()).trim();
+    if (!editable && !selected) e.preventDefault();
+  });
   // Ctrl/⌘ + and − change the display size, Ctrl/⌘ 0 goes back to the size that fits the screen.
   addEventListener("keydown", (e) => {
     if (!(e.metaKey || e.ctrlKey) || e.altKey) return;

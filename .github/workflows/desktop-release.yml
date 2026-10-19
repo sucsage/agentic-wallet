@@ -56,7 +56,25 @@ jobs:
         run: |
           bun install --frozen-lockfile
           bunx electrobun build --env=stable
+      # Windows: one Setup.exe (Inno Setup) instead of Electrobun's zip, with the icon, the DPI
+      # manifest and no terminal window (scripts/win-finish.ts).
+      - name: Windows installer (Inno Setup)
+        if: runner.os == 'Windows'
+        env:
+          MSYS_NO_PATHCONV: "1"
+          MSYS2_ARG_CONV_EXCL: "*"
+        run: |
+          V=${GITHUB_REF_NAME#desktop-v}
+          mkdir -p ../.rcedit && npm install --prefix ../.rcedit --no-save --no-audit --no-fund rcedit@4.0.1
+          bun run scripts/win-finish.ts "$V" "$(cygpath -w "$PWD/../.rcedit/node_modules/rcedit/bin/rcedit-x64.exe")"
+          ISCC="/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
+          if [ ! -f "$ISCC" ]; then choco install innosetup -y --no-progress; fi
+          APP=$(cat electrobun/build/app-dir.txt)
+          mkdir -p electrobun/out
+          "$ISCC" "/DAppVersion=$V" "/DSourceDir=$APP" "/DOutputDir=$(cygpath -w "$PWD/electrobun/out")" packaging/windows/window-installer.iss
+          ls -la electrobun/out
       - name: Name the installers
+        if: runner.os != 'Windows'
         working-directory: desktop/electrobun
         run: |
           V=${GITHUB_REF_NAME#desktop-v}

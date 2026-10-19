@@ -4,9 +4,10 @@
  * and quits the app; links the page opens in a new window go to the system browser (Stripe, GitHub,
  * printable documents). `--mcp` still runs the MCP server for other AI apps, without a window.
  *
- * The window has no native title bar on macOS and Windows: the page draws a black bar across the top
- * (macOS keeps its own close/minimize/zoom buttons over it; on Windows the page draws them and asks
- * this process through the local server). Size and position fit the screen and are remembered.
+ * macOS: no native title bar; the page draws a black bar under macOS's own close/minimize/zoom
+ * buttons. Windows: the native title bar, made dark (black on Windows 11), with the app's icon, its
+ * taskbar identity and per-monitor DPI awareness (sharp text at 125%/150%). Size and position fit
+ * the screen and are remembered.
  */
 process.env.AW_SHELL = "electrobun";
 // This file in the built app: other AI apps run it with --mcp (the MCP server, no window).
@@ -18,14 +19,16 @@ if (process.argv.includes("--mcp")) {
 } else {
   const { readFileSync, writeFileSync } = await import("node:fs");
   const { join } = await import("node:path");
+  const win32 = process.platform === "win32" ? await import("./win32") : null;
+  // Before any window exists: sharp at any Windows scaling, and our own taskbar entry and icon.
+  win32?.beforeWindows();
   const { startApp, setWindowControl } = await import("../../../src/main");
   const { dataDir } = await import("../../../src/paths");
   const { default: Electrobun, ApplicationMenu, BrowserWindow, Screen, Tray, Utils } = await import("electrobun/bun");
   const { url } = await startApp({ browser: false });
 
-  // macOS: the native buttons sit over the page's black bar. Windows: no native bar, the page draws
-  // its own buttons. Linux keeps the desktop's own title bar (GTK draws it; its resize borders go with it).
-  const chrome = process.platform === "darwin" ? "mac" : process.platform === "win32" ? "win" : "";
+  // macOS: the native buttons sit over the page's black bar. Windows and Linux keep the system's title bar.
+  const chrome = process.platform === "darwin" ? "mac" : "";
   const pageUrl = chrome ? url.replace("/#", `/?chrome=${chrome}#`) : url;
 
   type Frame = { x: number; y: number; width: number; height: number };
@@ -72,6 +75,7 @@ if (process.argv.includes("--mcp")) {
       trafficLightOffset: { x: 14, y: 12 },
       activate: true,
     });
+    win32?.styleWindow(win.ptr);
     console.log(`[window] opened ${win.id}`);
   };
 
@@ -97,8 +101,9 @@ if (process.argv.includes("--mcp")) {
     if (/^https?:\/\//.test(target)) Utils.openExternal(target);
   });
 
-  // One menu (the app's): no Edit or Window menus. Copy, paste and undo stay here so their shortcuts keep working on macOS.
-  ApplicationMenu.setApplicationMenu([
+  // macOS only: one menu (the app's), no Edit or Window menus; copy, paste and undo stay in it so
+  // their shortcuts keep working. Windows and Linux get no menu bar in the window.
+  if (process.platform === "darwin") ApplicationMenu.setApplicationMenu([
     {
       submenu: [
         { role: "about" },

@@ -34,7 +34,7 @@ const mb = (n: number) => `${(n / 1024 / 1024).toFixed(0)} MB`;
 const HOW: Record<string, string> = {
   "macos-arm64": "Open the .dmg and drag MilestonePay to Applications, then open it from there (not from the .dmg). First time: right-click → Open (or System Settings → Privacy & Security → Open Anyway); the first start unpacks for about 10 seconds.",
   "macos-x64": "Open the .dmg and drag MilestonePay to Applications, then open it from there (not from the .dmg). First time: right-click → Open (or System Settings → Privacy & Security → Open Anyway); the first start unpacks for about 10 seconds.",
-  "windows-x64": "Unzip it, then run MilestonePay-Setup.exe (keep the .installer folder next to it). If SmartScreen warns about an unknown publisher: More info → Run anyway.",
+  "windows-x64": "Run the Setup file and follow the steps (no administrator rights needed); MilestonePay is then in the Start menu. Older releases came as a .zip: unzip it and run MilestonePay-Setup.exe. If SmartScreen warns about an unknown publisher: More info → Run anyway.",
   "linux-x64": "Extract it (tar xzf), then run ./installer in that folder. Needs WebKitGTK 4.1 (most desktops have it).",
   "linux-arm64": "Extract it (tar xzf), then run ./installer in that folder. Needs WebKitGTK 4.1 (most desktops have it).",
 };

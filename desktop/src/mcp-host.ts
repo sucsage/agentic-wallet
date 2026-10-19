@@ -115,6 +115,8 @@ class Connection {
       stdout: "pipe",
       stderr: "pipe",
       env: { ...process.env, ...extra, ...env },
+      // Windows: no console window for the server (the app itself has none).
+      windowsHide: true,
     });
     const dec = new TextDecoder();
     (async () => {
