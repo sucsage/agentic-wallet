@@ -388,7 +388,8 @@ function groupManageHtml(x) {
   return head + `<table style="margin-top:6px"><tbody>${members.map((mm) => `<tr><td>${esc(mm.name)}${mm.role === "ADMIN" ? " (owner)" : ""}</td><td>${mm.canSign ? "signer" : "member"}</td><td style="text-align:right">${admin && mm.role !== "ADMIN" ? `<button data-gsign="${esc(x.id)}" data-u="${esc(mm.userId)}" data-v="${mm.canSign ? "0" : "1"}">${mm.canSign ? "Stop signing" : "Make signer"}</button><button class="danger" data-grm="${esc(x.id)}" data-u="${esc(mm.userId)}">Remove</button>` : ""}</td></tr>`).join("")}</tbody></table>
     <div style="margin-top:8px"><b>Rule changes</b> <span class="hint">(need the signers' vote)</span>${(d.rules || []).map((r) => `<div class="row space"><span>${esc(r.text)} <span class="chip">${esc(String(r.status).toLowerCase())}</span> <span class="hint">${r.yes} yes · ${r.no} no</span></span>${r.status === "OPEN" && r.myVote === null ? `<span class="row"><button class="primary" data-rvote="${esc(r.id)}" data-g="${esc(x.id)}" data-v="1">Yes</button><button data-rvote="${esc(r.id)}" data-g="${esc(x.id)}" data-v="0">No</button></span>` : ""}</div>`).join("") || `<div class="hint">None.</div>`}
     <div class="row" style="margin-top:6px"><button data-gthr="${esc(x.id)}">Propose: votes needed</button><button data-gaddsig="${esc(x.id)}">Propose: a new signer</button></div></div>
-    <div class="row" style="margin-top:10px"><button data-glink="${esc(x.id)}">Invite link</button><button class="danger" data-gleave="${esc(x.id)}">Leave the group</button></div>`;
+    <div class="row" style="margin-top:10px"><button data-glink="${esc(x.id)}">Invite link</button><button class="danger" data-gleave="${esc(x.id)}">Leave the group</button>${admin ? `<button class="danger" data-gdissolve="${esc(x.id)}" data-name="${esc(x.name)}">Dissolve the group</button>` : ""}</div>
+    ${admin ? `<p class="hint">Only the owner can dissolve the group. Its wallet must be empty and its deals finished first; open votes end and their previews go back to whoever proposed them.</p>` : ""}`;
 }
 
 function wireGroupManage() {
@@ -407,6 +408,14 @@ function wireGroupManage() {
     if (fd) { await act(() => web("POST", `groups/${b.dataset.gaddsig}/rules`, { kind: "ADD_SIGNER", targetUserId: fd.get("u") }), "Proposed"); again(b.dataset.gaddsig); }
   });
   on("[data-glink]", async (b) => { const r = await act(() => web("POST", `groups/${b.dataset.glink}/link`, {})); if (r && r.url) { await navigator.clipboard.writeText(r.url).catch(() => null); formDialog("Invite link", `<p class="mono">${esc(r.url)}</p><p class="hint">Copied. Valid until ${fmtDate(r.expiresAt)}. Anyone with it can ask to join.</p>`, "OK"); } });
+  on("[data-gdissolve]", async (b) => {
+    if (!await uiConfirm(`Dissolve "${b.dataset.name}"? The group, its chat and its invite links are deleted for everyone. This cannot be undone.`)) return;
+    const r = await act(() => web("DELETE", `groups/${b.dataset.gdissolve}`), "Group dissolved");
+    if (!r) return;
+    if (S.info.acting && S.info.acting.groupId === b.dataset.gdissolve) await api("/app/acting", "POST", { groupId: null }).catch(() => null);
+    S.actingGroups = undefined;
+    load();
+  });
   on("[data-gleave]", async (b) => { if (!await uiConfirm("Leave this group?")) return; await act(() => web("POST", `groups/${b.dataset.gleave}/leave`, {}), "You left the group"); load(); });
   on("#x-company", async () => {
     const friends = (S.friends || []).filter((f) => f.status === "ACCEPTED");

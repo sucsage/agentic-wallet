@@ -1535,12 +1535,12 @@ export function LiveGroups({ initialCreateOpen = false, joinToken = null }: { in
               >
                 Leave group
               </Button>
-              {detail.myRole === "ADMIN" && detail.company?.kind !== "COMPANY" && (
+              {detail.myRole === "ADMIN" && (
                 <Button
                   variant="danger"
                   disabled={!!busy}
                   onClick={() => {
-                    if (!window.confirm(`Dissolve "${detail.name}" for everyone? Open votes end; drafts stay with their proposers.${detail.company ? " The group wallet must be empty (pay it out first)." : ""}`)) return;
+                    if (!window.confirm(`Dissolve "${detail.name}" for everyone? Open votes end; drafts stay with their proposers.${detail.company ? " Its wallet must be empty (pay it out first) and its deals finished." : ""}`)) return;
                     void run("delete", () => send(`/api/groups/${detail.id}`, "DELETE"), async () => {
                       setSelected(null);
                       await reload();

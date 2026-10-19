@@ -535,16 +535,19 @@ async function removeMember(groupId: string, userId: string, companyWallet: stri
   if (companyWallet) await db.userWallet.deleteMany({ where: { userId, walletAddress: companyWallet } });
 }
 
-/** The admin deletes the group; open votes end and their drafts go back to their proposers. */
+/** The owner dissolves the group; open votes end and their drafts go back to their proposers. */
 export async function deleteGroup(userId: string, groupId: string) {
   const m = await db.groupMember.findUnique({ where: { groupId_userId: { groupId, userId } } });
   if (m?.role !== "ADMIN") throw new SocialError("Only the group's owner can dissolve it");
   const company = await db.company.findUnique({ where: { groupId } });
-  if (company?.kind === "COMPANY") throw new SocialError("A company's signers group cannot be dissolved while the company has an account");
   if (company) {
-    // A group wallet is dissolved only when empty: nobody's money may be left behind.
+    // A group or company wallet is dissolved only when empty and with no deal still running:
+    // nobody's money may be left behind, and nobody may lose access to a deal in escrow.
     const account = await db.bankAccount.findUnique({ where: { ownerAddress: company.walletAddress.toLowerCase() } });
-    if (account && account.balance > 0n) throw new SocialError("The group wallet still holds money: pay it out to members first (Pay out to members)");
+    if (account && account.balance > 0n) throw new SocialError(`The ${company.kind === "COMPANY" ? "company" : "group"} wallet still holds money: pay it out to members first (Pay out to members)`);
+    const { readFileDeals } = await import("./state");
+    const running = (await readFileDeals(getAddress(company.walletAddress))).filter((d) => d.status === "Proposed" || d.status === "Active");
+    if (running.length) throw new SocialError(`Finish or cancel its deals first: ${running.map((d) => `D-${d.id}`).join(", ")} ${running.length === 1 ? "is" : "are"} still running`);
     await db.userWallet.deleteMany({ where: { walletAddress: company.walletAddress } });
   }
   await db.group.delete({ where: { id: groupId } });
