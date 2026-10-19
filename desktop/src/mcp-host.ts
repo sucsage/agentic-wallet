@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 import { dataDir } from "./paths";
 
@@ -25,6 +25,33 @@ const CALL_TIMEOUT = 60_000;
 function bunCommand(): { command: string; env: Record<string, string> } {
   const compiled = !/\bbun(\.exe)?$/i.test(process.execPath);
   return { command: process.execPath, env: compiled ? { BUN_BE_BUN: "1" } : {} };
+}
+
+/**
+ * `bun x <package>` run directly: the package is installed once under the app's data folder and its
+ * program is started with the app's own Bun. `bun x` itself starts the program as a second process,
+ * and on Windows that one opened a console window (a flash on every start). Null: not a plain
+ * `bun x <package>` entry, or the package has no program; then `bun x` is used as before.
+ */
+async function directBunX(args: string[], bun: { command: string; env: Record<string, string> }): Promise<string[] | null> {
+  const spec = String(args[1] ?? "");
+  if (args[0] !== "x" || !/^(@[\w.-]+\/)?[\w.-]+(@[\w.^~-]+)?$/.test(spec)) return null;
+  const name = spec.replace(/(.)@[^@/]*$/, "$1");
+  const dir = join(dataDir(), "mcp-packages", spec.replace(/[^\w.@-]/g, "_"));
+  const pkgFile = join(dir, "node_modules", ...name.split("/"), "package.json");
+  if (!existsSync(pkgFile)) {
+    mkdirSync(dir, { recursive: true });
+    if (!existsSync(join(dir, "package.json"))) writeFileSync(join(dir, "package.json"), '{ "name": "kravii-mcp-server", "private": true }\n');
+    const add = Bun.spawn([bun.command, "add", spec], { cwd: dir, stdin: "ignore", stdout: "ignore", stderr: "ignore", env: { ...process.env, ...bun.env }, windowsHide: true });
+    const timer = setTimeout(() => add.kill(), 180_000);
+    await add.exited.finally(() => clearTimeout(timer));
+    if (!existsSync(pkgFile)) return null;
+  }
+  const pkg = JSON.parse(readFileSync(pkgFile, "utf8")) as { bin?: string | Record<string, string> };
+  const bins = typeof pkg.bin === "string" ? { [name.replace(/^@[^/]+\//, "")]: pkg.bin } : (pkg.bin ?? {});
+  const bin = bins[name.replace(/^@[^/]+\//, "")] ?? Object.values(bins)[0];
+  if (!bin) return null;
+  return [join(dirname(pkgFile), bin), ...args.slice(2)];
 }
 
 export const safeName = (s: string) => s.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40) || "server";
@@ -85,17 +112,21 @@ class Connection {
     readonly entry: ServerEntry,
   ) {}
 
-  /** When the last start failed: a failed server is tried again after a minute, not on every message. */
+  /**
+   * When the last start failed or the server stopped by itself: it is tried again after 10 minutes
+   * (or when restarted on the MCP page), not on every message.
+   */
   private failedAt = 0;
+  private stoppedOnPurpose = false;
 
   start(): Promise<void> {
-    if (this.ready && this.failedAt && Date.now() - this.failedAt > 60_000) {
+    if (this.ready && this.failedAt && Date.now() - this.failedAt > 600_000) {
       this.ready = null;
       this.failedAt = 0;
     }
     if (this.ready) return this.ready;
     this.ready = (async () => {
-      if (!this.entry.url) this.spawn();
+      if (!this.entry.url) await this.spawn();
       await this.request("initialize", { protocolVersion: PROTOCOL, capabilities: {}, clientInfo: { name: "Kravii Wallet", version: "1" } });
       await this.notify("notifications/initialized", {});
       const r = (await this.request("tools/list", {})) as { tools?: Connection["tools"] };
@@ -108,7 +139,7 @@ class Connection {
     return this.ready;
   }
 
-  private spawn() {
+  private async spawn() {
     let { command, args = [], env = {} } = this.entry;
     let extra: Record<string, string> = {};
     // "bun" / "bunx" run on the app's own Bun; "bunx x" is the same as "bun x".
@@ -117,6 +148,7 @@ class Connection {
       if (command === "bunx") args = ["x", ...args];
       command = b.command;
       extra = b.env;
+      args = (await directBunX(args, b).catch(() => null)) ?? args;
     }
     this.proc = Bun.spawn([command!, ...args], {
       stdin: "pipe",
@@ -140,7 +172,14 @@ class Connection {
           if (line) this.onMessage(line);
         }
       }
-      this.fail(new Error(`The server stopped${this.stderr ? `: ${this.stderr.trim().split("\n").slice(-2).join(" ")}` : ""}`));
+      const err = new Error(`The server stopped${this.stderr ? `: ${this.stderr.trim().split("\n").slice(-2).join(" ")}` : ""}`);
+      this.fail(err);
+      // Stopped by itself: not started again on every message (each start is a new process).
+      if (!this.stoppedOnPurpose) {
+        this.failedAt = Date.now();
+        this.ready = Promise.reject(err);
+        this.ready.catch(() => undefined);
+      }
     })().catch(() => undefined);
     (async () => {
       const reader = (this.proc!.stderr as ReadableStream<Uint8Array>).getReader();
@@ -237,6 +276,7 @@ class Connection {
   }
 
   stop() {
+    this.stoppedOnPurpose = true;
     try {
       this.proc?.kill();
     } catch {

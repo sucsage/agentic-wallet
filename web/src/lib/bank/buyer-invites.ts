@@ -10,6 +10,7 @@ import { createWorkspace } from "../actions";
 import { agentWalletAbi } from "../abis";
 import { type TxOutcome, send } from "../chain";
 import { config } from "../config";
+import { companyOfWallet } from "../company";
 import { db } from "../db";
 import { issueOtp, requireLinkAccess } from "../link-access";
 import { sealToken } from "../link-seal";
@@ -87,15 +88,17 @@ export async function buyerInviteByToken(token: string): Promise<BuyerInvite> {
 export async function buyerInviteView(invite: BuyerInvite) {
   const buyerWallet = getAddress(invite.buyerWallet);
   const seller = getAddress(invite.sellerWallet);
-  const [sellerUser, deals, account] = await Promise.all([
+  const [sellerUser, company, deals, account] = await Promise.all([
     db.user.findUnique({ where: { id: invite.userId }, select: { name: true } }),
+    // An offer made for a group or company comes in its name, not the member's who sent it.
+    companyOfWallet(seller),
     readFileDeals(buyerWallet),
     accountOf(buyerWallet),
   ]);
   const mine = deals.filter((d) => d.role === "buyer" && getAddress(d.counterparty) === seller);
   return {
     name: invite.name,
-    sellerName: sellerUser?.name ?? "The seller",
+    sellerName: company?.name ?? sellerUser?.name ?? "The seller",
     currency: invite.currency,
     expiresAt: invite.expiresAt,
     balance: (account?.balance ?? 0n).toString(),

@@ -9,6 +9,7 @@ import type { Currency, PayoutMethod, SellerInvite } from "@/generated/prisma/cl
 import { createWorkspace } from "../actions";
 import { agentWalletAbi } from "../abis";
 import { type TxOutcome, send } from "../chain";
+import { companyOfWallet } from "../company";
 import { db } from "../db";
 import { accessForInviter, issueOtp, requireLinkAccess } from "../link-access";
 import { openToken, sealToken } from "../link-seal";
@@ -412,8 +413,10 @@ async function sendThroughOpn(inviteId: string, recipientId: string, payoutKey: 
 
 export async function inviteView(invite: SellerInvite) {
   const sellerWallet = getAddress(invite.sellerWallet);
-  const [buyer, deals, account] = await Promise.all([
+  const [buyer, company, deals, account] = await Promise.all([
     db.user.findUnique({ where: { id: invite.userId }, select: { name: true } }),
+    // A deal made for a group or company comes in its name, not the member's who sent it.
+    companyOfWallet(getAddress(invite.buyerWallet)),
     readFileDeals(sellerWallet),
     accountOf(sellerWallet),
   ]);
@@ -425,7 +428,7 @@ export async function inviteView(invite: SellerInvite) {
     : [null, null];
   return {
     name: invite.name,
-    buyerName: buyer?.name ?? "The buyer",
+    buyerName: company?.name ?? buyer?.name ?? "The buyer",
     currency: invite.currency,
     expiresAt: invite.expiresAt,
     sellerWallet,
