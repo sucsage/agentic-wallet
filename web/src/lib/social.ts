@@ -546,7 +546,10 @@ export async function deleteGroup(userId: string, groupId: string) {
     const account = await db.bankAccount.findUnique({ where: { ownerAddress: company.walletAddress.toLowerCase() } });
     if (account && account.balance > 0n) throw new SocialError(`The ${company.kind === "COMPANY" ? "company" : "group"} wallet still holds money: pay it out to members first (Pay out to members)`);
     const { readFileDeals } = await import("./state");
-    const running = (await readFileDeals(getAddress(company.walletAddress))).filter((d) => d.status === "Proposed" || d.status === "Active");
+    const running = (await readFileDeals(getAddress(company.walletAddress))).filter(
+      // On-chain a deal stays "Active" after its last milestone is paid: it runs while a milestone is unsettled.
+      (d) => d.status === "Proposed" || (d.status === "Active" && d.milestones.some((m) => !["Released", "Refunded", "Split"].includes(m.status))),
+    );
     if (running.length) throw new SocialError(`Finish or cancel its deals first: ${running.map((d) => `D-${d.id}`).join(", ")} ${running.length === 1 ? "is" : "are"} still running`);
     await db.userWallet.deleteMany({ where: { walletAddress: company.walletAddress } });
   }
