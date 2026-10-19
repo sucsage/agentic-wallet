@@ -239,6 +239,30 @@ body.chrome { padding-top: var(--tb); }
 <body>
 <div id="root"><div class="center"><div class="loading"><span class="spin"></span>Opening Kravii…</div></div></div>
 <dialog id="dlg"><form method="dialog" id="dlg-form"></form></dialog>
+<dialog id="ask-dlg"><form method="dialog" id="ask-form"></form></dialog>
+<script>
+/**
+ * The app's own yes/no and text questions, in place of the browser's confirm() and prompt()
+ * (which show the local address, "127.0.0.1:… says", and the system look). Both return a promise.
+ */
+function askDialog(message, opts) {
+  return new Promise((resolve) => {
+    const dlg = document.getElementById("ask-dlg"), form = document.getElementById("ask-form");
+    const e = (t) => String(t).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+    form.innerHTML = `<p style="margin:0 0 14px;white-space:pre-wrap;line-height:1.5">${e(message)}</p>${opts.input ? `<input id="ask-in" autocomplete="off" style="width:100%;margin-bottom:12px">` : ""}
+      <div class="row" style="justify-content:flex-end;gap:8px"><button type="button" id="ask-no">Cancel</button><button type="submit" class="primary${opts.danger ? " danger" : ""}" id="ask-yes">${e(opts.ok || "OK")}</button></div>`;
+    let done = false;
+    const finish = (v) => { if (done) return; done = true; if (dlg.open) dlg.close(); resolve(v); };
+    form.onsubmit = (ev) => { ev.preventDefault(); finish(opts.input ? document.getElementById("ask-in").value : true); };
+    document.getElementById("ask-no").onclick = () => finish(opts.input ? null : false);
+    dlg.addEventListener("close", () => finish(opts.input ? null : false), { once: true });
+    dlg.showModal();
+    (opts.input ? document.getElementById("ask-in") : document.getElementById("ask-yes")).focus();
+  });
+}
+const uiConfirm = (message) => askDialog(message, {});
+const uiPrompt = (message) => askDialog(message, { input: true });
+</script>
 <script>/*MARKDOWN*/</script>
 <script>
 "use strict";
@@ -604,11 +628,11 @@ function renderView() {
     wireFound();
     const uf = $("#uf"); if (uf) uf.onsubmit = async (ev) => { ev.preventDefault(); try { const r = await api("/app/friends", "POST", { op: "username", username: new FormData(uf).get("u") }); S.friends = r.friends; S.friendsMe = r.me; toast(`Your username is @${r.me.username}`); renderView(); } catch (e) { toast(e.message); } };
     document.querySelectorAll("[data-acc]").forEach((b) => (b.onclick = async () => { try { S.friends = (await api("/app/friends", "POST", { op: "accept", friendshipId: b.dataset.acc })).friends; renderView(); } catch (e) { toast(e.message); } }));
-    document.querySelectorAll("[data-rm]").forEach((b) => (b.onclick = async () => { if (!confirm("Remove (or decline)? A payee stays until you stop paying them.")) return; try { S.friends = (await api("/app/friends", "POST", { op: "remove", friendshipId: b.dataset.rm })).friends; renderView(); } catch (e) { toast(e.message); } }));
+    document.querySelectorAll("[data-rm]").forEach((b) => (b.onclick = async () => { if (!await uiConfirm("Remove (or decline)? A payee stays until you stop paying them.")) return; try { S.friends = (await api("/app/friends", "POST", { op: "remove", friendshipId: b.dataset.rm })).friends; renderView(); } catch (e) { toast(e.message); } }));
     document.querySelectorAll("[data-payee]").forEach((b) => (b.onclick = async () => {
       const on = b.dataset.on === "1";
       const c = S.friends.find((x) => x.friendshipId === b.dataset.payee);
-      if (!confirm(`${on ? "Let your wallet pay" : "Stop paying"} ${c.name}? This adds a block signed by your device key.`)) return;
+      if (!await uiConfirm(`${on ? "Let your wallet pay" : "Stop paying"} ${c.name}? This adds a block signed by your device key.`)) return;
       b.disabled = true; b.textContent = "Signing…";
       try { const r = await api("/app/payee", "POST", { friendshipId: c.friendshipId, allowed: on }); if (!r.ok) throw new Error(r.error || "Not done"); toast("Signed and done"); } catch (e) { toast(e.message); }
       await load();
@@ -625,8 +649,8 @@ function renderView() {
     const act = async (dealId, action, code) => { try { const r = await api("/app/invite-links", "POST", { dealId: Number(dealId), action, code }); if (r.link) toast(r.otp ? `New link made · one-time code ${r.otp}` : "New link made"); else if (r.otp) toast(`New code: ${r.otp}`); else toast("Done"); await load(); } catch (e) { toast(e.message); } };
     document.querySelectorAll("[data-copy]").forEach((b) => (b.onclick = () => navigator.clipboard.writeText(b.dataset.copy).then(() => toast("Copied"), () => toast("Copy failed"))));
     document.querySelectorAll("[data-otp]").forEach((b) => (b.onclick = () => act(b.dataset.otp, "otp")));
-    document.querySelectorAll("[data-rot]").forEach((b) => (b.onclick = () => { const code = prompt("They press “Forgot password” (or “Lost the code?”) on their link and send you a 6-digit code. Enter it to make a new link (the old one stops working):"); if (code) act(b.dataset.rot, "rotate", code.trim()); }));
-    document.querySelectorAll("[data-reset]").forEach((b) => (b.onclick = () => { const code = prompt("The reset code they sent you (from “Forgot password” on their link):"); if (code) act(b.dataset.reset, "reset", code.trim()); }));
+    document.querySelectorAll("[data-rot]").forEach((b) => (b.onclick = async () => { const code = await uiPrompt("They press “Forgot password” (or “Lost the code?”) on their link and send you a 6-digit code. Enter it to make a new link (the old one stops working):"); if (code) act(b.dataset.rot, "rotate", code.trim()); }));
+    document.querySelectorAll("[data-reset]").forEach((b) => (b.onclick = async () => { const code = await uiPrompt("The reset code they sent you (from “Forgot password” on their link):"); if (code) act(b.dataset.reset, "reset", code.trim()); }));
   } else if (S.view === "groups") {
     const g = S.groups;
     const friends = (S.friends || []).filter((f) => f.status === "ACCEPTED");
@@ -642,7 +666,7 @@ function renderView() {
     $("#sync").onclick = () => load();
     document.querySelectorAll("[data-vote]").forEach((b) => (b.onclick = async () => {
       const yes = b.dataset.yes === "1";
-      if (!confirm(`${yes ? "Approve" : "Reject"} this payment? Your vote is a block signed by your device key.`)) return;
+      if (!await uiConfirm(`${yes ? "Approve" : "Reject"} this payment? Your vote is a block signed by your device key.`)) return;
       b.disabled = true;
       try { const r = await api("/app/vote", "POST", { proposalId: b.dataset.vote, approve: yes }); if (!r.ok) throw new Error(r.error || "Not done"); toast("Vote signed"); } catch (e) { toast(e.message); }
       await load();
@@ -704,7 +728,7 @@ function renderView() {
         <label class="switch"><input type="checkbox" id="wp-dev" ${S.winPrefs && S.winPrefs.devtools ? "checked" : ""}><span><b>Developer tools (Inspect, F12)</b><div class="hint">Off: F12, Inspect and the right-click menu do nothing. Only for checking the app's page.</div></span></label></div>
       <div class="card" style="margin-top:12px"><h2>App version and updates</h2><div id="upd">${updateHtml()}</div></div>
       <div class="card" style="margin-top:12px"><h2>Quit</h2><p class="hint">Closing the window keeps the app running in the ${/Mac/.test(navigator.platform) ? "menu bar" : "tray"} (AI agents and syncing use it). Quit stops it; open Kravii again to start it.</p><button id="quit" class="danger">Quit Kravii</button></div>`;
-    $("#quit").onclick = async () => { if (!confirm("Quit Kravii? Open it again to use it.")) return; await api("/app/quit", "POST").catch(() => null); $("#root").innerHTML = `<div class="center"><div class="card narrow">Kravii has stopped.</div></div>`; };
+    $("#quit").onclick = async () => { if (!await uiConfirm("Quit Kravii? Open it again to use it.")) return; await api("/app/quit", "POST").catch(() => null); $("#root").innerHTML = `<div class="center"><div class="card narrow">Kravii has stopped.</div></div>`; };
     $("#zoom").onchange = (e) => setZoom(e.target.value);
     const savePrefs = async (patch) => { try { S.winPrefs = await api("/app/window-prefs", "POST", patch); DEVTOOLS = S.winPrefs.devtools === true; toast("Saved"); } catch (e) { toast(e.message); } };
     $("#wp-cap").onchange = (e) => savePrefs({ screenCapture: e.target.checked });
@@ -832,7 +856,7 @@ function wireUpdate() {
   }
   const c = $("#upd-check"); if (c) c.onclick = async () => { S.update = null; S.updateAt = Date.now(); $("#upd").innerHTML = updateHtml(); S.update = await api("/app/update?force=1").catch((e) => ({ current: "?", reason: e.message })); renderView(); };
   const g = $("#upd-go"); if (g) g.onclick = async () => {
-    if (!confirm(`Update Kravii to ${S.update.latest}? It downloads the new version (checked against its SHA-256), closes and opens again, then asks for your passphrase.`)) return;
+    if (!await uiConfirm(`Update Kravii to ${S.update.latest}? It downloads the new version (checked against its SHA-256), closes and opens again, then asks for your passphrase.`)) return;
     S.updating = "Downloading and checking the new version…"; $("#upd").innerHTML = updateHtml();
     try {
       const r = await api("/app/update", "POST");
@@ -931,7 +955,7 @@ function wireGroupWallets() {
     } catch (e) { toast(e.message); }
   }));
   document.querySelectorAll("[data-gwopen]").forEach((b) => (b.onclick = async () => {
-    if (!confirm(`Open a shared wallet for "${b.dataset.name}"? The group can then hire and sell in its own name; its money moves only after ${b.dataset.th} signers approve.`)) return;
+    if (!await uiConfirm(`Open a shared wallet for "${b.dataset.name}"? The group can then hire and sell in its own name; its money moves only after ${b.dataset.th} signers approve.`)) return;
     busy(b, "Opening (about 10 s)…");
     try { S.groups = await api("/app/groups", "POST", { op: "wallet", groupId: b.dataset.gwopen }); toast("Group wallet opened"); renderView(); } catch (e) { toast(e.message); idle(b); }
   }));
@@ -1191,7 +1215,7 @@ function paintTools() {
   pop.querySelectorAll("[data-web]").forEach((b) => (b.onchange = async () => { try { S.webTools = await api("/app/web-tools", "POST", { [b.dataset.web]: b.checked }); paintTools(); } catch (e) { toast(e.message); } }));
   pop.querySelectorAll("[data-srv]").forEach((b) => (b.onchange = async () => { b.disabled = true; try { S.mcpServers = await api("/app/mcp/servers/update", "POST", { name: b.dataset.srv, enabled: b.checked }); } catch (e) { toast(e.message); } paintTools(); }));
   pop.querySelectorAll("[data-rec]").forEach((b) => (b.onclick = async () => {
-    if (!confirm("Add this MCP server? It runs on this computer (or is reached over the internet) and the app asks you before each call.")) return;
+    if (!await uiConfirm("Add this MCP server? It runs on this computer (or is reached over the internet) and the app asks you before each call.")) return;
     busy(b, "…");
     try { S.mcpServers = await api("/app/mcp/servers/install", "POST", { id: b.dataset.rec }); S.mcpSuggest = null; toast("Server added"); loadSuggest(""); } catch (e) { toast(e.message); }
     paintTools();
@@ -1274,7 +1298,7 @@ function wireChat() {
   document.querySelectorAll("[data-chat]").forEach((b) => (b.onclick = () => openChat(b.dataset.chat)));
   document.querySelectorAll("[data-delchat]").forEach((b) => (b.onclick = async () => {
     const c = S.chats.chats.find((x) => x.id === b.dataset.delchat);
-    if (!confirm(`Delete the chat "${c ? c.title : ""}"? Drafts made in it stay.`)) return;
+    if (!await uiConfirm(`Delete the chat "${c ? c.title : ""}"? Drafts made in it stay.`)) return;
     try { S.chats = await api("/app/chat/delete", "POST", { id: b.dataset.delchat }); if (b.dataset.delchat === S.chatId) { rememberChat(null); S.chatHistory = []; } renderView(); } catch (e) { toast(e.message); }
   }));
   document.querySelectorAll("[data-go]").forEach((b) => (b.onclick = () => go(b.dataset.go)));
@@ -1334,7 +1358,7 @@ function wireChatCards() {
   document.querySelectorAll("[data-payout]").forEach((b) => (b.onclick = async () => {
     const st = stepOf(b.dataset.payout);
     if (!st || !st.payout) return;
-    if (!confirm(`Pay from ${st.payout.group}? It goes to the signers' vote and is paid when ${st.payout.threshold} approve.`)) return;
+    if (!await uiConfirm(`Pay from ${st.payout.group}? It goes to the signers' vote and is paid when ${st.payout.threshold} approve.`)) return;
     busy(b, "Sending…");
     try {
       const r = await web("POST", `groups/${st.payout.groupId}/payouts`, { recipients: st.payout.recipients.map((x) => ({ userId: x.userId, amount: Number(x.amount) })) });
@@ -1417,17 +1441,17 @@ function wireMcp() {
   const fnd = $("#mcp-find"); if (fnd) fnd.onsubmit = (ev) => { ev.preventDefault(); const q = new FormData(fnd).get("q"); const b = fnd.querySelector("button"); busy(b, "Searching…"); loadSuggest(String(q || "").trim()); };
   document.querySelectorAll("[data-install]").forEach((b) => (b.onclick = async () => {
     const [from, i] = b.dataset.install.split(":"), x = (from === "rec" ? S.mcpSuggest.recommended : S.mcpSuggest.results)[Number(i)];
-    if (!x || !confirm(`Add ${x.title}? ${x.kind === "remote" ? `The AI's calls go to ${x.entry.url}.` : "It runs on this computer with your access."} The app asks you before each call.`)) return;
+    if (!x || !await uiConfirm(`Add ${x.title}? ${x.kind === "remote" ? `The AI's calls go to ${x.entry.url}.` : "It runs on this computer with your access."} The app asks you before each call.`)) return;
     busy(b, "Adding…");
     try { S.mcpServers = await api("/app/mcp/servers/install", "POST", from === "rec" ? { id: x.id } : { suggestion: x }); toast(x.needs ? "Added (turned off): fill in what it needs, then turn it on" : "Server added"); await loadSuggest(S.mcpQ || ""); } catch (e) { toast(e.message); idle(b); }
   }));
   document.querySelectorAll("[data-mcpset]").forEach((b) => (b.onchange = async () => { try { S.mcp = await api("/app/mcp/settings", "POST", { [b.dataset.mcpset]: b.checked }); renderView(); } catch (e) { toast(e.message); } }));
   const cp = $("#mcp-copy"); if (cp) cp.onclick = () => navigator.clipboard.writeText(JSON.stringify({ mcpServers: { "agentic-wallet": { command: S.mcp.command, args: S.mcp.args } } }, null, 2)).then(() => toast("Copied"), () => toast("Copy failed"));
-  const cl = $("#mcp-clear"); if (cl) cl.onclick = async () => { if (!confirm("Clear the call log?")) return; S.mcp = await api("/app/mcp/log/clear", "POST"); renderView(); };
+  const cl = $("#mcp-clear"); if (cl) cl.onclick = async () => { if (!await uiConfirm("Clear the call log?")) return; S.mcp = await api("/app/mcp/log/clear", "POST"); renderView(); };
   const add = $("#mcp-add"); if (add) add.onsubmit = async (ev) => {
     ev.preventDefault();
     const fd = new FormData(add), btn = add.querySelector("button.primary");
-    if (!confirm("Add this MCP server? It runs on this computer with your access. Add only servers you trust.")) return;
+    if (!await uiConfirm("Add this MCP server? It runs on this computer with your access. Add only servers you trust.")) return;
     busy(btn, "Adding and starting…");
     try { S.mcpServers = await api("/app/mcp/servers/add", "POST", { source: fd.get("source"), name: fd.get("name") || undefined }); toast("Server added"); renderView(); } catch (e) { toast(e.message); idle(btn); }
   };
@@ -1435,14 +1459,14 @@ function wireMcp() {
   document.querySelectorAll("[data-mcpon]").forEach((b) => (b.onclick = () => upd({ name: b.dataset.mcpon, enabled: b.dataset.v === "1" }, b)));
   document.querySelectorAll("[data-mcpask]").forEach((b) => (b.onclick = () => upd({ name: b.dataset.mcpask, ask: b.dataset.v === "1" }, b)));
   document.querySelectorAll("[data-mcpsave]").forEach((b) => (b.onclick = () => { const t = document.querySelector(`[data-mcpentry="${CSS.escape(b.dataset.mcpsave)}"]`); try { JSON.parse(t.value); } catch { toast("That JSON does not parse"); return; } upd({ name: b.dataset.mcpsave, entry: t.value }, b); }));
-  document.querySelectorAll("[data-mcprm]").forEach((b) => (b.onclick = async () => { if (!confirm(`Remove ${b.dataset.mcprm}?`)) return; try { S.mcpServers = await api("/app/mcp/servers/remove", "POST", { name: b.dataset.mcprm }); renderView(); } catch (e) { toast(e.message); } }));
+  document.querySelectorAll("[data-mcprm]").forEach((b) => (b.onclick = async () => { if (!await uiConfirm(`Remove ${b.dataset.mcprm}?`)) return; try { S.mcpServers = await api("/app/mcp/servers/remove", "POST", { name: b.dataset.mcprm }); renderView(); } catch (e) { toast(e.message); } }));
   wireRequestButtons();
 }
 
 function wireDrafts() {
   // A started split payment on a preview card: pay the next part, lock when all are paid, or cancel.
   const planAct = async (b, path, body, okText, ask) => {
-    if (ask && !confirm(ask)) return;
+    if (ask && !await uiConfirm(ask)) return;
     busy(b, "…");
     try { await web("POST", path, body); toast(okText); } catch (e) { toast(e.message); }
     await refreshDealLists();
@@ -1454,7 +1478,7 @@ function wireDrafts() {
   document.querySelectorAll("[data-gvote]").forEach((b) => (b.onclick = async () => {
     const sel = document.querySelector(`[data-gvsel="${CSS.escape(b.dataset.gvote)}"]`);
     const g = (S.actingGroups || []).find((x) => x.id === sel.value);
-    if (!confirm(`Put this purchase to ${g ? g.name : "the group"}'s vote? It is locked from your wallet only when ${g ? g.threshold : "enough"} signers approve.`)) return;
+    if (!await uiConfirm(`Put this purchase to ${g ? g.name : "the group"}'s vote? It is locked from your wallet only when ${g ? g.threshold : "enough"} signers approve.`)) return;
     busy(b, "Sending…");
     try {
       const r = await web("POST", `groups/${sel.value}/proposals`, { draftId: b.dataset.gvote });
@@ -1469,7 +1493,7 @@ function wireDrafts() {
   const companyOf = (b) => (b.dataset.company === undefined ? undefined : b.dataset.company || null);
   document.querySelectorAll("[data-tmpl]").forEach((b) => (b.onclick = () => { const d = allDrafts().find((x) => x.id === b.dataset.tmpl); if (d) saveTemplate(d); }));
   document.querySelectorAll("[data-discard]").forEach((b) => (b.onclick = async () => {
-    if (!confirm("Discard this preview? Nothing was paid or locked.")) return;
+    if (!await uiConfirm("Discard this preview? Nothing was paid or locked.")) return;
     try { await api("/app/drafts/discard", "POST", { draftId: b.dataset.discard, companyId: companyOf(b) }); S.draftDone = S.draftDone || {}; S.draftDone[b.dataset.discard] = "discarded"; toast("Preview discarded"); await refreshDealLists(); } catch (e) { toast(e.message); }
   }));
   document.querySelectorAll("[data-confirm]").forEach((b) => (b.onclick = () => {
@@ -1785,7 +1809,7 @@ function wireDueButtons() {
     const action = b.dataset.due, dealId = Number(b.dataset.deal), index = Number(b.dataset.i);
     const date = action === "propose" ? document.querySelector(`[data-due-date="${dealId}-${index}"]`)?.value : undefined;
     if (action === "propose" && !date) return toast("Choose a date first");
-    if (action === "late" && !confirm("Nothing was delivered by the agreed date. Ask the seller to refund this milestone?")) return;
+    if (action === "late" && !await uiConfirm("Nothing was delivered by the agreed date. Ask the seller to refund this milestone?")) return;
     b.disabled = true;
     try { await api("/app/due", "POST", { dealId, index, action, date }); toast(action === "accept" ? "Due date agreed" : action === "late" ? "Refund asked" : "Date proposed"); await load(); } catch (e) { toast(e.message); b.disabled = false; }
   }));
@@ -1806,7 +1830,7 @@ function wireDealButtons() {
 function wireAgentButtons() {
   document.querySelectorAll("[data-asign]").forEach((b) => (b.onclick = async () => {
     const r = (S.info.agentRequests || []).find((x) => x.id === b.dataset.asign);
-    if (!confirm(`Sign this request from ${r.client}? It adds a block signed by your device key and the server carries it out.`)) return;
+    if (!await uiConfirm(`Sign this request from ${r.client}? It adds a block signed by your device key and the server carries it out.`)) return;
     b.disabled = true; b.textContent = "Signing…";
     try { const out = await api("/app/agent-requests", "POST", { id: r.id, sign: true }); toast(out.status === "SIGNED" ? "Signed and done" : `Not done: ${out.error || out.status}`); } catch (e) { toast(e.message); }
     await load();

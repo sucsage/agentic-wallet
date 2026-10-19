@@ -106,7 +106,7 @@ function wireDealDetails() {
   }));
   const on = (sel, fn) => document.querySelectorAll(sel).forEach((b) => (b.onclick = (ev) => fn(b, ev)));
   on("[data-doc]", (b) => openWeb(`deals/${b.dataset.doc}/document?type=${b.dataset.k}`));
-  on("[data-decline]", async (b) => { if (!confirm("Decline this offer? The other side sees it.")) return; await act(() => web("POST", `deals/${b.dataset.decline}/decline`, {}), "Offer declined"); refreshDetail(b.dataset.decline); });
+  on("[data-decline]", async (b) => { if (!await uiConfirm("Decline this offer? The other side sees it.")) return; await act(() => web("POST", `deals/${b.dataset.decline}/decline`, {}), "Offer declined"); refreshDetail(b.dataset.decline); });
   on("[data-revise]", async (b) => {
     const fd = await formDialog("Ask for a revised offer", `<label>What should change?</label><textarea name="text" rows="4" minlength="5" maxlength="1000" required></textarea>`, "Send", "The seller withdraws this offer and sends a new one. Nothing is paid until you accept.");
     if (fd) { await act(() => web("POST", `deals/${b.dataset.revise}/notes`, { kind: "REVISION", text: fd.get("text") }), "Sent to the seller"); refreshDetail(b.dataset.revise); }
@@ -122,16 +122,16 @@ function wireDealDetails() {
   });
   on("[data-witrm]", async (b) => { await act(() => web("DELETE", `deals/${b.dataset.witrm}/witness`), "Removed"); refreshDetail(b.dataset.witrm); });
   on("[data-attopen]", (b) => openWeb(`deals/${b.dataset.attopen}/attachments/${b.dataset.f}`));
-  on("[data-attrm]", async (b) => { if (!confirm("Delete this file?")) return; await act(() => web("DELETE", `deals/${b.dataset.attrm}/attachments/${b.dataset.f}`), "Deleted"); refreshDetail(b.dataset.attrm); });
+  on("[data-attrm]", async (b) => { if (!await uiConfirm("Delete this file?")) return; await act(() => web("DELETE", `deals/${b.dataset.attrm}/attachments/${b.dataset.f}`), "Deleted"); refreshDetail(b.dataset.attrm); });
   document.querySelectorAll("[data-attup]").forEach((f) => (f.onsubmit = async (ev) => {
     ev.preventDefault();
     const btn = f.querySelector("button"); busy(btn, "Uploading…");
     await act(() => web("POST", `deals/${f.dataset.attup}/attachments`, new FormData(f)), "Uploaded");
     refreshDetail(f.dataset.attup);
   }));
-  on("[data-planpay]", async (b) => { if (!confirm("Pay the next part now from your wallet?")) return; busy(b, "Paying…"); await act(() => web("POST", `plans/${b.dataset.planpay}/pay`, {}), "Part paid"); refreshDealLists(); });
+  on("[data-planpay]", async (b) => { if (!await uiConfirm("Pay the next part now from your wallet?")) return; busy(b, "Paying…"); await act(() => web("POST", `plans/${b.dataset.planpay}/pay`, {}), "Part paid"); refreshDealLists(); });
   on("[data-planlock]", async (b) => { busy(b, "Locking…"); await act(() => web("POST", `plans/${b.dataset.planlock}/pay`, { lock: true }), "Locked in escrow"); refreshDealLists(); });
-  on("[data-plancancel]", async (b) => { if (!confirm("Cancel the split payment? What was paid comes back to you.")) return; await act(() => web("POST", `plans/${b.dataset.plancancel}/cancel`, {}), "Plan cancelled"); refreshDealLists(); });
+  on("[data-plancancel]", async (b) => { if (!await uiConfirm("Cancel the split payment? What was paid comes back to you.")) return; await act(() => web("POST", `plans/${b.dataset.plancancel}/cancel`, {}), "Plan cancelled"); refreshDealLists(); });
   on("[data-track]", async (b) => { await act(() => web("POST", `deals/${b.dataset.track}/parcel`, { index: Number(b.dataset.i) }), "Tracking refreshed"); refreshDetail(b.dataset.track); });
   on("[data-site]", (b) => openWeb(`deals/${b.dataset.site}/site/${b.dataset.i}`));
   on("[data-dl]", (b) => openWeb(`deals/${b.dataset.dl}/files/${b.dataset.i}`));
@@ -211,7 +211,7 @@ const EXTRA_VIEWS = {
           ${x.milestones.map((ms, i) => `<div class="hint">${i + 1}. ${esc(ms.name)} · ${esc(ms.amount)}</div>`).join("")}</div>`).join("") : `<div class="card hint">No templates yet.</div>`}`;
       document.querySelectorAll("[data-tuse]").forEach((b) => (b.onclick = () => { S.chatDraft = `Use my template "${b.dataset.tuse}" and draft it. `; go("chat"); }));
       document.querySelectorAll("[data-tren]").forEach((b) => (b.onclick = async () => { const fd = await formDialog("Rename the template", `<label>Name</label><input name="name" required maxlength="80" value="${esc(b.dataset.n)}">`); if (fd) { await act(() => web("PATCH", `templates/${b.dataset.tren}`, { name: fd.get("name") }), "Renamed"); S.templates = null; load(); } }));
-      document.querySelectorAll("[data-tdel]").forEach((b) => (b.onclick = async () => { if (!confirm("Delete this template?")) return; await act(() => web("DELETE", `templates/${b.dataset.tdel}`), "Deleted"); S.templates = null; load(); }));
+      document.querySelectorAll("[data-tdel]").forEach((b) => (b.onclick = async () => { if (!await uiConfirm("Delete this template?")) return; await act(() => web("DELETE", `templates/${b.dataset.tdel}`), "Deleted"); S.templates = null; load(); }));
     },
   },
 
@@ -231,8 +231,8 @@ const EXTRA_VIEWS = {
       const origin = (S.info.device && S.info.device.server) || "";
       document.querySelectorAll("[data-plink]").forEach((b) => (b.onclick = () => navigator.clipboard.writeText(`${origin}/apply/${b.dataset.plink}`).then(() => toast("Link copied"), () => toast("Copy failed"))));
       document.querySelectorAll("[data-prank]").forEach((b) => (b.onclick = async () => { busy(b, "Ranking…"); await act(() => web("POST", `posts/${b.dataset.prank}/recommend`, {}), "Ranked"); S.posts = null; load(); }));
-      document.querySelectorAll("[data-pclose]").forEach((b) => (b.onclick = async () => { if (!confirm("Close this open call?")) return; await act(() => web("POST", `posts/${b.dataset.pclose}/close`, {}), "Closed"); S.posts = null; load(); }));
-      document.querySelectorAll("[data-pchoose]").forEach((b) => (b.onclick = async () => { if (!confirm("Choose this applicant? Their deal preview is drafted for you to confirm.")) return; busy(b, "…"); await act(() => web("POST", `posts/${b.dataset.pchoose}/choose`, { applicationId: b.dataset.a }), "Chosen: the preview is under Deals"); S.posts = null; load(); }));
+      document.querySelectorAll("[data-pclose]").forEach((b) => (b.onclick = async () => { if (!await uiConfirm("Close this open call?")) return; await act(() => web("POST", `posts/${b.dataset.pclose}/close`, {}), "Closed"); S.posts = null; load(); }));
+      document.querySelectorAll("[data-pchoose]").forEach((b) => (b.onclick = async () => { if (!await uiConfirm("Choose this applicant? Their deal preview is drafted for you to confirm.")) return; busy(b, "…"); await act(() => web("POST", `posts/${b.dataset.pchoose}/choose`, { applicationId: b.dataset.a }), "Chosen: the preview is under Deals"); S.posts = null; load(); }));
       document.querySelectorAll("[data-pfile]").forEach((a) => (a.onclick = (e) => { e.preventDefault(); openWeb(`posts/files/${a.dataset.pfile}`); }));
       document.querySelectorAll("[data-afile]").forEach((a) => (a.onclick = (e) => { e.preventDefault(); openWeb(`apply/${a.dataset.slug}/files/${a.dataset.afile}`); }));
       document.querySelectorAll("[data-pup]").forEach((f) => (f.onsubmit = async (ev) => { ev.preventDefault(); busy(f.querySelector("button"), "Uploading…"); await act(() => web("POST", `posts/${f.dataset.pup}/files`, new FormData(f)), "Added"); S.posts = null; load(); }));
@@ -259,8 +259,8 @@ const EXTRA_VIEWS = {
         <div class="card"><h2>Allow transfer list (payees)</h2>${recips.length ? recips.map((r) => `<div class="row space" style="border-bottom:1px solid var(--line-2);padding:6px 0"><span><b>${esc(r.label || r.name || "")}</b> <span class="mono hint">${esc(r.address || r)}</span></span><button class="danger" data-rmrec="${esc(r.address || r)}">Remove</button></div>`).join("") : `<p class="hint">Nobody yet. Make a friend a payee under Friends.</p>`}</div>`}`;
       $("#x-refresh").onclick = () => { S.policy = null; load(); };
       const lf = $("#x-limits"); if (lf) lf.onsubmit = async (ev) => { ev.preventDefault(); const fd = new FormData(lf); await act(() => web("PUT", "policy/limits", { maxPerTx: Number(fd.get("maxPerTx")), dailyLimit: Number(fd.get("dailyLimit")) }), "Limits saved"); S.policy = null; load(); };
-      const pb = $("#x-pause"); if (pb) pb.onclick = async () => { if (!confirm(paused ? "Resume the wallet?" : "Pause the wallet? The AI can pay nothing until you resume.")) return; await act(() => web("POST", "policy/pause", { paused: !paused }), paused ? "Resumed" : "Paused"); S.policy = null; load(); };
-      document.querySelectorAll("[data-rmrec]").forEach((b) => (b.onclick = async () => { if (!confirm("Remove this payee? The wallet stops paying them.")) return; await act(() => web("DELETE", "policy/recipients", { address: b.dataset.rmrec }), "Removed"); S.policy = null; load(); }));
+      const pb = $("#x-pause"); if (pb) pb.onclick = async () => { if (!await uiConfirm(paused ? "Resume the wallet?" : "Pause the wallet? The AI can pay nothing until you resume.")) return; await act(() => web("POST", "policy/pause", { paused: !paused }), paused ? "Resumed" : "Paused"); S.policy = null; load(); };
+      document.querySelectorAll("[data-rmrec]").forEach((b) => (b.onclick = async () => { if (!await uiConfirm("Remove this payee? The wallet stops paying them.")) return; await act(() => web("DELETE", "policy/recipients", { address: b.dataset.rmrec }), "Removed"); S.policy = null; load(); }));
     },
   },
 
@@ -340,7 +340,7 @@ async function cardLinkHtml() {
 
 function wireCardLink() {
   const l = $("#x-link"); if (l) l.onclick = async () => { const r = await act(() => web("POST", "bank/stripe-link", {})); if (r && r.url) { window.open(r.url, "_blank", "noopener"); toast("Finish in your browser, then come back"); } };
-  const u = $("#x-unlink"); if (u) u.onclick = async () => { if (!confirm("Unlink the card?")) return; await act(() => web("DELETE", "bank/stripe-link"), "Unlinked"); load(); };
+  const u = $("#x-unlink"); if (u) u.onclick = async () => { if (!await uiConfirm("Unlink the card?")) return; await act(() => web("DELETE", "bank/stripe-link"), "Unlinked"); load(); };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -359,7 +359,7 @@ async function friendsExtrasHtml() {
 }
 
 function wireFriendsExtras() {
-  document.querySelectorAll("[data-block]").forEach((b) => (b.onclick = async () => { if (!confirm("Block this person? They are removed from your contacts and cannot ask or pay you.")) return; await act(() => web("POST", "blocks", { userId: b.dataset.block }), "Blocked"); load(); }));
+  document.querySelectorAll("[data-block]").forEach((b) => (b.onclick = async () => { if (!await uiConfirm("Block this person? They are removed from your contacts and cannot ask or pay you.")) return; await act(() => web("POST", "blocks", { userId: b.dataset.block }), "Blocked"); load(); }));
   document.querySelectorAll("[data-unblock]").forEach((b) => (b.onclick = async () => { await act(() => web("DELETE", `blocks/${b.dataset.unblock}`), "Unblocked"); load(); }));
   document.querySelectorAll("[data-forget]").forEach((b) => (b.onclick = async () => { await act(() => web("DELETE", `friends/nicknames?id=${encodeURIComponent(b.dataset.forget)}`), "Forgotten"); load(); }));
   document.querySelectorAll("[data-report]").forEach((b) => (b.onclick = async () => {
@@ -396,7 +396,7 @@ function wireGroupManage() {
   on("[data-gman]", async (b) => { const g = b.dataset.gman; S.groupManage = S.groupManage || {}; S.groupManage[g] = !S.groupManage[g]; renderView(); if (S.groupManage[g]) { await loadGroupDetail(g); renderView(); } });
   const again = async (g) => { await loadGroupDetail(g); renderView(); };
   on("[data-gsign]", async (b) => { await act(() => web("PATCH", `groups/${b.dataset.gsign}/members/${b.dataset.u}`, { canSign: b.dataset.v === "1" }), "Done"); again(b.dataset.gsign); });
-  on("[data-grm]", async (b) => { if (!confirm("Remove this member?")) return; await act(() => web("DELETE", `groups/${b.dataset.grm}/members/${b.dataset.u}`), "Removed"); again(b.dataset.grm); });
+  on("[data-grm]", async (b) => { if (!await uiConfirm("Remove this member?")) return; await act(() => web("DELETE", `groups/${b.dataset.grm}/members/${b.dataset.u}`), "Removed"); again(b.dataset.grm); });
   on("[data-rvote]", async (b) => { await act(() => web("POST", `groups/rules/${b.dataset.rvote}/vote`, { approve: b.dataset.v === "1" }), "Vote counted"); again(b.dataset.g); });
   on("[data-gthr]", async (b) => { const fd = await formDialog("Votes needed to pay", `<label>New number (at least 2)</label><input name="n" type="number" min="2" required>`, "Propose"); if (fd) { await act(() => web("POST", `groups/${b.dataset.gthr}/rules`, { kind: "SET_THRESHOLD", threshold: Number(fd.get("n")) }), "Proposed"); again(b.dataset.gthr); } });
   on("[data-gaddsig]", async (b) => {
@@ -407,7 +407,7 @@ function wireGroupManage() {
     if (fd) { await act(() => web("POST", `groups/${b.dataset.gaddsig}/rules`, { kind: "ADD_SIGNER", targetUserId: fd.get("u") }), "Proposed"); again(b.dataset.gaddsig); }
   });
   on("[data-glink]", async (b) => { const r = await act(() => web("POST", `groups/${b.dataset.glink}/link`, {})); if (r && r.url) { await navigator.clipboard.writeText(r.url).catch(() => null); formDialog("Invite link", `<p class="mono">${esc(r.url)}</p><p class="hint">Copied. Valid until ${fmtDate(r.expiresAt)}. Anyone with it can ask to join.</p>`, "OK"); } });
-  on("[data-gleave]", async (b) => { if (!confirm("Leave this group?")) return; await act(() => web("POST", `groups/${b.dataset.gleave}/leave`, {}), "You left the group"); load(); });
+  on("[data-gleave]", async (b) => { if (!await uiConfirm("Leave this group?")) return; await act(() => web("POST", `groups/${b.dataset.gleave}/leave`, {}), "You left the group"); load(); });
   on("#x-company", async () => {
     const friends = (S.friends || []).filter((f) => f.status === "ACCEPTED");
     const fd = await formDialog("Register a company", `<label>Company name</label><input name="name" required minlength="2"><label>Company registration (tax) number</label><input name="taxId" required minlength="13" maxlength="24">
