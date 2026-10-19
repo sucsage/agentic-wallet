@@ -1,6 +1,10 @@
 # Security self-assessment
 
-Agentic Wallet · FinTechathon 2026, International Track, Topic F (Agent Wallet)
+Kravii (formerly Agentic Wallet / MilestonePay) · FinTechathon 2026, International Track, Topic F (Agent Wallet)
+
+Updated 2026-10-19 for desktop 0.6.3. The rename changed names and logos only: signed-message
+formats and hashed texts keep their original "Agentic Wallet" wording, so every existing device
+signature, chain block and on-chain anchor still verifies.
 
 This document covers the permission tiers, how each one is enforced, what we tested, and the risks
 we know about. Everything runs on test money: a simulated bank ("Mock Bank") and tokens with no value
@@ -76,6 +80,13 @@ key (`ArbiterNotNeutral`), so the buyer's side can never judge its own dispute.
 
 ## 4b. Disputes and the neutral arbiter
 
+**Opening new disputes is turned off since 2026-10-19** (`config.disputesOpen`, only `DISPUTES=on`
+enables it): the server refuses the `dispute` move on every path (website, private links, desktop
+intents, AI tools, MCP requests), so nothing can reach the contract's `dispute()`. Disputes opened
+before run to their ruling as described below. The consequence: a buyer's protection against bad work
+is not approving, asking for changes within the agreed rounds, and the seller's refund; after the
+review window the seller can claim.
+
 - The buyer can dispute inside a review window. The reason is required and stored off-chain.
 - **Key disputes** ("the released key does not open the file") are decided by a check, not by a model:
   the server decrypts the delivery and compares its sha256 with the work hash anchored at delivery.
@@ -107,21 +118,53 @@ What a user (or an attacker on their computer) can and cannot do with the chain 
 
 - Escrow money still moves only by FileEscrow's rules; the chain on the computer records and signs, it does not hold money. A move signed in the app runs through the same checks as the website (KYC limits, group votes, offer expiry, guarantors).
 - The app's local server is reachable only from 127.0.0.1 with the per-launch token, Host-checked, no CORS; other web pages cannot drive it. Its one page without the token, `/topup-done`, only confirms a Stripe session that belongs to the signed-in device's user (idempotent per session).
-- Sign-in from the app: the password is checked by Better Auth, the device must sign the email with its key, sign-in is rate-limited, and accounts with a second factor must link with a website code. Identity checks started in the app keep their OIDC state server-side (single use, 10 minutes).
+- No sign-in in the app (since 0.3.0): accounts are made on the website and a computer is linked with a one-time code (10 minutes, stored as an HMAC) signed by the device key. Identity checks stay on the website.
+- The app reaches the website's other API routes only through device-signed requests (`bridge.ts`): the proxy checks the signature over method, path with query, time and body before any route runs, strips a client-sent verified header, and passes a sealed one; replays, changed queries and forged headers were refused in testing. Admin, auth, cron and device routes are not reachable this way, and MCP agents cannot use it.
 - AI cost abuse: tokens per user per day and per week on the team's key (TECHNICAL §3.21), checked before every agent turn, so a runaway loop or one heavy user cannot spend everyone's budget; admins can lower or raise one user's limit.
 - AI boundaries in the app: custom instructions are fenced data after the rules; outside agents (MCP) hold a token that can read and queue only; a user's own AI key is sealed on their computer and used per request; the agent's tools only read or make previews, so neither a prompt nor an instruction can pay.
+
+## 4d. The windowed app, its updates and its AI tools (desktop 0.5-0.6)
+
+- **Updates** (since 0.6.2). The app reads `latest.json` from the project's GitHub Releases over
+  HTTPS and installs only a file whose size and SHA-256 match it; nothing is unpacked or run before
+  that check. On macOS the new bundle is swapped in by a small script after the app quits, and the
+  old one is put back if the move fails; on Windows the Inno Setup installer runs silently. This
+  proves the file is the one the release lists, not who built it: the checksum sits in the same
+  release, and the builds are not code-signed (R12).
+- **Windows build.** `bun.exe` is switched to a GUI program and both executables carry a manifest
+  with per-monitor DPI awareness; the installer is per-user (no administrator rights).
+- **Web tools** (`mcp__web__search`, `mcp__web__read_page`). They run on the user's computer. Page
+  reads accept only http(s) to public hosts: a host that is, or resolves to, loopback, a private,
+  link-local or CGNAT network or an IPv6 local address is refused, and every redirect is checked
+  again, so a prompt cannot make the app read its own local server or the user's network (SSRF). What
+  they return is fenced as untrusted data, and the tools' descriptions tell the model not to put
+  personal or wallet data in a query. Users can turn them off or make them ask first.
+- **MCP servers for the app's AI.** They run with the user's own access, like any program the user
+  installs, which is why the app asks before each call unless the user chooses "always allow", and
+  why they cannot sign, pay or confirm anything in the wallet. One-click Add (recommended servers and
+  the official MCP Registry) accepts only an https URL or an npm package run with the app's Bun, never
+  an arbitrary command; servers that need keys are added turned off. Saved keys are shown masked.
+  Servers start with a time limit, so a broken one cannot hold the chat.
+- **No stuck queue.** Every call to the website has a time limit (75 s; uploads 180 s), and the
+  background sync never queues ahead of the user's own moves (0.6.1).
+- **Window and page.** The app's page has no browser context menu (no Inspect or Reload); the local
+  server, its token, Host check and CSP are unchanged; links that open a new window go to the system
+  browser.
 
 **Tests** (re-run before each release):
 
 | Suite | Command | What it checks | Last result |
 |---|---|---|---|
-| Chain format, sanitizer, vault (unit) | `cd desktop && bun test` | edited / re-hashed / foreign-key / gap / fork blocks, forged or altered deal events, genesis rules, canonical hashing, request signatures over method+path+time+body, Merkle proofs and swapped heads; 12 XSS payloads against the Markdown renderer (only allowlisted tags, `<a>` with http(s) href only); passphrase, tamper and per-purpose keys of the vault | 32/32 pass (2026-10-18) |
+| Chain format, sanitizer, vault (unit) | `cd desktop && bun test` | edited / re-hashed / foreign-key / gap / fork blocks, forged or altered deal events, genesis rules, canonical hashing, request signatures over method+path+time+body, Merkle proofs and swapped heads; 12 XSS payloads against the Markdown renderer (only allowlisted tags, `<a>` with http(s) href only); passphrase, tamper and per-purpose keys of the vault | 34/34 pass (2026-10-19) |
+| Web tools guard (manual) | script against `web-tools.ts` | page reads of `127.0.0.1`, `192.168.1.1`, `localhost`, `[::1]`, `file://` and a public name resolving to 127.0.0.1 (`localtest.me`) all refused; a public page read | pass (2026-10-19) |
+| Request time limits (manual) | a server that never answers | signed JSON and signed raw calls give up after 75 s with "did not answer in time" | pass (2026-10-19) |
+| In-app update (manual, macOS) | 0.6.2 installed in a test folder | update to 0.6.3: download, SHA-256 check, swap, reopen as 0.6.3, downloads cleaned | pass (2026-10-19); Windows not run |
 | Live app + server | `AGENTIC_WALLET_DATA=… AW_PASS=… bun run security` | local server: token, Host (DNS rebinding), no CORS, agent token cannot sign, CSP; MCP: tools read, a move stays PENDING and the balance does not change; server: unsigned, foreign-signed, replayed and stale requests, forged events, history rewrite, foreign-key and edited blocks, a swapped delivery file, a refused BYOK key not echoed, a prompt-injection custom instruction that tries to make the AI pay | 17/17 pass (2026-10-18) |
 | Contracts | `cd contracts && npx hardhat test nodejs` | includes `ChainAnchor` (anchorer only, no empty root) | pass |
 
 - Private links: replacing a working link needs the 6-digit code its holder gets on their page (the inviter cannot take a link over alone); a link claimed by an account is destroyed at once; a finished deal's link closes 7 days later.
 - Work files open in place: framing by this origin only; PDFs served without scripts or network (`default-src 'none'`), other types as downloads; a delivery stays encrypted until approval and is previewed only as watermarked page images.
-- Known limits: the executables are not code-signed (Windows SmartScreen and macOS Gatekeeper warn once); a forgotten passphrase cannot be reset (link the computer again; deal history stays on the server and in the escrow); the anchor proves the head existed, not who was right in a deal.
+- Known limits: the executables are not code-signed (R12) (Windows SmartScreen and macOS Gatekeeper warn once); a forgotten passphrase cannot be reset (link the computer again; deal history stays on the server and in the escrow); the anchor proves the head existed, not who was right in a deal.
 
 ## 5. Application security
 
@@ -143,7 +186,7 @@ What a user (or an attacker on their computer) can and cannot do with the chain 
   user's own contacts, so an address in a document cannot become a payee. Every reply and tool result
   is filtered for 40-hex addresses, and streamed text holds back anything that could still grow into
   one. Database ids, keys and other users' data are never in what the tools return.
-- **The agent's memory is kept on the server.** Saved chats (five per wallet) are stored server-side,
+- **The agent's memory is kept on the server.** Saved chats (up to 20 per wallet) are stored server-side,
   and the model's history is rebuilt from them, so a browser cannot rewrite what the agent was told
   earlier. The browser receives each tool step as the chat shows it (name, redacted summary, draft
   card), never the raw tool result. Nicknames the user teaches the agent map to a contact on the
@@ -257,6 +300,10 @@ What a user (or an attacker on their computer) can and cannot do with the chain 
 | R9 | **Smart contract bugs** | Locked or lost test funds | OpenZeppelin 5 primitives, `ReentrancyGuard`, `SafeERC20`, 101 tests, internal audit (`docs/security/`) | External audit, Slither/Echidna in CI, formal checks of the escrow state machine |
 | R10 | **Public explorer and RPC load** | Heavy scraping could slow the node | Read-only methods, bounded log ranges, rate limits on `/api/rpc` | Caching indexer and a separate read replica |
 | R11 | **Shared demo database** (Neon, one schema per deployment) | Test data of several testers sits together | Users see only their own wallets; names never on-chain; export and delete in the profile | Per-tenant isolation, encryption of personal fields, retention policy |
+| R12 | **Unsigned desktop builds and the update channel** | A compromised GitHub account or release could ship a malicious update; the SHA-256 in `latest.json` would match it | Releases only from the repository's tagged workflow; checksum and size checked before anything runs; HTTPS to GitHub | Apple notarisation and Windows Authenticode signing, with the updater checking the signature (or a release key the app pins) |
+| R13 | **Third-party MCP servers** run code with the user's access | A malicious server could read the user's files or misuse its own access | Ask before each call by default; one-click Add only for an https URL or an npm package; servers cannot sign or pay in the wallet; results fenced as untrusted | A sandbox for local servers (no file system or network beyond what the user grants), a reviewed allowlist |
+| R14 | **Web search and page reads** | A page could carry prompt-injection text; a model could put sensitive words in a query | Results fenced as untrusted; public hosts only (SSRF guard); the agent's tools still cannot pay; switch off or ask-first | A search API with a data-processing agreement, query filtering for personal data |
+| R15 | **Disputes turned off** | A buyer cannot get an arbiter's ruling on bad work; after the review window the seller can claim | Buyer does not approve, asks for changes within the agreed rounds, or asks for a refund | Re-enable disputes (`DISPUTES=on`) with the panel, or a timeout that refunds when the seller does not answer (`docs/security/PROPOSAL-dispute-timeout.md`) |
 
 ### Fixed after the internal audit (2026-10-16)
 

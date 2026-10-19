@@ -1,6 +1,9 @@
 # Execution evidence
 
-Real transactions on the Agentic Wallet private chain (Hyperledger Besu, chain id 20261020), collected at block #37901 on 2026-10-15.
+Kravii (formerly Agentic Wallet / MilestonePay). Updated 2026-10-19: the desktop releases below were
+added; the chain transactions are unchanged.
+
+Real transactions on the Kravii (Agentic Wallet) private chain (Hyperledger Besu, chain id 20261020), collected at block #37901 on 2026-10-15.
 Every hash opens in the public explorer at https://agentic-wallet-inky.vercel.app/explorer (no sign-in), and can be checked independently over read-only JSON-RPC at `https://agentic-wallet-inky.vercel.app/api/rpc`:
 
 ```bash
@@ -178,3 +181,45 @@ The seller asked the AI to change D-34's price to 250 THB. The AI made an amendm
 | [`0xc3ba9f16…295d9c5d`](https://agentic-wallet-inky.vercel.app/explorer/tx/0xc3ba9f168eeb8edc3a44273832dbf2b154c8bee6e6163830010d919c295d9c5d) | #118869 | OfferCancelled · deal 34 (200 THB) withdrawn by the amendment |
 | [`0xa7da58c2…8d4a595a`](https://agentic-wallet-inky.vercel.app/explorer/tx/0xa7da58c26b1a433890f9694bd0f2a110bd2cbd3f9baf73b0707e7b158d4a595a) | #118870 | OfferCreated · deal 50 (250 THB) replaces it |
 | [`0x611119fd…fd57bfcc`](https://agentic-wallet-inky.vercel.app/explorer/tx/0x611119fde31f21b07611e65dad32240cc88e5538b7959e44364e5fe0fd57bfcc) | #119034 | OfferCancelled · deal 50 (end of test) |
+
+## Desktop app releases (added 2026-10-19)
+
+Every build is made by the repository's release workflow (`.github/workflows/desktop-release.yml`) from
+a tag `desktop-v<version>`, and published on GitHub Releases with `SHA256SUMS.txt` and `latest.json`.
+The app's in-app updater and the website's `/download` page read `latest.json`. Check a download with:
+
+```bash
+shasum -a 256 Kravii-0.6.3-window-macos-arm64.dmg
+curl -sL https://github.com/sucsage/agentic-wallet/releases/download/desktop-v0.6.3/latest.json
+```
+
+### Kravii 0.6.3 (latest, 2026-10-19)
+
+| Platform | File | Size | SHA-256 |
+|---|---|---|---|
+| macOS (Apple silicon) | `Kravii-0.6.3-window-macos-arm64.dmg` | 19.3 MB | `a89bf6313f58dc155589301f74fb61d60a3b06a68ba7003cfc1441bc71729b6a` |
+| macOS (Intel) | `Kravii-0.6.3-window-macos-x64.dmg` | 21.4 MB | `e831d765be85708b0367895dc76b4a56507040765b387e0624dc189131721dca` |
+| Windows 10/11 (64-bit) | `Kravii-0.6.3-window-windows-x64-Setup.exe` | 29.7 MB | `d02022b5080cbdef1025c74652ad9efe0379923860eb5eaf7d3da0ac35103f1a` |
+| Linux x64 | `Kravii-0.6.3-window-linux-x64-Setup.tar.gz` | 31.6 MB | `7efd145bfd2e46a80aec13a5f3b30f34fcff1432ae7b4ebaef9abbbbd62d2580` |
+| Linux ARM64 | `Kravii-0.6.3-window-linux-arm64-Setup.tar.gz` | 30.7 MB | `e1af5997646853d34f140d191519579bd95f578148c661df28bcaf1ab8a0ecfc` |
+
+### Release history
+
+| Version | Date (UTC) | What changed |
+|---|---|---|
+| 0.6.3 | 2026-10-19 | macOS update swap clears quarantine; first version installed through an in-app update |
+| 0.6.2 | 2026-10-19 | updates from inside the app (macOS, Windows) |
+| 0.6.1 | 2026-10-19 | time limits on website calls; background sync never queues ahead of the user |
+| 0.6.0 | 2026-10-19 | renamed Kravii, new logo |
+| 0.5.2 | 2026-10-19 | Windows: one Setup.exe, no terminal window, dark title bar, app icon, DPI aware (0.5.1 shipped without Windows) |
+| 0.5.0 | 2026-10-18 | windowed app only; black title bar on macOS; web search and MCP finder in the AI chat |
+| 0.4.0 | 2026-10-18 | the app in its own window (Electrobun) |
+| 0.2.0-0.3.0 | 2026-10-18 | installers, the download page, the browser build's updater; the app reaches the whole website |
+
+### In-app update test (2026-10-19, macOS Intel)
+
+0.6.2 was installed from its release `.dmg` into a test folder with separate test data, then updated
+through the app's own update route: it found 0.6.3, downloaded `Kravii-0.6.3-window-macos-x64.dmg`,
+checked its SHA-256, quit, had the bundle swapped, and reopened answering `/ping` with version 0.6.3
+(about 8 s plus the restart). The Windows path (silent Setup.exe) is built but was not run on a
+Windows machine.
