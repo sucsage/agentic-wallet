@@ -110,8 +110,13 @@ class Wallet {
     this.vault = was.vault;
   }
 
+  /** How many chain changes are running or waiting (background sync stays out of the way of the user's). */
+  private waiting = 0;
+
   private serial<T>(fn: () => Promise<T>): Promise<T> {
-    const run = this.queue.then(fn, fn);
+    this.waiting++;
+    const done = () => void this.waiting--;
+    const run = this.queue.then(fn, fn).finally(done);
     this.queue = run.catch(() => undefined);
     return run;
   }
@@ -346,6 +351,15 @@ class Wallet {
   private async checkServerHead(h: { height: number; hash: Hex; serverSig: Hex }) {
     const signer = await signerOf(headMessage(this.need().account.address, h.height, h.hash), h.serverSig).catch(() => null);
     if (signer !== getAddress(this.need().vault.serverSigner)) throw new ApiError(502, "The server's countersignature does not match the server this app was linked to");
+  }
+
+  /**
+   * The every-20-seconds sync: only when nothing else is running or waiting, so it never queues up in
+   * front of a button the user pressed (and never piles up when the server is slow).
+   */
+  backgroundSync(): Promise<unknown> | null {
+    if (this.waiting > 0) return null;
+    return this.sync().catch(() => undefined);
   }
 
   sync(): Promise<{ added: number; requests: number }> {

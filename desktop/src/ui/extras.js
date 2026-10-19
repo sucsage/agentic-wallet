@@ -6,11 +6,11 @@
 
 /** The website's API for this user (JSON). path without /api/, e.g. "summary". */
 async function web(method, path, body) {
-  const res = await fetch(`/app/web/${path}`, {
+  const res = await timed(`/app/web/${path}`, {
     method,
     headers: { "x-app-token": TOKEN, ...(body !== undefined && !(body instanceof FormData) ? { "content-type": "application/json" } : {}) },
     body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body),
-  });
+  }, body instanceof FormData ? FILE_TIMEOUT : PAGE_TIMEOUT);
   const j = await res.json().catch(() => null);
   if (!res.ok) throw new Error((j && j.error) || `The server answered ${res.status}`);
   return j;

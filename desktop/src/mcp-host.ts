@@ -85,7 +85,14 @@ class Connection {
     readonly entry: ServerEntry,
   ) {}
 
+  /** When the last start failed: a failed server is tried again after a minute, not on every message. */
+  private failedAt = 0;
+
   start(): Promise<void> {
+    if (this.ready && this.failedAt && Date.now() - this.failedAt > 60_000) {
+      this.ready = null;
+      this.failedAt = 0;
+    }
     if (this.ready) return this.ready;
     this.ready = (async () => {
       if (!this.entry.url) this.spawn();
@@ -94,6 +101,7 @@ class Connection {
       const r = (await this.request("tools/list", {})) as { tools?: Connection["tools"] };
       this.tools = Array.isArray(r?.tools) ? r.tools.slice(0, 64) : [];
     })().catch((e) => {
+      this.failedAt = Date.now();
       this.stop();
       throw e;
     });
@@ -263,12 +271,30 @@ export async function serverTools(name: string, entry: ServerEntry): Promise<{ t
   }
 }
 
-/** The tools of every enabled server, named for the AI (mcp__server__tool). */
+/** A server's tools if it is ready within `ms` (it keeps starting in the background), else none for now. */
+export async function toolsWithin(name: string, entry: ServerEntry, ms: number): Promise<{ tools: Connection["tools"]; error: string | null; log: string; starting?: boolean }> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<{ tools: Connection["tools"]; error: string | null; log: string; starting: boolean }>((resolve) => {
+    timer = setTimeout(() => resolve({ tools: [], error: null, log: "", starting: true }), ms);
+  });
+  try {
+    return await Promise.race([serverTools(name, entry), late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * The tools of every enabled server, named for the AI (mcp__server__tool). Servers start in parallel;
+ * one that is not ready within a few seconds (downloading, broken) is left out of this message
+ * instead of holding the chat.
+ */
 export async function aiTools(servers: Record<string, ServerConfig>): Promise<ToolDef[]> {
   const out: ToolDef[] = [];
-  for (const [name, cfg] of Object.entries(servers)) {
-    if (!cfg.enabled) continue;
-    const { tools } = await serverTools(name, cfg);
+  const on = Object.entries(servers).filter(([, cfg]) => cfg.enabled);
+  const ready = await Promise.all(on.map(([name, cfg]) => toolsWithin(name, cfg, 6000)));
+  for (const [i, [name]] of on.entries()) {
+    const { tools } = ready[i];
     for (const t of tools) {
       const full = `mcp__${safeName(name)}__${t.name.replace(/[^a-zA-Z0-9_-]/g, "_")}`.slice(0, 64);
       out.push({ name: full, description: `[MCP server "${name}" on the user's computer] ${(t.description ?? "").slice(0, 900)}`, input_schema: t.inputSchema && typeof t.inputSchema === "object" ? t.inputSchema : { type: "object", properties: {} } });

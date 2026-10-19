@@ -239,8 +239,17 @@ const short = (h) => (h ? `${h.slice(0, 10)}…${h.slice(-6)}` : "");
 const money = (n, cur) => `${Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 })} ${cur || ""}`.trim();
 const when = (t) => (t ? new Date(t).toLocaleString() : "");
 
+/**
+ * Every call to the app gets a time limit, so a button never spins forever: the app itself gives up
+ * on a website request after 75 s, and a move can make two of them (sync, then the move).
+ */
+const PAGE_TIMEOUT = 170000, FILE_TIMEOUT = 220000;
+async function timed(url, init, ms = PAGE_TIMEOUT) {
+  try { return await fetch(url, { ...init, signal: AbortSignal.timeout(ms) }); }
+  catch (e) { throw new Error(e && (e.name === "TimeoutError" || e.name === "AbortError") ? "This is taking too long: check your internet, then refresh to see whether it went through before you try again" : "The app is not answering: is Kravii still running?"); }
+}
 async function api(path, method = "GET", body) {
-  const r = await fetch(path, { method, headers: { "x-app-token": TOKEN, "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+  const r = await timed(path, { method, headers: { "x-app-token": TOKEN, "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error || `Error ${r.status}`);
   return j;
@@ -958,7 +967,7 @@ function toolsPopHtml() {
   return `<header><b>Tools for the AI</b><button type="button" class="linkbtn" data-tools-close>Close</button></header>
     <section><div class="trow"><div><b>🌐 Web search</b><small>Search the web and read pages, on this computer (DuckDuckGo, no key).</small></div><input type="checkbox" data-web="enabled" ${w && w.enabled ? "checked" : ""}></div>
       ${w && w.enabled ? `<label class="tsub"><input type="checkbox" data-web="ask" ${w.ask ? "checked" : ""}> Ask me before each search</label>` : ""}</section>
-    <section><h4>Your MCP servers</h4>${list ? (list.length ? list.map((x) => `<div class="trow"><div><b>${esc(x.name)}</b><small>${x.error ? `<span class="out">${esc(x.error.slice(0, 80))}</span>` : x.enabled ? `${x.tools.length} tool${x.tools.length === 1 ? "" : "s"}${x.ask ? " · asks first" : " · always allowed"}` : "off"}</small></div><input type="checkbox" data-srv="${esc(x.name)}" ${x.enabled ? "checked" : ""}></div>`).join("") : `<p class="hint">None yet.</p>`) : `<div class="loading"><span class="spin"></span>Loading…</div>`}</section>
+    <section><h4>Your MCP servers</h4>${list ? (list.length ? list.map((x) => `<div class="trow"><div><b>${esc(x.name)}</b><small>${x.error ? `<span class="out">${esc(x.error.slice(0, 80))}</span>` : x.starting ? "starting…" : x.enabled ? `${x.tools.length} tool${x.tools.length === 1 ? "" : "s"}${x.ask ? " · asks first" : " · always allowed"}` : "off"}</small></div><input type="checkbox" data-srv="${esc(x.name)}" ${x.enabled ? "checked" : ""}></div>`).join("") : `<p class="hint">None yet.</p>`) : `<div class="loading"><span class="spin"></span>Loading…</div>`}</section>
     ${rec.length ? `<section><h4>Recommended</h4>${rec.map((x) => `<div class="trow"><div><b>${esc(x.title)}</b><small>${esc(x.description)}</small></div><button type="button" data-rec="${esc(x.id)}">Add</button></div>`).join("")}</section>` : ""}
     <button type="button" class="primary" data-go-mcp style="width:100%">Find and add MCP servers →</button>`;
 }
@@ -1105,7 +1114,7 @@ https://example.com/mcp
 { "mcpServers": { "files": { "command": "bun", "args": ["x", "@modelcontextprotocol/server-filesystem", "/Users/me/Documents"] } } }' required></textarea>
       <div class="row" style="margin-top:6px"><input name="name" placeholder="name (optional)" style="width:200px"><button class="primary">Add server</button><span class="hint">Code you paste is saved under this app's data folder and run here: add only what you trust.</span></div></form>
     ${list === null ? `<div class="loading" style="margin-top:10px"><span class="spin"></span>Starting your servers…</div>` : list.length ? list.map((x) => `<div class="ms" style="grid-template-columns:1fr auto;align-items:start">
-      <div><b>${esc(x.name)}</b> ${!x.enabled ? `<span class="chip">off</span>` : x.error ? `<span class="chip bad" title="${esc(x.log || "")}">not running</span>` : `<span class="chip ok">${x.tools.length} tool${x.tools.length === 1 ? "" : "s"}</span>`} ${x.ask ? `<span class="chip">asks first</span>` : `<span class="chip warn">always allowed</span>`}
+      <div><b>${esc(x.name)}</b> ${!x.enabled ? `<span class="chip">off</span>` : x.error ? `<span class="chip bad" title="${esc(x.log || "")}">not running</span>` : x.starting ? `<span class="chip warn">starting… (Refresh in a moment)</span>` : `<span class="chip ok">${x.tools.length} tool${x.tools.length === 1 ? "" : "s"}</span>`} ${x.ask ? `<span class="chip">asks first</span>` : `<span class="chip warn">always allowed</span>`}
         <div class="mono hint">${x.url ? esc(x.url) : esc([x.command, ...(x.args || [])].join(" "))}</div>
         ${x.error ? `<div class="issue block">${esc(x.error)}</div>${x.log ? `<pre class="mono hint" style="white-space:pre-wrap;max-height:90px;overflow:auto">${esc(x.log)}</pre>` : ""}` : ""}
         ${x.tools.length ? `<details style="margin-top:4px"><summary class="hint">Tools</summary>${x.tools.map((t) => `<div class="hint"><b class="mono">${esc(t.name)}</b> ${esc(t.description)}</div>`).join("")}</details>` : ""}
@@ -1326,7 +1335,7 @@ function previewDialog(dealId, index, name) {
   const show = async () => {
     $("#pv").innerHTML = `<div class="loading" style="padding:40px 0;justify-content:center"><span class="spin"></span>Making the preview…</div>`;
     try {
-      const res = await fetch(`/app/preview?deal=${dealId}&index=${index}&page=${page}`, { headers: { "x-app-token": TOKEN } });
+      const res = await timed(`/app/preview?deal=${dealId}&index=${index}&page=${page}`, { headers: { "x-app-token": TOKEN } });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Preview failed (${res.status})`);
       pages = Number(res.headers.get("x-preview-pages")) || 1;
       const url = URL.createObjectURL(await res.blob());
@@ -1381,7 +1390,7 @@ function deliverDialog(dealId, index) {
     try {
       const fd = new FormData(form);
       fd.set("dealId", dealId); fd.set("index", index);
-      const r = await fetch("/app/deliver", { method: "POST", headers: { "x-app-token": TOKEN }, body: fd }).then(async (x) => { const j = await x.json().catch(() => ({})); if (!x.ok) throw new Error(j.error || `Error ${x.status}`); return j; });
+      const r = await timed("/app/deliver", { method: "POST", headers: { "x-app-token": TOKEN }, body: fd }, FILE_TIMEOUT).then(async (x) => { const j = await x.json().catch(() => ({})); if (!x.ok) throw new Error(j.error || `Error ${x.status}`); return j; });
       if (!r.ok) throw new Error(r.error || "Not delivered (the signed block stays on your chain)");
       dlg.close(); toast("Delivered"); await load();
     } catch (err) { showErr($("#de"), err); ok.disabled = false; ok.textContent = "Sign and deliver"; }

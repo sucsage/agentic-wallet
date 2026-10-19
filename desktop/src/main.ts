@@ -9,7 +9,7 @@ import { ApiError } from "./api";
 import { wallet } from "./core";
 import { MCP_TOOLS, runMcp } from "./mcp";
 import { chatResponse } from "./chat-flow";
-import { type ServerEntry, parseSource, safeName, serverTools, stopServer } from "./mcp-host";
+import { type ServerEntry, parseSource, safeName, stopServer, toolsWithin } from "./mcp-host";
 import { RECOMMENDED, type Suggestion, WEB_SERVER, searchRegistry } from "./web-tools";
 import { checkUpdate, cleanOldExecutable, installUpdate } from "./updater";
 import { dataDir, sessionPath } from "./paths";
@@ -307,7 +307,8 @@ async function mcpServersView() {
   const list = wallet.mcpServers();
   const servers = await Promise.all(
     Object.entries(list).map(async ([name, cfg]) => {
-      const status = cfg.enabled ? await serverTools(name, cfg) : { tools: [], error: null, log: "" };
+      // A server still starting (e.g. downloading its package) shows as starting instead of holding the page.
+      const status = cfg.enabled ? await toolsWithin(name, cfg, 8000) : { tools: [], error: null, log: "" };
       const mask = (v?: Record<string, string>) => (v ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, x ? "•••" : ""])) : undefined);
       return { name, ...cfg, env: mask(cfg.env), headers: mask(cfg.headers), tools: status.tools.map((t) => ({ name: t.name, description: (t.description ?? "").slice(0, 200) })), error: status.error, log: status.log };
     }),
@@ -500,7 +501,7 @@ export async function startApp(opts: { browser: boolean }): Promise<{ url: strin
     return new Response("Not found", { status: 404 });
   };
   let server: ReturnType<typeof Bun.serve>;
-  const serve = (port: number) => Bun.serve({ hostname: "127.0.0.1", port, idleTimeout: 120, fetch: (req) => handler(req, server.port!) });
+  const serve = (port: number) => Bun.serve({ hostname: "127.0.0.1", port, idleTimeout: 240, fetch: (req) => handler(req, server.port!) });
   try {
     server = serve(previous?.port ?? PREFERRED_PORT);
   } catch {
@@ -516,7 +517,7 @@ export async function startApp(opts: { browser: boolean }): Promise<{ url: strin
   if (opts.browser && (!previous || previous.port !== server.port)) openBrowser(url);
   // Background sync while unlocked.
   setInterval(() => {
-    if (wallet.stage() === "ready") wallet.sync().catch(() => undefined);
+    if (wallet.stage() === "ready") wallet.backgroundSync();
   }, 20_000);
   return { url, already: false };
 }
