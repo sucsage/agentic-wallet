@@ -540,10 +540,10 @@ class Wallet {
   }
 
   inviteLinks() {
-    return this.call<{ links: unknown[] }>("GET", "/api/device/invite-links");
+    return this.call<{ links: unknown[] }>("GET", this.asPath("/api/device/invite-links"));
   }
   inviteLinkAction(body: unknown) {
-    return this.call<unknown>("POST", "/api/device/invite-links", body);
+    return this.call<unknown>("POST", this.asPath("/api/device/invite-links"), body);
   }
   groups() {
     return this.call<unknown>("GET", "/api/device/groups");

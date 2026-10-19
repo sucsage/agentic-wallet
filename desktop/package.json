@@ -1,6 +1,6 @@
 {
   "name": "agentic-wallet-desktop",
-  "version": "0.7.3",
+  "version": "0.7.4",
   "private": true,
   "type": "module",
   "description": "Kravii desktop app: your own deal chain on your computer (macOS, Windows, Linux).",

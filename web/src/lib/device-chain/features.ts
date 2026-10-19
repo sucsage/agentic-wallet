@@ -110,7 +110,7 @@ export async function deviceLinks(device: DeviceRow, origin: string) {
     if (!link) continue;
     seen.add(d.counterparty);
     const terms = await dealTerms(d.id, d.role === "buyer" ? wallet : d.counterparty, d.role === "seller" ? wallet : d.counterparty);
-    out.push({ dealId: d.id, title: terms?.title ?? `Deal D-${d.id}`, status: d.status, kind: link.kind, name: link.name, link: link.link, linked: link.linked, expiresAt: link.expiresAt, access: link.access });
+    out.push({ dealId: d.id, counterparty: d.counterparty.toLowerCase(), title: terms?.title ?? `Deal D-${d.id}`, status: d.status, kind: link.kind, name: link.name, link: link.link, linked: link.linked, expiresAt: link.expiresAt, access: link.access });
   }
   return out;
 }

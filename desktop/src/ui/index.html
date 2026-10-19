@@ -862,7 +862,7 @@ function updateNudge() {
 /** After Confirm or Discard: reload the previews and deals on screen (yours, and any group's opened under Groups). */
 async function refreshDealLists() {
   const jobs = [api("/app/drafts").then((d) => (S.drafts = d.drafts)).catch(() => undefined)];
-  if (S.view === "deals") jobs.push(api("/app/deals").then((d) => (S.deals = d.deals)).catch(() => undefined));
+  if (S.view === "deals") jobs.push(api("/app/deals").then((d) => (S.deals = d.deals)).catch(() => undefined), loadDealLinks());
   for (const gid of Object.keys(S.groupDeals || {})) jobs.push(loadGroupDeals(gid));
   await Promise.all(jobs);
   renderView();
@@ -1163,7 +1163,7 @@ function msgHtml(x) {
   const u = x.usage;
   return `<div class="a-meta">Agent · ${clock(x.at)}</div>
     ${tools.length ? `<div class="badges">${tools.map((t) => `<span title="${esc(TOOL_LABEL[t] || t)}">${esc(t)}</span>`).join("")}</div>` : ""}
-    <article class="a-msg${drafts.length || cards.length ? " wide" : ""}"><div class="md">${window.renderMarkdown(x.text)}</div>${cards.join("")}${drafts.map(draftCard).join("")}
+    <article class="a-msg${drafts.length || cards.length ? " wide" : ""}"><div class="md">${window.renderMarkdown(x.text)}</div>${cards.join("")}${drafts.map((d) => draftCard(d)).join("")}
     ${u || x.model ? `<div class="usage-line">${u ? `<span>${num(u.tokens)} tokens</span><span>${u.calls} model call${u.calls === 1 ? "" : "s"}</span>` : ""}${tools.length ? `<span>${tools.length} tool${tools.length === 1 ? "" : "s"}</span>` : ""}<span>${x.model ? `your key · ${esc(x.model)}` : "Kravii AI"}</span></div>` : ""}</article>`;
 }
 
@@ -1489,7 +1489,9 @@ function wireDrafts() {
       try {
         const r = await api("/app/confirm-draft", "POST", { draftId: d.id, companyId: company });
         if (!r.ok) throw new Error(r.error || "Not done (the signed block stays on your chain)");
-        const inv = r.result && r.result.invite;
+        let inv = r.result && r.result.invite;
+        const dealId = r.result && r.result.draft && r.result.draft.dealId;
+        if (!inv && dealId) { await loadDealLinks(); const l = (S.dealLinks || []).find((x) => x.dealId === dealId); if (l) inv = { name: l.name, link: l.link, access: l.access }; }
         S.draftDone = S.draftDone || {};
         S.draftDone[d.id] = r.result && r.result.plan ? "plan" : r.result && r.result.companyVote ? "vote" : "confirmed";
         $("#dres").innerHTML = `<div class="ok-box">Signed and done${r.result.companyVote ? ` · sent to the signers' vote (${r.result.companyVote.yes} of ${r.result.companyVote.threshold} yes)` : ""}${r.result.plan ? ` · part ${r.result.plan.paidParts} paid` : ""}.</div>` +
@@ -1730,8 +1732,28 @@ function dealHtml(d) {
       }
       return `<div class="ms"><div>${esc(m.name)} · <b>${esc(m.amount)}</b> <span class="chip ${STATUS_CHIP[m.status] || ""}">${esc(m.status)}</span> <span class="hint">${esc(m.delivery || "")}</span>${dueHtml(d, m)}${m.split ? `<span class="hint"> seller ${esc(m.split.toSeller)} / buyer ${esc(m.split.toBuyer)}</span>` : ""}${m.file ? `<div class="hint">📎 ${esc(m.file.name)}</div>` : ""}</div><div class="row">${fileButtons(d, m)}${acts.join("")}</div></div>`;
     }).join("")}
+    ${dealLinkHtml(d)}
     ${S.dealOpen && S.dealOpen[d.id] ? dealDetailHtml(d.id) : ""}
   </div>`;
+}
+
+/** Private links (people without an account) by the other side's wallet, for the deal cards. */
+async function loadDealLinks() {
+  try { S.dealLinks = (await api("/app/invite-links")).links || []; } catch { S.dealLinks = S.dealLinks || []; }
+}
+function dealLinkFor(d) {
+  const c = String(d.counterparty || "").toLowerCase();
+  return (S.dealLinks || []).find((l) => l.dealId === d.id || (c && l.counterparty === c)) || null;
+}
+/** The private link of a deal with someone without an account: copy it and its one-time code here. */
+function dealLinkHtml(d) {
+  const l = dealLinkFor(d);
+  if (!l || !["Proposed", "Active"].includes(d.status)) return "";
+  const a = l.access || {};
+  return `<div class="ms" style="display:block"><div><b>Private link for ${esc(l.name)}</b> <span class="chip ${l.linked ? "ok" : ""}">${l.linked ? "joined" : "not opened yet"}</span></div>
+    <div class="mono hint" style="margin-top:4px;word-break:break-all">${l.link ? esc(l.link) : "(link hidden: make a new one under Private links)"}</div>
+    <div class="hint" style="margin-top:4px">${!a.required ? "Open link." : a.passwordSet ? "They set a password." : a.otp ? `One-time code (send it separately): <b class="mono">${esc(a.otp)}</b>` : "No live code."}</div>
+    <div class="row" style="margin-top:6px">${l.link ? `<button data-lcopy="${esc(l.link)}">Copy link</button>` : ""}${a.otp && !a.passwordSet ? `<button data-lcopy="${esc(a.otp)}">Copy code</button>` : ""}${a.required && !a.passwordSet && !a.otp ? `<button data-lotp="${l.dealId}">New one-time code</button>` : ""}</div></div>`;
 }
 
 const ACTION_TEXT = { approve: "Approve this delivery and release its payment to the seller?", accept: "Accept this offer? As the buyer, the full amount is locked in escrow from your Mock Bank balance.", cancel: "Cancel your offer?", reclaim: "Take back this milestone's money (the seller missed the deadline)?", claim: "Claim this milestone's payment (the review window passed with no dispute)?", refund: "Refund this milestone to the buyer?", dispute: "Open a dispute: a neutral arbiter decides from the evidence." };
@@ -1776,6 +1798,10 @@ function wireDealButtons() {
   document.querySelectorAll("[data-deliver]").forEach((b) => (b.onclick = () => deliverDialog(b.dataset.deliver, b.dataset.i)));
   document.querySelectorAll("[data-preview]").forEach((b) => (b.onclick = () => previewDialog(b.dataset.preview, b.dataset.i, b.dataset.name)));
   document.querySelectorAll("[data-changes]").forEach((b) => (b.onclick = () => changesDialog(b.dataset.changes, b.dataset.i)));
+  document.querySelectorAll("[data-lcopy]").forEach((b) => (b.onclick = () => navigator.clipboard.writeText(b.dataset.lcopy).then(() => toast("Copied"), () => toast("Select it and copy"))));
+  document.querySelectorAll("[data-lotp]").forEach((b) => (b.onclick = async () => {
+    try { const r = await api("/app/invite-links", "POST", { dealId: Number(b.dataset.lotp), action: "otp" }); toast(r.otp ? `New code: ${r.otp}` : "Done"); await loadDealLinks(); renderView(); } catch (e) { toast(e.message); }
+  }));
 }
 function wireAgentButtons() {
   document.querySelectorAll("[data-asign]").forEach((b) => (b.onclick = async () => {
@@ -1834,7 +1860,7 @@ async function load() {
   try {
     S.info = await api("/app/state");
     if (S.view === "overview") { const [a, d] = await Promise.all([api("/app/account"), api("/app/deals")]); S.account = a; S.deals = d.deals; }
-    if (S.view === "deals") { const [d, p] = await Promise.all([api("/app/deals"), api("/app/drafts").catch(() => ({ drafts: [] }))]); S.deals = d.deals; S.drafts = p.drafts; }
+    if (S.view === "deals") { const [d, p] = await Promise.all([api("/app/deals"), api("/app/drafts").catch(() => ({ drafts: [] })), loadDealLinks()]); S.deals = d.deals; S.drafts = p.drafts; }
     if (S.view === "chain") S.chain = await api("/app/chain");
     if (S.view === "chat") {
       if (S.chatId === undefined) { try { S.chatId = localStorage.getItem("awchat"); } catch { S.chatId = null; } }
