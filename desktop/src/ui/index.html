@@ -1663,7 +1663,7 @@ function dueLeft(x) { const n = Math.ceil((new Date(`${x}T23:59:59+07:00`).getTi
 /** A milestone's due date (agreed by both sides): countdown, propose / accept, late refund request. */
 function dueHtml(d, m) {
   const u = m.due;
-  if (!u || m.delivery === "deposit") return "";
+  if (!u || m.delivery === "deposit" || d.status === "Cancelled" || SETTLED_MS.includes(m.status)) return "";
   const editable = d.status !== "Cancelled" && m.status === "Pending";
   const today = new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10);
   return `<div class="hint" style="margin-top:4px">Due: ${u.due ? `<span style="color:${u.late ? "var(--bad)" : "inherit"}">${esc(fmtDay(u.due))} · ${esc(dueLeft(u.due))}</span>` : "no date agreed"}
