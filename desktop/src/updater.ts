@@ -278,7 +278,8 @@ if mv "$OLD" "$OLD.updating-old"; then
     rm -rf "$TARGET"; mv "$OLD.updating-old" "$OLD"; TARGET="$OLD"
   fi
 fi
-open "$TARGET"
+/usr/bin/xattr -dr com.apple.quarantine "$TARGET" 2>/dev/null
+if [ -n "$AGENTIC_WALLET_DATA" ]; then open --env AGENTIC_WALLET_DATA="$AGENTIC_WALLET_DATA" "$TARGET"; else open "$TARGET"; fi
 `,
     { mode: 0o755 },
   );
