@@ -59,7 +59,7 @@ nav .who { display: flex; flex-direction: column; min-width: 0; line-height: 1.3
 nav .who b { font-size: 11px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 nav .who small { font-size: 10px; color: #85858a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 nav .foot button { height: 26px; padding: 0 8px; font-size: 11px; border: 1px solid var(--line-2); border-left-width: 1px; }
-main { padding: 26px 28px 50px; max-width: 1180px; width: 100%; }
+main { padding: 26px 28px 50px; width: 100%; box-sizing: border-box; }
 h1 { font-size: 24px; letter-spacing: -.02em; margin: 0 0 16px; }
 h2 { font-size: 15px; margin: 0 0 10px; }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 13px; margin-bottom: 14px; }
@@ -205,6 +205,16 @@ main.wide { max-width: none; padding: 20px 22px 24px; }
 .bar { height: 6px; border-radius: 99px; background: var(--chip); overflow: hidden; margin: 3px 0 6px; } .bar i { display: block; height: 100%; }
 .switch { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line-2); margin: 0; font-size: 13px; color: var(--ink); cursor: pointer; }
 .switch input { width: 16px; height: 16px; margin-top: 2px; flex: none; }
+/* AI chat on a wide window: the page itself never scrolls; only the conversation (and the side panels, if long) do. */
+@media (min-width: 1181px) {
+  html.fit, html.fit body { overflow: hidden; }
+  html.fit .layout { height: var(--vh); }
+  html.fit .mainwrap { display: flex; flex-direction: column; height: var(--vh); min-height: 0; min-width: 0; }
+  html.fit main.wide { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; padding-bottom: 14px; }
+  html.fit .chat-layout { flex: 1 1 0; min-height: 0; grid-template-rows: minmax(0, 1fr); align-items: stretch; }
+  html.fit .convo { height: auto; min-height: 0; }
+  html.fit .chats-panel, html.fit .rail { position: static; align-self: start; max-height: 100%; overflow-y: auto; scrollbar-width: thin; }
+}
 @media (max-width: 1180px) { .chat-layout { grid-template-columns: 210px minmax(0,1fr); } .rail { grid-column: 1 / -1; position: static; max-height: none; } }
 @media (max-width: 760px) { .chat-layout { grid-template-columns: 1fr; } .chats-panel { position: static; } .convo { height: 75vh; } }
 @media (max-width: 760px) {
@@ -510,6 +520,8 @@ function syncLine() {
 function renderView() {
   const m = $("#main");
   m.classList.remove("wide");
+  // The AI chat fits the window (no page scroll); every other screen scrolls as a page.
+  document.documentElement.classList.toggle("fit", S.view === "chat");
   if (S.view === "overview") {
     const a = S.account;
     m.innerHTML = `${requestsBanner()}<div class="row space"><h1>Overview</h1><div class="row">${syncLine()}<button id="sync">Sync now</button></div></div>

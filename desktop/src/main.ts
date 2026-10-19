@@ -10,7 +10,7 @@ import { MCP_TOOLS, runMcp } from "./mcp";
 import { chatResponse } from "./chat-flow";
 import { type ServerEntry, parseSource, stopServer, toolsWithin } from "./mcp-host";
 import { RECOMMENDED, type Suggestion, WEB_SERVER, searchRegistry } from "./web-tools";
-import { APP_SERVER, installSuggestion, installed } from "./mcp-install";
+import { APP_SERVER, installSuggestion, installed, suggestionFromSource } from "./mcp-install";
 import { checkUpdate, cleanOldExecutable, cleanUpdates, installUpdate, newer, prepareWindowedUpdate } from "./updater";
 import { dataDir, sessionPath } from "./paths";
 import indexHtml from "./ui/index.html" with { type: "text" };
@@ -243,7 +243,17 @@ async function route(req: Request, path: string, port: number): Promise<Response
   if (m === "GET" && path === "/app/mcp/servers") return json(await mcpServersView());
   if (m === "POST" && path === "/app/mcp/servers/add") {
     const b = await body<{ source: string; name?: string }>(req);
-    const found = parseSource(String(b.source ?? ""), b.name ? String(b.name) : undefined);
+    // A GitHub repository or npm package link: its published npm package, run with the app's Bun.
+    const src = String(b.source ?? "").trim();
+    if (/^https:\/\/(github\.com|(www\.)?npmjs\.com)\//i.test(src)) {
+      try {
+        installSuggestion(await suggestionFromSource(src));
+      } catch (e) {
+        return json({ error: (e as Error).message }, 400);
+      }
+      return json(await mcpServersView());
+    }
+    const found = parseSource(src, b.name ? String(b.name) : undefined);
     const list = wallet.mcpServers();
     // "web" is the app's own web tools (mcp__web__…).
     for (const [name, entry] of Object.entries(found)) list[name === WEB_SERVER ? "web_2" : name === APP_SERVER ? "kravii_2" : name] = { ...entry, enabled: true, ask: true };

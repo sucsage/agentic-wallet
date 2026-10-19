@@ -57,13 +57,69 @@ export const APP_TOOLS: ToolDef[] = [
   {
     name: "mcp__kravii__add_mcp_server",
     description:
-      "[Built into the Kravii app, runs on the user's computer] Add one MCP server found with mcp__kravii__find_mcp_servers, by its id. The user is asked to allow this call first. Only servers the app can add safely (a remote https URL or an npm package) can be added; a server that needs a key is added turned off and the user fills it in on the MCP page. Its tools are available in the next message.",
-    input_schema: { type: "object", properties: { id: { type: "string", description: "The id from find_mcp_servers" } }, required: ["id"] },
+      "[Built into the Kravii app, runs on the user's computer] Add one MCP server: by its id from mcp__kravii__find_mcp_servers, OR by a source the user gave: a GitHub repository URL (its npm package is used), an npm package name (e.g. @scope/name), an npmjs.com package link, or a remote MCP URL (https). The user is asked to allow this call first. A server that needs a key or a login is added; tell the user to fill those in on the MCP page (its README says which). Its tools are available in the next message.",
+    input_schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "The id from find_mcp_servers" },
+        source: { type: "string", description: "Or: a GitHub repo URL, an npm package name, an npmjs.com link, or a remote https MCP URL" },
+      },
+      required: [],
+    },
   },
 ];
 
 /** The last search's results by id, so add_mcp_server can take one by its id. */
 const found = new Map<string, Suggestion>();
+
+const NPM_NAME = /^(@[a-z0-9][\w.-]*\/)?[a-z0-9][\w.-]*$/i;
+
+/** The npm package's latest version and description, if it is published. */
+async function npmPackage(name: string): Promise<{ version: string; description: string } | null> {
+  if (!NPM_NAME.test(name)) return null;
+  const r = await fetch(`https://registry.npmjs.org/${name.replace("/", "%2F")}`, { signal: AbortSignal.timeout(10_000), headers: { accept: "application/vnd.npm.install-v1+json" } }).catch(() => null);
+  if (!r || !r.ok) return null;
+  const j = (await r.json().catch(() => null)) as { "dist-tags"?: { latest?: string }; description?: string } | null;
+  const v = j?.["dist-tags"]?.latest;
+  return v ? { version: v, description: j?.description ?? "" } : null;
+}
+
+/**
+ * A server from what the user pasted: a GitHub repository (its package.json names the npm package
+ * it publishes), an npm package name or npmjs.com link, or a remote MCP URL. Nothing is run here.
+ */
+export async function suggestionFromSource(raw: string): Promise<Suggestion> {
+  const src = raw.trim();
+  let name: string | null = null;
+  let site: string | undefined;
+  const gh = src.match(/^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:[/#?].*)?$/i);
+  const npmLink = src.match(/^https:\/\/(?:www\.)?npmjs\.com\/package\/((?:@[\w.-]+\/)?[\w.-]+)/i);
+  if (gh) {
+    site = `https://github.com/${gh[1]}/${gh[2]}`;
+    for (const branch of ["main", "master"]) {
+      const r = await fetch(`https://raw.githubusercontent.com/${gh[1]}/${gh[2]}/${branch}/package.json`, { signal: AbortSignal.timeout(10_000) }).catch(() => null);
+      if (r && r.ok) {
+        const pkg = (await r.json().catch(() => null)) as { name?: string; private?: boolean } | null;
+        if (pkg?.name && !pkg.private) name = pkg.name;
+        break;
+      }
+    }
+    if (!name) throw new Error(`${site} has no npm package the app can run (no package.json with a published name). Add it on the MCP page with its config instead.`);
+  } else if (npmLink) {
+    name = npmLink[1];
+    site = src;
+  } else if (/^https:\/\//i.test(src)) {
+    const host = new URL(src).hostname;
+    return { id: `url:${src}`, name: safeName(host.split(".").slice(-2, -1)[0] || "remote"), title: host, description: "Remote MCP server", kind: "remote", entry: { url: src }, site: src };
+  } else if (NPM_NAME.test(src.replace(/@[\w.^~-]+$/, ""))) {
+    name = src.replace(/(.)@[\w.^~-]+$/, "$1");
+  }
+  if (!name) throw new Error("Give a GitHub repository URL, an npm package name, or a remote https MCP URL");
+  const pkg = await npmPackage(name);
+  if (!pkg) throw new Error(`${name} is not published on npm, so the app cannot run it. Add it on the MCP page with its config instead.`);
+  const short = name.replace(/^@[\w.-]+\//, "").replace(/[-_]?mcp[-_]?(server)?/gi, "") || name;
+  return { id: `npm:${name}`, name: safeName(short), title: name, description: pkg.description, kind: "npm", entry: { command: "bun", args: ["x", `${name}@${pkg.version}`] }, site: site ?? `https://www.npmjs.com/package/${name}` };
+}
 
 const view = (s: Suggestion) => ({ id: s.id, title: s.title, what: s.description.slice(0, 240), kind: s.kind, added: installed(s), needs_key: s.needs?.length ? s.needs : undefined });
 
@@ -80,13 +136,14 @@ export async function runAppTool(tool: string, input: unknown): Promise<{ text: 
     }
     if (tool === "add_mcp_server") {
       const id = String(i.id ?? "");
-      const s = found.get(id) ?? RECOMMENDED.find((x) => x.id === id);
-      if (!s) return { text: "Unknown id: call mcp__kravii__find_mcp_servers first and use an id it returned.", isError: true };
+      const source = String(i.source ?? "").trim();
+      const s = source ? await suggestionFromSource(source) : found.get(id) ?? RECOMMENDED.find((x) => x.id === id);
+      if (!s) return { text: "Unknown id: call mcp__kravii__find_mcp_servers first and use an id it returned, or pass the source the user gave.", isError: true };
       if (installed(s)) return { text: `${s.title} is already added on this computer.` };
       const r = installSuggestion(s);
       return {
         text: r.enabled
-          ? `Added ${s.title} as "${r.name}". Its tools are available from the user's next message; the user is asked before each call (they can change that on the MCP page).`
+          ? `Added ${s.title} as "${r.name}"${s.kind === "npm" ? ` (npm package ${String(s.entry.args?.[1] ?? "")}, run with the app's Bun)` : ""}. Its tools are available from the user's next message; the user is asked before each call. If it needs a key, credentials or a login (see ${s.site ?? "its README"}), the user adds them on the MCP page under Edit config (env); until then it may show an error there.`
           : `Added ${s.title} as "${r.name}", turned OFF: it needs ${r.needs.join(", ")}. Tell the user to open the MCP page, fill that in under Edit config, and turn it on.`,
       };
     }
