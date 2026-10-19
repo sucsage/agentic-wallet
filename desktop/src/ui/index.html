@@ -820,6 +820,7 @@ function updateHtml() {
     ${u.available ? `<div class="banner" style="margin:10px 0 0"><b>Version ${esc(u.latest)} is out.</b>${u.notes ? `<div class="hint" style="white-space:pre-wrap;margin-top:4px">${esc(u.notes).slice(0, 600)}</div>` : ""}</div>` : u.latest ? `<p class="ok-box" style="margin:10px 0 0">You have the latest version.</p>` : ""}
     ${u.reason && u.available ? `<p class="hint">${esc(u.reason)}</p>` : u.reason && !u.latest ? `<p class="hint">${esc(u.reason)}</p>` : ""}
     <div class="row" style="margin-top:10px">${u.canInstall ? `<button class="primary" id="upd-go">Update to ${esc(u.latest)} now</button>` : u.available && u.download ? `<a href="${esc(u.download)}" target="_blank" rel="noopener"><button class="primary">Download ${esc(u.latest)}</button></a>` : ""}<button id="upd-check">Check now</button>${u.page ? `<a href="${esc(u.page)}" target="_blank" rel="noopener"><button>Release page</button></a>` : ""}</div>
+    ${u.lastUpdate && /FAILED/.test(u.lastUpdate) ? `<div class="issue warn" style="margin-top:8px">The last update did not go in: ${esc(u.lastUpdate)}. Try again; if it keeps failing, install the new version from the download page (your data stays).</div>` : ""}
     ${u.canInstall ? `<p class="hint">The new version is checked against its SHA-256 before it replaces this one. Kravii closes and opens again by itself, then asks for your passphrase.</p>` : ""}`;
 }
 

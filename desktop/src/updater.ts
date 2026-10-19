@@ -86,9 +86,19 @@ async function manifest(force = false): Promise<Manifest | null> {
   }
 }
 
+/** The last line the Windows update helper wrote (update-log.txt), e.g. why an update did not go in. */
+function lastUpdateNote(): string | null {
+  try {
+    const lines = readFileSync(join(dataDir(), "update-log.txt"), "utf8").trim().split(/\r?\n/);
+    return lines[lines.length - 1]?.slice(0, 300) || null;
+  } catch {
+    return null;
+  }
+}
+
 /** What the Settings card shows: this version, the latest, and whether the app can update itself. */
 export async function checkUpdate(force = false) {
-  const base = { current: VERSION, platform: platformKey(), compiled: compiled() };
+  const base = { current: VERSION, platform: platformKey(), compiled: compiled(), lastUpdate: lastUpdateNote() };
   try {
     const m = await manifest(force);
     if (!m) return { ...base, latest: null, available: false, canInstall: false, reason: "No release published yet", page: `https://github.com/${RELEASE_REPO}/releases` };
@@ -318,36 +328,64 @@ function folderSwap(root: string, fresh: string, version: string): () => void {
   const parts = ["bin", "Resources", "lib"];
   if (process.platform === "win32") {
     const script = join(updatesDir(), "swap.ps1");
+    const log = join(dataDir(), "update-log.txt");
     const q = (s: string) => `'${s.replace(/'/g, "''")}'`;
+    // Runs after this app has quit. Its working folder is outside the app (a process whose current
+    // folder is inside bin keeps bin from being renamed); each move is retried while Windows still
+    // holds files; whatever happens, Kravii is opened again, and the outcome goes to update-log.txt.
     writeFileSync(
       script,
-      `$ErrorActionPreference = 'SilentlyContinue'
-$app = ${q(root)}; $new = ${q(fresh)}
-foreach ($id in @(${process.pid}, ${process.ppid})) { try { Wait-Process -Id $id -Timeout 30 } catch {} }
-Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith("$app\bin\", 'OrdinalIgnoreCase') } | Stop-Process -Force
-Start-Sleep -Milliseconds 500
-$parts = @(${parts.map(q).join(", ")})
-$moved = @(); $ok = $true
-foreach ($p in $parts) {
-  if (-not (Test-Path "$new\$p")) { continue }
-  Remove-Item -Recurse -Force "$app\$p.updating-old"
-  if (Test-Path "$app\$p") { Move-Item "$app\$p" "$app\$p.updating-old" -ErrorAction Stop }
-  $moved += $p
-  try { Move-Item "$new\$p" "$app\$p" -ErrorAction Stop } catch { $ok = $false; break }
+      `$ErrorActionPreference = 'Stop'
+Set-Location -LiteralPath $env:TEMP
+$app = ${q(root)}; $new = ${q(fresh)}; $log = ${q(log)}
+function Note($t) { try { Add-Content -LiteralPath $log -Value ("{0} {1}" -f (Get-Date -Format s), $t) } catch {} }
+function Retry($what, [scriptblock]$do) {
+  for ($i = 0; $i -lt 40; $i++) { try { & $do; return $true } catch { Start-Sleep -Milliseconds 500 } }
+  Note "FAILED: $what"; return $false
 }
-if ($ok) {
-  foreach ($p in $moved) { Remove-Item -Recurse -Force "$app\$p.updating-old" }
-  Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' | Where-Object { (Get-ItemProperty $_.PSPath).DisplayName -eq 'Kravii' } | ForEach-Object { Set-ItemProperty $_.PSPath DisplayVersion ${q(version)} }
-} else {
-  foreach ($p in $moved) { if (Test-Path "$app\$p.updating-old") { Remove-Item -Recurse -Force "$app\$p"; Move-Item "$app\$p.updating-old" "$app\$p" } }
-}
-Start-Process -FilePath "$app\bin\launcher.exe" -WorkingDirectory "$app\bin"
+try {
+  Note "update to ${version}: waiting for Kravii to close"
+  foreach ($id in @(${process.pid}, ${process.ppid})) { try { Wait-Process -Id $id -Timeout 30 -ErrorAction SilentlyContinue } catch {} }
+  try { Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith("$app\\", 'OrdinalIgnoreCase') } | Stop-Process -Force -ErrorAction SilentlyContinue } catch {}
+  Start-Sleep -Milliseconds 800
+  $parts = @(${parts.map(q).join(", ")})
+  $moved = @(); $ok = $true
+  foreach ($p in $parts) {
+    if (-not (Test-Path -LiteralPath "$new\\$p")) { continue }
+    if (Test-Path -LiteralPath "$app\\$p.updating-old") { Remove-Item -LiteralPath "$app\\$p.updating-old" -Recurse -Force -ErrorAction SilentlyContinue }
+    if (Test-Path -LiteralPath "$app\\$p") {
+      if (-not (Retry "move $p aside" { Move-Item -LiteralPath "$app\\$p" -Destination "$app\\$p.updating-old" })) { $ok = $false; break }
+    }
+    $moved += $p
+    if (-not (Retry "move the new $p in" { Move-Item -LiteralPath "$new\\$p" -Destination "$app\\$p" })) { $ok = $false; break }
+  }
+  if ($ok) {
+    foreach ($p in $moved) { Remove-Item -LiteralPath "$app\\$p.updating-old" -Recurse -Force -ErrorAction SilentlyContinue }
+    try { Get-ChildItem 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall' | Where-Object { (Get-ItemProperty $_.PSPath).DisplayName -eq 'Kravii' } | ForEach-Object { Set-ItemProperty $_.PSPath DisplayVersion ${q(version)} } } catch {}
+    Note "OK: ${version} installed"
+  } else {
+    foreach ($p in $moved) {
+      if (Test-Path -LiteralPath "$app\\$p.updating-old") {
+        if (Test-Path -LiteralPath "$app\\$p") { Remove-Item -LiteralPath "$app\\$p" -Recurse -Force -ErrorAction SilentlyContinue }
+        Move-Item -LiteralPath "$app\\$p.updating-old" -Destination "$app\\$p" -ErrorAction SilentlyContinue
+      }
+    }
+    Note "FAILED: kept the version that was installed"
+  }
+} catch { Note ("FAILED: " + $_.Exception.Message) }
+finally { Start-Process -FilePath "$app\\bin\\launcher.exe" -WorkingDirectory "$app\\bin" }
 `,
       "utf8",
     );
+    // PowerShell through wscript: no console window flashes up (this app is a windowed program).
+    const vbs = join(updatesDir(), "swap.vbs");
+    writeFileSync(vbs, `CreateObject("WScript.Shell").Run "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File ""${script}""", 0, False\r\n`, "utf8");
     return () => {
-      const ps = join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
-      spawn(existsSync(ps) ? ps : "powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", script], { detached: true, stdio: "ignore", windowsHide: true }).unref();
+      const sys = join(process.env.SystemRoot ?? "C:\\Windows", "System32");
+      const wscript = join(sys, "wscript.exe");
+      const opts = { detached: true, stdio: "ignore" as const, windowsHide: true, cwd: updatesDir() };
+      if (existsSync(wscript)) spawn(wscript, ["//B", "//Nologo", vbs], opts).unref();
+      else spawn(join(sys, "WindowsPowerShell", "v1.0", "powershell.exe"), ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", script], opts).unref();
       setTimeout(() => process.exit(0), 600);
     };
   }
