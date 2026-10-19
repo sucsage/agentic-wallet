@@ -11,7 +11,7 @@ import { MCP_TOOLS, runMcp } from "./mcp";
 import { chatResponse } from "./chat-flow";
 import { type ServerEntry, parseSource, safeName, stopServer, toolsWithin } from "./mcp-host";
 import { RECOMMENDED, type Suggestion, WEB_SERVER, searchRegistry } from "./web-tools";
-import { checkUpdate, cleanOldExecutable, installUpdate } from "./updater";
+import { checkUpdate, cleanOldExecutable, cleanUpdates, installUpdate, prepareWindowedUpdate } from "./updater";
 import { dataDir, sessionPath } from "./paths";
 import indexHtml from "./ui/index.html" with { type: "text" };
 import extrasJs from "./ui/extras.js" with { type: "text" };
@@ -144,6 +144,13 @@ async function route(req: Request, path: string, port: number): Promise<Response
   }
   if (m === "GET" && path === "/app/update") return json(await checkUpdate(new URL(req.url).searchParams.has("force")));
   if (m === "POST" && path === "/app/update") {
+    // The windowed app: the new version is downloaded, checked and ready; then this app quits and the
+    // new one opens by itself (a new window).
+    if (process.env.AW_SHELL === "electrobun") {
+      const { version, finish } = await prepareWindowedUpdate();
+      setTimeout(finish, 400);
+      return json({ ok: true, version, reopen: true });
+    }
     const version = await installUpdate();
     restartSoon();
     return json({ ok: true, version });
@@ -445,6 +452,7 @@ export async function startApp(opts: { browser: boolean }): Promise<{ url: strin
     }
   }
   cleanOldExecutable();
+  cleanUpdates();
   const token = previous?.token ?? randomBytes(24).toString("base64url");
   // A second, weaker token for MCP agents (read and queue only), kept in the same private file.
   const agentToken = randomBytes(24).toString("base64url");

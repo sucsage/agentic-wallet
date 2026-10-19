@@ -74,6 +74,8 @@ Name: "{userdesktop}\Kravii"; Filename: "{app}\bin\launcher.exe"; WorkingDir: "{
 
 [Run]
 Filename: "{app}\bin\launcher.exe"; WorkingDir: "{app}\bin"; Description: "Open Kravii"; Flags: nowait postinstall skipifsilent
+; An update from inside the app runs this installer silently: open Kravii again afterwards.
+Filename: "{app}\bin\launcher.exe"; WorkingDir: "{app}\bin"; Flags: nowait runasoriginaluser; Check: WizardSilent
 
 [UninstallRun]
 Filename: "{sys}\taskkill.exe"; Parameters: "/F /T /IM launcher.exe"; Flags: runhidden; RunOnceId: "StopLauncher"

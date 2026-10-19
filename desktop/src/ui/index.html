@@ -702,17 +702,22 @@ function updateHtml() {
   return `<table><tr><th>This version</th><td>${esc(u.current)} <span class="hint">(${esc(u.platform)})</span></td></tr><tr><th>Latest release</th><td>${u.latest ? esc(u.latest) : "-"}${u.date ? ` <span class="hint">${new Date(u.date).toLocaleDateString()}</span>` : ""}</td></tr></table>
     ${u.available ? `<div class="banner" style="margin:10px 0 0"><b>Version ${esc(u.latest)} is out.</b>${u.notes ? `<div class="hint" style="white-space:pre-wrap;margin-top:4px">${esc(u.notes).slice(0, 600)}</div>` : ""}</div>` : u.latest ? `<p class="ok-box" style="margin:10px 0 0">You have the latest version.</p>` : ""}
     ${u.reason && u.available ? `<p class="hint">${esc(u.reason)}</p>` : u.reason && !u.latest ? `<p class="hint">${esc(u.reason)}</p>` : ""}
-    <div class="row" style="margin-top:10px">${u.canInstall ? `<button class="primary" id="upd-go">Update to ${esc(u.latest)} and restart</button>` : u.available && u.download ? `<a href="${esc(u.download)}" target="_blank" rel="noopener"><button class="primary">Download ${esc(u.latest)}</button></a>` : ""}<button id="upd-check">Check now</button>${u.page ? `<a href="${esc(u.page)}" target="_blank" rel="noopener"><button>Release page</button></a>` : ""}</div>
-    ${u.canInstall ? `<p class="hint">The new version is checked against its SHA-256 before it replaces this one. The app restarts and asks for your passphrase again.</p>` : ""}`;
+    <div class="row" style="margin-top:10px">${u.canInstall ? `<button class="primary" id="upd-go">Update to ${esc(u.latest)} now</button>` : u.available && u.download ? `<a href="${esc(u.download)}" target="_blank" rel="noopener"><button class="primary">Download ${esc(u.latest)}</button></a>` : ""}<button id="upd-check">Check now</button>${u.page ? `<a href="${esc(u.page)}" target="_blank" rel="noopener"><button>Release page</button></a>` : ""}</div>
+    ${u.canInstall ? `<p class="hint">The new version is checked against its SHA-256 before it replaces this one. Kravii closes and opens again by itself, then asks for your passphrase.</p>` : ""}`;
 }
 
 function wireUpdate() {
   const c = $("#upd-check"); if (c) c.onclick = async () => { S.update = null; $("#upd").innerHTML = updateHtml(); S.update = await api("/app/update?force=1").catch((e) => ({ current: "?", reason: e.message })); renderView(); };
   const g = $("#upd-go"); if (g) g.onclick = async () => {
-    if (!confirm(`Update Kravii to ${S.update.latest}? It restarts and asks for your passphrase again.`)) return;
+    if (!confirm(`Update Kravii to ${S.update.latest}? It downloads the new version (checked against its SHA-256), closes and opens again, then asks for your passphrase.`)) return;
     S.updating = "Downloading and checking the new version…"; $("#upd").innerHTML = updateHtml();
     try {
       const r = await api("/app/update", "POST");
+      if (r.reopen) {
+        // The windowed app quits now and opens again as the new version, in a new window.
+        $("#root").innerHTML = `<div class="center"><div class="card narrow"><div class="brand"><span class="mark"></span>Kravii</div><p><span class="spin"></span> Installing version ${esc(r.version)}…</p><p class="hint">Kravii closes and opens again by itself in a few seconds. Your wallet data stays; you unlock with your passphrase again.</p></div></div>`;
+        return;
+      }
       S.updating = `Restarting as version ${r.version}…`; $("#upd").innerHTML = updateHtml();
       // The new process takes over the same port and token; reload once it answers with the new version.
       for (let i = 0; i < 80; i++) {
