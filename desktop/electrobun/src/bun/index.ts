@@ -20,9 +20,10 @@ if (process.argv.includes("--mcp")) {
   const { readFileSync, writeFileSync } = await import("node:fs");
   const { join } = await import("node:path");
   const win32 = process.platform === "win32" ? await import("./win32") : null;
+  const macos = process.platform === "darwin" ? await import("./macos") : null;
   // Before any window exists: sharp at any Windows scaling, and our own taskbar entry and icon.
   win32?.beforeWindows();
-  const { startApp, setWindowControl } = await import("../../../src/main");
+  const { startApp, setWindowControl, setWindowPrefsHook, appPrefs } = await import("../../../src/main");
   const { dataDir } = await import("../../../src/paths");
   const { default: Electrobun, ApplicationMenu, BrowserWindow, Screen, Tray, Utils } = await import("electrobun/bun");
   const { url } = await startApp({ browser: false });
@@ -31,7 +32,7 @@ if (process.argv.includes("--mcp")) {
   const chrome = process.platform === "darwin" ? "mac" : "";
   const pageUrl = chrome ? url.replace("/#", `/?chrome=${chrome}#`) : url;
 
-  type Frame = { x: number; y: number; width: number; height: number };
+  type Frame = { x: number; y: number; width: number; height: number; maximized?: boolean };
   const savedPath = join(dataDir(), "window.json");
   /** The last size and position if it still fits a screen, else a size that fits this screen. */
   function startFrame(): Frame {
@@ -39,6 +40,7 @@ if (process.argv.includes("--mcp")) {
     const W = area.width || 1440, H = area.height || 900;
     try {
       const f = JSON.parse(readFileSync(savedPath, "utf8")) as Frame;
+      startMaximized = f.maximized ?? process.platform === "win32";
       const fits = Screen.getAllDisplays().some((d) => f.x >= d.workArea.x - 40 && f.y >= d.workArea.y - 40 && f.x + 200 <= d.workArea.x + d.workArea.width && f.y + 100 <= d.workArea.y + d.workArea.height);
       if (fits && f.width >= 720 && f.height >= 480) return { ...f, width: Math.min(f.width, W), height: Math.min(f.height, H) };
     } catch {
@@ -49,12 +51,15 @@ if (process.argv.includes("--mcp")) {
     return { x: area.x + Math.round((W - width) / 2), y: area.y + Math.round((H - height) / 2), width, height };
   }
 
+  // Windows: the first start (and a window closed maximized) opens maximized, filling the screen.
+  let startMaximized = process.platform === "win32";
   let win: InstanceType<typeof BrowserWindow> | null = null;
   let lastSaved = "";
   const saveFrame = () => {
     if (!win) return;
     try {
-      const f = JSON.stringify(win.getFrame());
+      const maximized = win.isMaximized();
+      const f = JSON.stringify({ ...(maximized && lastSaved ? JSON.parse(lastSaved) : win.getFrame()), maximized });
       if (f !== lastSaved) writeFileSync(savedPath, (lastSaved = f));
     } catch {
       // the window is closing
@@ -76,8 +81,18 @@ if (process.argv.includes("--mcp")) {
       activate: true,
     });
     win32?.styleWindow(win.ptr);
+    if (startMaximized) win.maximize();
+    applyPrefs(appPrefs());
     console.log(`[window] opened ${win.id}`);
   };
+
+  /** Screen recording and screenshots of the window, as set in Settings (developer tools are the page's). */
+  const applyPrefs = (p: { screenCapture: boolean }) => {
+    if (!win) return;
+    win32?.setCaptureAllowed(win.ptr, p.screenCapture);
+    macos?.setCaptureAllowed(win.ptr, p.screenCapture);
+  };
+  setWindowPrefsHook(applyPrefs);
 
   // What the page's own title bar asks for (Windows buttons, double-click to zoom on macOS).
   setWindowControl((op) => {

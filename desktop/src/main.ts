@@ -2,6 +2,7 @@ import { VERSION } from "./version";
 import { spawn as spawnProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 import { ApiError } from "./api";
 import { wallet } from "./core";
@@ -292,6 +293,14 @@ async function route(req: Request, path: string, port: number): Promise<Response
     windowControl(op as "minimize" | "maximize" | "close");
     return json({ ok: true });
   }
+  if (m === "GET" && path === "/app/window-prefs") return json({ ...appPrefs(), windowed: Boolean(windowPrefsHook) });
+  if (m === "POST" && path === "/app/window-prefs") {
+    const b = await body<Partial<AppPrefs>>(req);
+    const next = { ...appPrefs(), ...(typeof b.devtools === "boolean" ? { devtools: b.devtools } : {}), ...(typeof b.screenCapture === "boolean" ? { screenCapture: b.screenCapture } : {}) };
+    writeFileSync(join(dataDir(), "app-prefs.json"), JSON.stringify(next));
+    windowPrefsHook?.(next);
+    return json({ ...next, windowed: Boolean(windowPrefsHook) });
+  }
   if (m === "GET" && path === "/app/web-tools") return json(wallet.webTools());
   if (m === "POST" && path === "/app/web-tools") return json(wallet.setWebTools(await body(req)));
   if (m === "POST" && path === "/app/mcp/servers/remove") {
@@ -542,6 +551,25 @@ export async function startApp(opts: { browser: boolean }): Promise<{ url: strin
 }
 
 export { runMcp };
+
+/**
+ * This computer's window settings: whether the page's developer tools (Inspect, F12) may open, and
+ * whether screen recording and screenshots may capture the window (off: it shows blank in them).
+ */
+export type AppPrefs = { devtools: boolean; screenCapture: boolean };
+export function appPrefs(): AppPrefs {
+  try {
+    const p = JSON.parse(readFileSync(join(dataDir(), "app-prefs.json"), "utf8")) as Partial<AppPrefs>;
+    return { devtools: p.devtools === true, screenCapture: p.screenCapture !== false };
+  } catch {
+    return { devtools: false, screenCapture: true };
+  }
+}
+let windowPrefsHook: ((p: AppPrefs) => void) | null = null;
+/** The windowed build applies the settings to its window (screen capture) when they change. */
+export function setWindowPrefsHook(fn: typeof windowPrefsHook) {
+  windowPrefsHook = fn;
+}
 
 /** The windowed build's controls for the page's own title bar (minimize, maximize, close). */
 let windowControl: ((op: "minimize" | "maximize" | "close") => void) | null = null;

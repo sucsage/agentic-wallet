@@ -62,3 +62,18 @@ export function styleWindow(hwnd: unknown) {
     if (big) u.SendMessageW(hwnd as never, 0x80, 1n, big);
   });
 }
+
+/**
+ * Screen recording and screenshots: off makes Windows show the window blank (or leave it out) in
+ * captures, screen sharing and Snipping Tool (WDA_EXCLUDEFROMCAPTURE, Windows 10 2004+; older
+ * Windows: WDA_MONITOR, shown black).
+ */
+export function setCaptureAllowed(hwnd: unknown, allowed: boolean) {
+  if (!hwnd) return;
+  tryRun("screen capture", () => {
+    const user32 = dlopen("user32.dll", { SetWindowDisplayAffinity: { args: [FFIType.ptr, FFIType.u32], returns: FFIType.i32 } });
+    const set = user32.symbols.SetWindowDisplayAffinity;
+    if (allowed) set(hwnd as never, 0);
+    else if (!set(hwnd as never, 0x11)) set(hwnd as never, 0x1);
+  });
+}

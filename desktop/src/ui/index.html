@@ -272,11 +272,16 @@ const zoomNow = () => { const p = zoomPref(); return p === "auto" ? autoZoom() :
 function applyZoom() {
   const z = zoomNow(), tb = CHROME === "mac" ? 36 : CHROME === "win" ? 34 : 0;
   document.body.style.zoom = String(z);
+  // The page fills the window at any size: its width is set in zoomed pixels (WebView2 on Windows
+  // otherwise left a strip on the right at sizes below 100%).
+  document.body.style.width = `${document.documentElement.clientWidth / z}px`;
   const r = document.documentElement.style;
   r.setProperty("--tb", `${tb / z}px`);
   r.setProperty("--vh", `${(innerHeight - tb) / z}px`);
 }
 function setZoom(p) { try { localStorage.setItem("awzoom", String(p)); } catch {} applyZoom(); }
+/** Whether the page's developer tools may open (Settings → Privacy and developer tools; off by default). */
+let DEVTOOLS = false;
 function windowChrome() {
   if (CHROME) {
     document.body.classList.add("chrome");
@@ -291,12 +296,20 @@ function windowChrome() {
   addEventListener("resize", applyZoom);
   // Right-click: no browser menu (Back, Reload, Inspect…) on the app's screens; text boxes and
   // selected text keep the system's Cut / Copy / Paste menu.
+  // With developer tools off (Settings), no menu at all: the system's menu offers Inspect.
   addEventListener("contextmenu", (e) => {
     const t = e.target;
     const editable = t && t.closest && t.closest("input, textarea, select, [contenteditable=''], [contenteditable=true]");
     const selected = String(getSelection && getSelection()).trim();
-    if (!editable && !selected) e.preventDefault();
+    if (!DEVTOOLS || (!editable && !selected)) e.preventDefault();
   });
+  // Developer tools off: F12, Ctrl+Shift+I/J/C, ⌘⌥I/J/C and view-source do nothing.
+  addEventListener("keydown", (e) => {
+    if (DEVTOOLS) return;
+    const k = (e.key || "").toLowerCase();
+    const inspect = e.key === "F12" || ((e.ctrlKey || e.metaKey) && (e.shiftKey || e.altKey) && ["i", "j", "c"].includes(k)) || ((e.ctrlKey || e.metaKey) && k === "u");
+    if (inspect) { e.preventDefault(); e.stopImmediatePropagation(); }
+  }, true);
   // Ctrl/⌘ + and − change the display size, Ctrl/⌘ 0 goes back to the size that fits the screen.
   addEventListener("keydown", (e) => {
     if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
@@ -313,6 +326,7 @@ const S = { lang: (() => { try { return localStorage.getItem("awlang") || "th"; 
 function showErr(el, e) { el.textContent = e.message || String(e); el.style.display = "block"; }
 
 async function boot() {
+  api("/app/window-prefs").then((p) => { DEVTOOLS = p.devtools === true; S.winPrefs = p; }).catch(() => undefined);
   if (!TOKEN) { $("#root").innerHTML = `<div class="center"><div class="card narrow"><div class="brand"><span class="mark"></span>Kravii</div><p>Open the app from the link it printed in its window (it carries a private token).</p></div></div>`; return; }
   S.info = await api("/app/state");
   render();
@@ -673,10 +687,16 @@ function renderView() {
         <p class="hint">Keep the file somewhere safe (it is encrypted with your passphrase). Lost computer? Remove it on the website (Profile → Desktop app).</p></div>
       <div class="card" style="margin-top:12px"><h2>Display size</h2><p class="hint" style="margin-top:0">How big everything looks. "Fit this screen" picks a size from your screen (smaller on laptops). Shortcuts: ${/Mac/.test(navigator.platform) ? "⌘" : "Ctrl"} + and − change it, ${/Mac/.test(navigator.platform) ? "⌘" : "Ctrl"} 0 goes back to fit.</p>
         <select id="zoom" style="width:auto">${[["auto", `Fit this screen (${Math.round(autoZoom() * 100)}%)`], ...ZOOMS.map((z) => [String(z), `${Math.round(z * 100)}%`])].map(([v, t]) => `<option value="${v}" ${zoomPref() === v ? "selected" : ""}>${t}</option>`).join("")}</select></div>
+      <div class="card" style="margin-top:12px"><h2>Privacy and developer tools</h2>
+        <label class="switch"><input type="checkbox" id="wp-cap" ${!S.winPrefs || S.winPrefs.screenCapture ? "checked" : ""}><span><b>Allow screen recording and screenshots of Kravii</b><div class="hint">Off: screenshots, screen recordings and screen sharing show the Kravii window blank (balances, deals and codes stay private). Turn it on to record a demo.</div></span></label>
+        <label class="switch"><input type="checkbox" id="wp-dev" ${S.winPrefs && S.winPrefs.devtools ? "checked" : ""}><span><b>Developer tools (Inspect, F12)</b><div class="hint">Off: F12, Inspect and the right-click menu do nothing. Only for checking the app's page.</div></span></label></div>
       <div class="card" style="margin-top:12px"><h2>App version and updates</h2><div id="upd">${updateHtml()}</div></div>
       <div class="card" style="margin-top:12px"><h2>Quit</h2><p class="hint">Closing the window keeps the app running in the ${/Mac/.test(navigator.platform) ? "menu bar" : "tray"} (AI agents and syncing use it). Quit stops it; open Kravii again to start it.</p><button id="quit" class="danger">Quit Kravii</button></div>`;
     $("#quit").onclick = async () => { if (!confirm("Quit Kravii? Open it again to use it.")) return; await api("/app/quit", "POST").catch(() => null); $("#root").innerHTML = `<div class="center"><div class="card narrow">Kravii has stopped.</div></div>`; };
     $("#zoom").onchange = (e) => setZoom(e.target.value);
+    const savePrefs = async (patch) => { try { S.winPrefs = await api("/app/window-prefs", "POST", patch); DEVTOOLS = S.winPrefs.devtools === true; toast("Saved"); } catch (e) { toast(e.message); } };
+    $("#wp-cap").onchange = (e) => savePrefs({ screenCapture: e.target.checked });
+    $("#wp-dev").onchange = (e) => savePrefs({ devtools: e.target.checked });
     wireUpdate();
   }
   wireDealButtons();
