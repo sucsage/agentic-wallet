@@ -1,6 +1,7 @@
 import { wallet } from "./core";
 import { aiTools, callTool, resolveTool } from "./mcp-host";
 import { WEB_SERVER, WEB_TOOLS, runWebTool } from "./web-tools";
+import { APP_SERVER, APP_TOOLS, runAppTool } from "./mcp-install";
 
 /**
  * The AI chat as the app's screen sees it: one Server-Sent Events stream per message. The reply and
@@ -24,6 +25,8 @@ const MAX_ROUNDS = 8;
 
 /** The app's own web tool a name is (search, read_page), if it is one. */
 const builtin = (name: string) => (WEB_TOOLS.some((t) => t.name === name) ? name.slice(`mcp__${WEB_SERVER}__`.length) : null);
+/** The app's own MCP-finding tools (find_mcp_servers, add_mcp_server), if it is one. */
+const appTool = (name: string) => (APP_TOOLS.some((t) => t.name === name) ? name.slice(`mcp__${APP_SERVER}__`.length) : null);
 
 /** Reads a text/event-stream response as { event, data } pairs. */
 async function* events(res: Response): AsyncGenerator<{ event: string; data: unknown }> {
@@ -50,6 +53,20 @@ async function runCalls(calls: Call[], allow: (c: Call) => boolean, emit: (e: st
   const servers = wallet.mcpServers();
   const results: { id: string; content: string; isError?: boolean }[] = [];
   for (const c of calls) {
+    const own = appTool(c.name);
+    if (own) {
+      if (!allow(c)) {
+        results.push({ id: c.id, content: "The user declined this tool call.", isError: true });
+        emit("mcp", { id: c.id, server: APP_SERVER, tool: own, status: "declined" });
+        continue;
+      }
+      emit("mcp", { id: c.id, server: APP_SERVER, tool: own, status: "running", input: c.input });
+      const started = Date.now();
+      const out = await runAppTool(own, c.input);
+      results.push({ id: c.id, content: out.text, isError: out.isError });
+      emit("mcp", { id: c.id, server: APP_SERVER, tool: own, status: out.isError ? "error" : "done", ms: Date.now() - started, input: c.input, ...(out.isError ? { error: out.text.slice(0, 200) } : {}) });
+      continue;
+    }
     const web = builtin(c.name);
     if (web) {
       if (!wallet.webTools().enabled || !allow(c)) {
@@ -95,7 +112,7 @@ export function chatResponse(input: ChatInput): Response {
       const emit = (event: string, data: unknown) => controller.enqueue(enc.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
       try {
         const servers = wallet.mcpServers();
-        const clientTools = [...(wallet.webTools().enabled ? WEB_TOOLS : []), ...(await aiTools(servers).catch(() => []))].slice(0, 64);
+        const clientTools = [...APP_TOOLS, ...(wallet.webTools().enabled ? WEB_TOOLS : []), ...(await aiTools(servers).catch(() => []))].slice(0, 64);
         let resume: { state: string; results: unknown[] } | undefined;
         if (input.resume) {
           const allowed = input.resume.allow;
@@ -122,6 +139,9 @@ export function chatResponse(input: ChatInput): Response {
           // Which server each call is for, and whether the user wants to be asked.
           const now = wallet.mcpServers();
           const calls = pending.calls.map((c) => {
+            // Finding servers reads only; adding one always asks the user first.
+            const own = appTool(c.name);
+            if (own) return { ...c, server: APP_SERVER, tool: own, ask: own === "add_mcp_server" };
             const web = builtin(c.name);
             if (web) return { ...c, server: WEB_SERVER, tool: web, ask: wallet.webTools().ask };
             const r = resolveTool(now, c.name);

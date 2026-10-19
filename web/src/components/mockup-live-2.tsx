@@ -135,6 +135,21 @@ type Approvals = {
   proposals: { id: number; summary: string }[];
 };
 
+/**
+ * A deal's state in words. The chain's deal status stays "Active" after the last milestone is
+ * settled, so a deal whose milestones are all paid, refunded or split reads as finished.
+ */
+function dealStatusLabel(status: string, milestones: { status: string }[]): string {
+  if (status === "Cancelled") return "Cancelled";
+  if (milestones.length && milestones.every((m) => ["Released", "Refunded", "Split"].includes(m.status))) {
+    if (milestones.every((m) => m.status === "Released")) return "Completed";
+    if (milestones.every((m) => m.status === "Refunded")) return "Refunded";
+    return "Completed · settled";
+  }
+  if (milestones.some((m) => m.status === "Disputed")) return "Dispute";
+  return status === "Active" ? "In progress" : status;
+}
+
 export function LiveApprovals() {
   const lang = useLang();
   const { me, refresh } = useAppData();
@@ -2459,7 +2474,7 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
                 : "…"}
             </small>
             <h1>
-              {data?.title ?? "…"} <span>{data?.status}</span>
+              {data?.title ?? "…"} <span>{data ? dealStatusLabel(data.status, data.milestones) : ""}</span>
             </h1>
             <p>
               {data?.kind === "HIRE" ? (data.role === "buyer" ? "Contractor" : "Client") : data?.role === "buyer" ? "Seller" : "Buyer"}: {data?.counterpartyLabel || data?.counterparty}
@@ -2848,7 +2863,7 @@ export function LiveDealDetail({ dealId, go }: { dealId: string; go: (screen: st
             </button>
             {evidence && (
               <ul>
-                <li>Deal D-{data.id} · {data.status} · escrow {data.escrow ? <a href={data.escrow} target="_blank" rel="noreferrer">contract ↗</a> : "—"}</li>
+                <li>Deal D-{data.id} · {dealStatusLabel(data.status, data.milestones)} · escrow {data.escrow ? <a href={data.escrow} target="_blank" rel="noreferrer">contract ↗</a> : "—"}</li>
                 {data.milestones.map((m) => (
                   <li key={m.index}>
                     Milestone {m.index + 1} · {m.status}

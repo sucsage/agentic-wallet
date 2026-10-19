@@ -69,6 +69,13 @@ h2 { font-size: 15px; margin: 0 0 10px; }
 .chip.ok { color: var(--ok); } .chip.ok::before { background: var(--ok); }
 .chip.bad { color: var(--bad); } .chip.bad::before { background: var(--bad); }
 .chip.warn { color: var(--warn); } .chip.warn::before { background: var(--warn); }
+.vote-box { margin-top: 10px; display: grid; gap: 8px; }
+.deal-form .form-field { margin-top: 10px; }
+.deal-form .form-field label { display: block; font-weight: 600; margin-bottom: 4px; }
+.chips-pick { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.chips-pick button { padding: 4px 10px; border-radius: 999px; }
+.chips-pick button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.vote-item { border: 1px solid var(--warn); border-radius: 10px; padding: 10px 12px; background: color-mix(in srgb, var(--warn) 7%, transparent); }
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .space { justify-content: space-between; }
 .deal { margin-bottom: 12px; }
@@ -112,7 +119,7 @@ button .spin { width: 13px; height: 13px; border-width: 2px; border-color: #bbb;
 .composer { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: end; position: sticky; bottom: 0; background: var(--bg); padding: 10px 0; }
 .composer textarea { resize: vertical; min-height: 46px; max-height: 200px; border-radius: 13px; }
 .issue { font-size: 12px; padding: 5px 9px; border-radius: 9px; margin-top: 5px; }
-.issue.block { background: var(--bad-bg); color: var(--bad); } .issue.warn { background: var(--warn-bg); color: var(--warn); }
+.issue.block { background: var(--bad-bg); color: var(--bad); } .issue.warn { background: var(--warn-bg); color: var(--warn); } .issue.info { background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--ink); }
 .in { color: var(--ok); } .out { color: var(--bad); }
 .acting { margin: 0 4px 10px; padding: 8px; border: 1px solid var(--line-2); border-radius: 10px; }
 .acting.on { border-color: #6657a9; background: #1a1530; }
@@ -514,8 +521,8 @@ function renderView() {
       <div class="card"><h2>Top up</h2>${t ? `<form id="tf"><div class="row"><input name="amount" type="number" min="1" step="1" placeholder="Amount (${esc(t.currency)})" required style="flex:1"></div>
         <div class="row" style="margin-top:8px">${t.currency === "THB" ? `<button data-m="promptpay" class="primary">PromptPay QR</button>` : ""}<button data-m="card">Card</button>${t.card ? `<button data-m="linked">${esc(t.card.brand)} ··${esc(t.card.last4)}</button>` : ""}${t.counter ? `<button data-m="counter">Counter slip</button>` : ""}</div>
         <div class="hint" style="margin-top:6px">Up to ${money(t.limit, t.currency)}. PromptPay and card open Stripe (test mode) in your browser, then come back here. Test card 4242 4242 4242 4242.</div></form><div id="tres"></div>` : `<p class="hint">Loading…</p>`}</div></div>
-      ${a ? `<div class="card"><table><thead><tr><th>When</th><th>What</th><th>With</th><th style="text-align:right">Amount</th></tr></thead><tbody>
-      ${a.rows.length ? a.rows.map((r) => `<tr><td class="hint">${when(r.at)}</td><td>${esc(r.label)}${r.txHash ? `<div class="mono hint">${short(r.txHash)}</div>` : ""}</td><td>${esc(r.counterparty)}</td><td style="text-align:right" class="${r.direction}"><b>${r.direction === "in" ? "+" : "−"}${money(r.amount, a.currency)}</b></td></tr>`).join("") : `<tr><td colspan="4" class="hint">Nothing yet.</td></tr>`}
+      ${a ? `<div class="card"><table><thead><tr><th>When</th><th>What</th><th>From / to</th><th style="text-align:right">Amount</th></tr></thead><tbody>
+      ${a.rows.length ? a.rows.map((r) => `<tr><td class="hint">${when(r.at)}</td><td>${esc(r.label)}${r.txHash ? `<div class="mono hint">${short(r.txHash)}</div>` : ""}</td><td>${r.who && r.who.name ? `<b>${esc(r.who.name)}</b>${r.who.deal ? `<div class="hint">${esc(r.who.deal)}${r.counterparty === "Kravii escrow" ? " · via escrow" : ""}</div>` : ""}` : `${esc(r.counterparty)}${r.who && r.who.deal ? `<div class="hint">${esc(r.who.deal)}</div>` : ""}`}</td><td style="text-align:right" class="${r.direction}"><b>${r.direction === "in" ? "+" : "−"}${money(r.amount, a.currency)}</b></td></tr>`).join("") : `<tr><td colspan="4" class="hint">Nothing yet.</td></tr>`}
       </tbody></table></div>` : `<div class="card hint">Loading…</div>`}`;
     $("#sync").onclick = () => load();
     { const sm = $("#x-send"); if (sm) sm.onclick = () => sendMoneyDialog(); }
@@ -598,10 +605,10 @@ function renderView() {
     const g = S.groups;
     const friends = (S.friends || []).filter((f) => f.status === "ACCEPTED");
     m.innerHTML = `<div class="row space"><h1>Groups</h1><div class="row"><button id="x-company">Register a company</button><button id="sync">Refresh</button></div></div>
-      ${g && g.votes.length ? `<div class="banner"><b>Payments waiting for your vote</b>${g.votes.map((v) => `<div class="req row space"><div><b>${esc(v.title)}</b><div class="hint">${esc(v.group.name)} · ${v.yes} of ${v.group.threshold} yes so far</div></div><div class="row"><button class="primary" data-vote="${esc(v.proposalId)}" data-yes="1">Approve</button><button data-vote="${esc(v.proposalId)}" data-yes="0">Reject</button></div></div>`).join("")}</div>` : ""}
+      ${g && g.votes.length ? `<div class="banner"><b>${g.votes.length} vote${g.votes.length === 1 ? "" : "s"} waiting for you</b> <span class="hint">Each one is in its group below, with what it pays and to whom.</span></div>` : ""}
       ${g && g.invites.length ? `<div class="banner"><b>Invitations</b>${g.invites.map((i) => `<div class="req row space"><div><b>${esc(i.group?.name || i.name || "A group")}</b><div class="hint">${i.canSign ? "as a signer" : "as a member"}</div></div><div class="row"><button class="primary" data-inv="${esc(i.id)}" data-yes="1">Join</button><button data-inv="${esc(i.id)}" data-yes="0">Decline</button></div></div>`).join("")}</div>` : ""}
       <div id="glist">${g ? (g.groups.length ? g.groups.map((x) => `<div class="card deal"><div class="row space"><b>${esc(x.name)}</b><span class="chip">${x.threshold} of ${x.members.filter((mm) => mm.canSign).length} signers</span></div>
-        <div class="hint">${x.members.map((mm) => `${esc(mm.name)}${mm.role === "ADMIN" ? " (admin)" : ""}${mm.canSign ? " ✍" : ""}`).join(" · ")}${x.invited ? ` · ${x.invited} invited` : ""}</div>${x.openProposals ? `<div class="hint">${x.openProposals} open proposal(s)</div>` : ""}${groupWalletHtml(x)}${groupDealsHtml(x)}${groupManageHtml(x)}</div>`).join("") : `<div class="card hint">No groups yet.</div>`) : `<div class="card hint">Loading…</div>`}</div>
+        <div class="hint">${x.members.map((mm) => `${esc(mm.name)}${mm.role === "ADMIN" ? " 👑 owner" : ""}${mm.canSign ? " ✍" : ""}`).join(" · ")}${x.invited ? ` · ${x.invited} invited` : ""}</div>${groupVotesHtml(x, g.votes)}${x.openProposals && !g.votes.some((v) => v.group.id === x.id) ? `<div class="hint">${x.openProposals} open proposal(s): you voted already, or you are not a signer</div>` : ""}${groupWalletHtml(x)}${groupDealsHtml(x)}${groupManageHtml(x)}</div>`).join("") : `<div class="card hint">No groups yet.</div>`) : `<div class="card hint">Loading…</div>`}</div>
       <div class="card" style="margin-top:12px"><h2>New group</h2><form id="gf"><label>Name</label><input name="name" required minlength="2" maxlength="60" placeholder="e.g. Coffee shop partners">
         <label>Members (friends)</label>${friends.length ? friends.map((f) => `<div class="row" style="margin:4px 0"><label style="margin:0;font-weight:400;display:flex;gap:6px;align-items:center"><input type="checkbox" name="mem" value="${esc(f.userId)}" style="width:auto"> ${esc(f.name)}</label><label style="margin:0;font-weight:400;display:flex;gap:6px;align-items:center" class="hint"><input type="checkbox" name="sign" value="${esc(f.userId)}" checked style="width:auto"> can sign</label></div>`).join("") : `<p class="hint">Add friends first.</p>`}
         <label>Votes needed to pay (at least 2)</label><input name="threshold" type="number" min="2" value="2" required style="width:120px">
@@ -631,7 +638,7 @@ function renderView() {
       ${S.deals && S.deals.length ? `<div class="row" style="margin-bottom:12px"><input id="dq" placeholder="Search deals" value="${esc(S.dealQ || "")}" style="flex:1;min-width:160px">
         <select id="dfile" style="width:auto">${[["all", "Any files"], ["asks", "Asks for documents / files"], ["pdf", "Asks for a PDF"], ["todo", "I still have to send a file"], ["review", "Files delivered to me to review"]].map(([v, t]) => `<option value="${v}" ${S.dealFile === v ? "selected" : ""}>${t}</option>`).join("")}</select>
         <span class="hint">${dealsShown().length} of ${S.deals.length}</span></div>` : ""}
-      <div id="deals">${S.deals ? (S.deals.length ? (dealsShown().length ? dealsShown().map(dealHtml).join("") : `<div class="card hint">No deal matches these filters.</div>`) : `<div class="card hint">No deals yet.</div>`) : `<div class="card hint">Loading…</div>`}</div>`;
+      <div id="deals">${S.deals ? (S.deals.length ? (dealsShown().length ? dealZonesHtml(dealsShown()) : `<div class="card hint">No deal matches these filters.</div>`) : `<div class="card hint">No deals yet.</div>`) : `<div class="card hint">Loading…</div>`}</div>`;
     $("#sync").onclick = () => doSync();
     const dq = $("#dq"); if (dq) dq.oninput = () => { S.dealQ = dq.value; const pos = dq.selectionStart; renderView(); const n = $("#dq"); n.focus(); n.setSelectionRange(pos, pos); };
     const df = $("#dfile"); if (df) df.onchange = () => { S.dealFile = df.value; renderView(); };
@@ -679,6 +686,84 @@ function renderView() {
   if (S.view === "deals") wireDrafts();
 }
 
+/**
+ * A delivered file on a milestone: the watermarked preview (images, PDFs), a web page to try in a
+ * sandbox (.html), the file itself once it is paid, or a line saying why there is no preview.
+ */
+function fileButtons(d, m) {
+  if (!m.file) return "";
+  const site = m.file.mime === "text/html" || /\.html?$/i.test(m.file.name || "");
+  const paid = m.status === "Released" || m.status === "KeyReleased";
+  const out = [];
+  if (m.file.preview) out.push(`<button data-preview="${d.id}" data-i="${m.index}" data-name="${esc(m.file.name)}">Preview</button>`);
+  if (site) out.push(`<button data-site="${d.id}" data-i="${m.index}">Try the page</button>`);
+  if (paid && d.role === "buyer") out.push(`<button data-dl="${d.id}" data-i="${m.index}">Download</button>`);
+  if (!out.length) {
+    const ext = ((m.file.name || "").match(/\.([a-z0-9]+)$/i) || [])[1];
+    out.push(`<span class="hint" title="Previews are made for images, PDFs and web pages">No preview for ${ext ? `.${esc(ext)}` : "this"} files · ${d.role === "buyer" ? "it opens for you after you approve" : "the buyer gets it after approving"}</span>`);
+  }
+  return out.join("");
+}
+
+const SETTLED_MS = ["Released", "Refunded", "Split"];
+/** The deal's state in words: a deal whose milestones are all settled is finished, not Active. */
+function dealChip(d) {
+  const ms = d.milestones || [];
+  if (d.status === "Cancelled") return `<span class="chip">Cancelled</span>`;
+  if (ms.length && ms.every((m) => SETTLED_MS.includes(m.status))) {
+    const paid = ms.every((m) => m.status === "Released"), back = ms.every((m) => m.status === "Refunded");
+    return `<span class="chip ${back ? "" : "ok"}">${paid ? "Completed · paid" : back ? "Refunded" : "Completed · settled"}</span>`;
+  }
+  if (ms.some((m) => m.status === "Disputed")) return `<span class="chip bad">Dispute</span>`;
+  return `<span class="chip ${STATUS_CHIP[d.status] || ""}">${d.status === "Active" ? "In progress" : esc(d.status)}</span>`;
+}
+/** Which part of the Deals page a deal goes in: what needs you first, finished deals last. */
+function dealZone(d) {
+  const ms = d.milestones || [];
+  if (d.status === "Cancelled" || (ms.length && ms.every((m) => SETTLED_MS.includes(m.status)))) return "done";
+  if (d.status === "Proposed") return d.offeredBy === "them" ? "accept" : "waiting";
+  if (d.role === "buyer" && ms.some((m) => m.status === "Delivered" || m.status === "KeyReleased")) return "approve";
+  if (d.role === "seller" && ms.some((m) => m.status === "Pending" && m.delivery !== "deposit")) return "deliver";
+  if (d.role === "seller" && ms.some((m) => ["Delivered", "Approved", "KeyReleased"].includes(m.status))) return "delivered";
+  return "progress";
+}
+const DEAL_ZONES = [
+  ["approve", "Work delivered: check and approve", "The seller delivered. Look at the preview, then approve (pays the seller) or ask for changes."],
+  ["accept", "Offers waiting for you to accept", "Read the terms and accept (sign) or decline."],
+  ["deliver", "Work you still have to deliver", "Deliver each milestone with its file, parcel or note."],
+  ["delivered", "Delivered: waiting for the buyer", "Your part is done. The buyer approves (you are paid), or asks for changes; if they do nothing, you can be paid when the review time ends."],
+  ["waiting", "Waiting for the other side to accept", ""],
+  ["progress", "In progress", ""],
+  ["done", "Finished", "Paid, refunded or cancelled: nothing left to do."],
+];
+/** The deals, one section per zone (empty sections are left out). */
+function dealZonesHtml(list) {
+  return DEAL_ZONES.map(([z, title, hint]) => {
+    const ds = list.filter((d) => dealZone(d) === z);
+    if (!ds.length) return "";
+    const urgent = z === "approve" || z === "accept" || z === "deliver";
+    return `<section class="deal-zone ${urgent ? "urgent" : ""}"><h2 style="margin:14px 0 4px">${esc(title)} <span class="chip ${urgent ? "warn" : ""}">${ds.length}</span></h2>${hint ? `<p class="hint" style="margin:0 0 8px">${esc(hint)}</p>` : ""}${ds.map(dealHtml).join("")}</section>`;
+  }).join("");
+}
+
+/** A group's open votes waiting for me: what it pays, to whom, who proposed it, the votes so far, and the buttons. */
+function groupVotesHtml(x, votes) {
+  const mine = (votes || []).filter((v) => v.group.id === x.id);
+  if (!mine.length) return "";
+  return `<div class="vote-box">${mine.map((v) => {
+    const d = v.details || {};
+    const ms = d.milestones || [];
+    return `<div class="vote-item"><div class="row space"><div><b>🗳 ${esc(v.title)}</b><div class="hint">Proposed by ${esc(d.proposer || "a member")}${d.at ? ` · ${when(d.at)}` : ""}${d.kind ? ` · ${esc(d.kind)}` : ""}</div></div>
+      <span class="chip warn">${v.yes} of ${v.group.threshold} yes${v.no ? ` · ${v.no} no` : ""}</span></div>
+      ${d.total ? `<div style="margin-top:6px">Amount: <b>${money(d.total, x.currency)}</b>${d.counterparty ? ` · ${d.kind === "sale" ? "buyer" : "seller"}: <b>${esc(d.counterparty)}</b>` : ""}</div>` : ""}
+      ${d.summary ? `<div class="hint" style="margin-top:4px">${esc(d.summary)}</div>` : ""}
+      ${ms.length ? `<div style="margin-top:6px">${ms.map((m, i) => `<div class="hint">${i + 1}. ${esc(m.name)} · ${money(m.amount, x.currency)}${m.deposit ? " · deposit on signing" : ""}${m.due ? ` · due ${esc(m.due)}` : ""}</div>`).join("")}</div>` : ""}
+      ${(d.payout || []).length ? `<div style="margin-top:6px">${d.payout.map((r) => `<div class="hint">${esc(r.name)} · ${money(r.amount, x.currency)}</div>`).join("")}</div>` : ""}
+      ${(d.voted || []).length ? `<div class="hint" style="margin-top:6px">Voted: ${d.voted.map((r) => `${esc(r.name)} ${r.approve ? "✓" : "✗"}`).join(" · ")}</div>` : ""}
+      <div class="row" style="margin-top:8px"><button class="primary" data-vote="${esc(v.proposalId)}" data-yes="1">Approve</button><button class="danger" data-vote="${esc(v.proposalId)}" data-yes="0">Reject</button></div></div>`;
+  }).join("")}</div>`;
+}
+
 /** What a deal asks in files (the Files filter): documents asked for, a PDF, a file I owe, a file to review. */
 function dealFiles(d) {
   const files = (d.milestones || []).filter((m) => m.delivery === "file");
@@ -707,7 +792,12 @@ function updateHtml() {
 }
 
 function wireUpdate() {
-  const c = $("#upd-check"); if (c) c.onclick = async () => { S.update = null; $("#upd").innerHTML = updateHtml(); S.update = await api("/app/update?force=1").catch((e) => ({ current: "?", reason: e.message })); renderView(); };
+  // Opening Settings checks again (a fresh look at GitHub) when the last check is over 2 minutes old.
+  if (!S.updating && (!S.updateAt || Date.now() - S.updateAt > 120_000)) {
+    S.updateAt = Date.now();
+    api("/app/update?force=1").then((u) => { S.update = u; if (S.view === "settings" && $("#upd")) { $("#upd").innerHTML = updateHtml(); wireUpdate(); } }).catch(() => undefined);
+  }
+  const c = $("#upd-check"); if (c) c.onclick = async () => { S.update = null; S.updateAt = Date.now(); $("#upd").innerHTML = updateHtml(); S.update = await api("/app/update?force=1").catch((e) => ({ current: "?", reason: e.message })); renderView(); };
   const g = $("#upd-go"); if (g) g.onclick = async () => {
     if (!confirm(`Update Kravii to ${S.update.latest}? It downloads the new version (checked against its SHA-256), closes and opens again, then asks for your passphrase.`)) return;
     S.updating = "Downloading and checking the new version…"; $("#upd").innerHTML = updateHtml();
@@ -937,14 +1027,81 @@ function chatsPanel() {
 
 /** company: the group whose preview this is (its card under Groups); undefined follows "Acting as". */
 function draftCard(d, company) {
+  // A preview the chat showed that is no longer waiting (confirmed or discarded): a short line, no buttons.
+  if (d.gone) {
+    const how = (S.draftDone || {})[d.id];
+    return `<div class="card deal done-draft"><div class="row space"><div><b>${esc(d.title)}</b> <span class="hint">${esc(d.id)}</span></div>
+      <div class="row">${how === "discarded" ? `<span class="chip">discarded</span>` : `<span class="chip ok">✓ ${how === "plan" ? "all parts paid · sent to the seller" : how === "vote" ? "sent to the vote" : "confirmed"}</span>`}<b>${esc(d.total)} ${esc(d.symbol || "")}</b></div></div>
+      <div class="hint" style="margin-top:6px">${how === "discarded" ? "Nothing was paid or locked." : `Done: it is on the <button class="linkbtn" data-v="deals">Deals</button> page now. Nothing more to confirm here.`}</div></div>`;
+  }
   const co = company === undefined ? "" : ` data-company="${esc(company || "")}"`;
   const blocking = d.review && d.review.blocking;
+  // A purchase paid in parts, already started: the parts and the next one to pay instead of Confirm.
+  const parts = Array.isArray(d.paymentPlan) ? d.paymentPlan : [];
+  const planOn = d.plan && d.plan.id && parts.length;
   return `<div class="card deal"><div class="row space"><div><b>${esc(d.title)}</b> <span class="hint">${esc(d.id)}</span>
     <div class="hint">${d.side === "BUY" ? "You pay" : "You sell to"} ${esc(d.sellerLabel || d.counterparty)} · review ${esc(d.reviewHours)} h${d.paymentPlan ? " · split payment" : ""}</div></div>
     <div class="row"><span class="chip">${esc(d.status)}</span><b>${esc(d.total)} ${esc(d.symbol)}</b></div></div>
     ${(d.milestones || []).map((m, i) => `<div class="ms"><div>${i + 1}. ${esc(m.name)} · <b>${esc(m.amount)}</b>${m.deposit ? ` <span class="chip warn">deposit on signing</span>` : ""}${m.due ? ` <span class="chip">due ${esc(m.due)}</span>` : ""}<div class="hint">${esc(m.acceptance)}</div></div><div class="hint">${esc(m.delivery || (m.hasFile ? "file" : "note"))}</div></div>`).join("")}
     ${d.review ? d.review.issues.map((i) => `<div class="issue ${i.level}">${esc(i.text)}</div>`).join("") : ""}
-    <div class="row" style="margin-top:10px">${["PREVIEW", "DRAFT", "FAILED"].includes(d.status) ? `<button class="primary" data-confirm="${esc(d.id)}"${co} ${blocking ? "disabled title=\"Fix the blocking points with the AI first\"" : ""}>Confirm and sign</button><button data-discard="${esc(d.id)}"${co}>Discard</button><button data-tmpl="${esc(d.id)}">Save as template</button>` : d.status === "FUNDED" ? `<span class="chip ok">confirmed</span>` : `<span class="hint">The AI still needs details: answer it in the chat.</span>`}</div></div>`;
+    ${planOn ? `<div class="issue info" style="margin-top:8px"><b>Split payment: ${Number(d.plan.paidParts)} of ${parts.length} parts paid</b>${d.plan.status !== "ACTIVE" && d.plan.status !== "PAID" ? ` · ${esc(String(d.plan.status).toLowerCase())}` : ""}
+      ${parts.map((p, i) => `<div class="hint">Part ${i + 1}: ${esc(p.amount)} · due ${esc(p.due)} ${i < d.plan.paidParts ? "✓ paid" : ""}</div>`).join("")}
+      <div class="hint" style="margin-top:4px">The seller gets the deal when the last part is paid: then the whole amount is locked in escrow${(d.milestones || []).some((m) => m.deposit) ? " and the deposit goes to the seller" : ""}.</div>
+      ${d.plan.status === "ACTIVE" || d.plan.status === "PAID" ? `<div class="row" style="margin-top:6px">${d.plan.paidParts < parts.length ? `<button class="primary" data-planpay="${esc(d.plan.id)}">Pay part ${Number(d.plan.paidParts) + 1} (${esc(parts[d.plan.paidParts].amount)})</button>` : `<button class="primary" data-planlock="${esc(d.plan.id)}">Lock the deal now</button>`}<button class="danger" data-plancancel="${esc(d.plan.id)}">Cancel the split payment</button></div>` : ""}</div>` : ""}
+    ${d.vote ? `<div class="issue info" style="margin-top:8px">🗳 Up for <b>${esc(d.vote.group)}</b>'s vote: ${d.vote.yes} of ${d.vote.threshold} yes${d.vote.no ? `, ${d.vote.no} no` : ""}. It is locked from your wallet when enough signers approve; nothing to confirm here.</div>` : ""}
+    <div class="row" style="margin-top:10px">${planOn || d.vote ? "" : ["PREVIEW", "DRAFT", "FAILED"].includes(d.status) ? `<button class="primary" data-confirm="${esc(d.id)}"${co} ${blocking ? "disabled title=\"Fix the blocking points with the AI first\"" : ""}>Confirm and sign</button>${company === undefined && !S.info.acting && d.side === "BUY" && !planOn ? groupVoteButton(d) : ""}<button data-discard="${esc(d.id)}"${co}>Discard</button><button data-tmpl="${esc(d.id)}">Save as template</button>` : d.status === "FUNDED" ? `<span class="chip ok">confirmed</span>` : `<span class="hint">The AI still needs details: answer it in the chat.</span>`}</div></div>`;
+}
+
+const FORM_LABEL = {
+  counterparty: "Who is it with?", kind: "What kind of deal?", work: "What is delivered?", price: "Price", milestones: "How is it paid?",
+  deadline: "Deadline", acceptance: "What counts as done?", ship_to: "Delivery address", file_types: "Which file formats do you accept?",
+  deposit: "A deposit on signing?", rules: "Rules of the work", revisions: "How many rounds of changes?", guarantors: "A guarantor?", payment_plan: "How to split the payment?",
+};
+const FORM_KNOWN = { counterparty: "With", kind: "Type", work: "Work", price: "Price", milestones: "Paid in", acceptance: "Done when", ship_to: "Ship to", file_types: "Files", deposit: "Deposit" };
+const FORM_CHOICES = {
+  kind: [["hire (a service or work)", "Hire · service"], ["buy a digital file", "Digital file"], ["buy a physical item, shipped as a parcel", "Physical item"]],
+  milestones: [["one payment on delivery", "1 payment"], ["2 milestones, split evenly", "2 milestones"], ["3 milestones, split evenly", "3 milestones"]],
+  deadline: [["7 days", "7 days"], ["14 days", "14 days"], ["30 days", "30 days"]],
+  rules: [["draft balanced rules for me from the work described", "Draft them for me"], ["no special rules", "No special rules"]],
+  revisions: [["1 round of changes per milestone", "1"], ["2 rounds of changes per milestone", "2"], ["3 rounds of changes per milestone", "3"], ["5 rounds of changes per milestone", "5"], ["10 rounds of changes per milestone (the most)", "10"]],
+  payment_plan: [["pay in one go", "One go"], ["2 equal parts, one month apart, the first today", "2 parts"], ["3 equal parts, one month apart, the first today", "3 parts"], ["4 equal parts, one month apart, the first today", "4 parts"]],
+  guarantors: [["no guarantor", "None"], ["a guarantor from the other side", "From them"], ["a guarantor from me", "From me"], ["a guarantor from both sides", "Both"]],
+  deposit: [["no deposit", "No deposit"], ["20% deposit paid on signing", "20%"], ["30% deposit paid on signing", "30%"], ["50% deposit paid on signing", "50%"]],
+  file_types: [["PDF", "PDF"], ["PNG", "PNG"], ["JPG", "JPG"], ["SVG", "SVG"], ["AI", "AI"], ["PSD", "PSD"], ["FIG", "FIG"], ["ZIP", "ZIP"], ["DOCX", "DOCX"], ["HTML", "HTML"]],
+};
+/** The AI's "before I draft the deal" form: what it knows, and a field for each missing detail. Sending it answers the AI. */
+function dealFormHtml(f, key) {
+  const sent = (S.formSent || {})[key];
+  const known = Object.entries(f.known || {}).filter(([, v]) => v);
+  const choices = (k) => (k === "counterparty" ? (f.contacts || []).map((c) => [c, c]) : FORM_CHOICES[k] || []);
+  const field = (k) => {
+    const opts = choices(k);
+    const multi = k === "file_types";
+    const big = k === "rules" || k === "ship_to";
+    return `<div class="form-field"><label>${esc(FORM_LABEL[k] || k)}</label>
+      ${opts.length ? `<div class="chips-pick" data-k="${k}" ${multi ? "data-multi=\"1\"" : ""}>${opts.map(([v, l]) => `<button type="button" data-pick="${esc(v)}">${esc(l)}</button>`).join("")}</div>` : ""}
+      ${big ? `<textarea name="${k}" rows="${k === "rules" ? 4 : 2}" placeholder="${k === "rules" ? "Or write them: duties, what is not allowed, confidentiality, termination…" : "Name, phone, number, road, sub-district, district, province, postcode"}"></textarea>` : `<input name="${k}" placeholder="${opts.length ? "Or type your own" : k === "price" ? "e.g. 5,000" : ""}">`}</div>`;
+  };
+  return `<form class="card deal deal-form" data-dform="${esc(key)}"><div class="row space"><div><small class="hint">BEFORE I DRAFT THE ${f.side === "sell" ? "OFFER" : "DEAL"}</small><h3 style="margin:2px 0 0">I need a few more details</h3></div><span class="chip ${sent ? "ok" : "warn"}">${sent ? "sent" : `${(f.missing || []).length} to answer`}</span></div>
+    ${known.length ? `<div class="hint" style="margin:8px 0">${known.map(([k, v]) => `✓ ${esc(FORM_KNOWN[k] || k)}: <b>${esc(v)}</b>`).join(" · ")}</div>` : ""}
+    <fieldset ${sent ? "disabled" : ""} style="border:0;padding:0;margin:0">${(f.missing || []).map(field).join("")}</fieldset>
+    <p class="hint">Nothing is drafted, locked or paid yet. The AI drafts the deal from these answers; you confirm it after.</p>
+    <div class="err"></div><div class="row"><button class="primary" ${sent ? "disabled" : ""}>${sent ? "Sent to the AI" : "Send to the AI"}</button></div></form>`;
+}
+/** A payment from a group's account the AI prepared: confirming puts it to the signers' vote. */
+function payoutCardHtml(p, key) {
+  const done = (S.payoutDone || {})[key];
+  const total = (p.recipients || []).reduce((t, r) => t + Number(r.amount), 0);
+  return `<div class="card deal"><div class="row space"><div><b>Pay from ${esc(p.group)}</b><div class="hint">${esc(p.reason || "")} · needs ${p.threshold} signers' votes</div></div><b>${money(total)}</b></div>
+    ${(p.recipients || []).map((r) => `<div class="ms"><div>${esc(r.name)}</div><div><b>${money(r.amount)}</b></div></div>`).join("")}
+    <div class="row" style="margin-top:8px">${done ? `<span class="chip ok">${esc(done)}</span>` : `<button class="primary" data-payout="${esc(key)}">Confirm and send to the vote</button>`}</div></div>`;
+}
+
+/** A personal purchase can be decided by one of the user's groups instead: its signers vote, then it is locked. */
+function groupVoteButton(d) {
+  const gs = (S.actingGroups || []).filter((g) => !g.wallet);
+  if (!gs.length) return "";
+  return `<select data-gvsel="${esc(d.id)}" style="width:auto">${gs.map((g) => `<option value="${esc(g.id)}">${esc(g.name)} (${g.threshold} votes)</option>`).join("")}</select><button data-gvote="${esc(d.id)}">Put to the group's vote</button>`;
 }
 
 /** A saved chat item from the server ({ kind: user | agent | error }) in the shape the chat draws. */
@@ -955,11 +1112,25 @@ function msgHtml(x) {
   if (x.role === "user") return `<div class="u-msg"><small>You · ${clock(x.at)}</small><p>${esc(x.text)}</p></div>`;
   if (x.role === "error") return `<article class="a-msg"><div class="issue block" style="margin:0">${esc(x.text)}</div></article>`;
   const tools = stepTools(x);
-  const drafts = (x.steps || []).filter((st) => st && st.draft).map((st) => (S.drafts || []).find((d) => d.id === st.draft.id) || st.draft);
+  // The AI's other cards: the "before I draft" form, a button to open a deal, a group payment to confirm.
+  const cards = (x.steps || []).map((st, i) => {
+    if (!st) return "";
+    const key = `${x.at}:${i}`;
+    if (st.form) return dealFormHtml(st.form, key);
+    if (st.open) return `<div class="card deal"><div class="row space"><div><b>${esc(st.open.title)}</b> <span class="hint">D-${esc(st.open.dealId)}</span></div><button class="primary" data-opendeal="${esc(st.open.dealId)}">Open the deal</button></div></div>`;
+    if (st.payout) return payoutCardHtml(st.payout, key);
+    return "";
+  });
+  // The preview as it is now: still waiting (from the list), or gone from the list (confirmed or discarded).
+  const drafts = (x.steps || []).filter((st) => st && st.draft).map((st) => {
+    const live = (S.drafts || []).find((d) => d.id === st.draft.id);
+    if (live) return live;
+    return Array.isArray(S.drafts) || (S.draftDone || {})[st.draft.id] ? { ...st.draft, gone: true } : st.draft;
+  });
   const u = x.usage;
   return `<div class="a-meta">Agent · ${clock(x.at)}</div>
     ${tools.length ? `<div class="badges">${tools.map((t) => `<span title="${esc(TOOL_LABEL[t] || t)}">${esc(t)}</span>`).join("")}</div>` : ""}
-    <article class="a-msg${drafts.length ? " wide" : ""}"><div class="md">${window.renderMarkdown(x.text)}</div>${drafts.map(draftCard).join("")}
+    <article class="a-msg${drafts.length || cards.length ? " wide" : ""}"><div class="md">${window.renderMarkdown(x.text)}</div>${cards.join("")}${drafts.map(draftCard).join("")}
     ${u || x.model ? `<div class="usage-line">${u ? `<span>${num(u.tokens)} tokens</span><span>${u.calls} model call${u.calls === 1 ? "" : "s"}</span>` : ""}${tools.length ? `<span>${tools.length} tool${tools.length === 1 ? "" : "s"}</span>` : ""}<span>${x.model ? `your key · ${esc(x.model)}` : "Kravii AI"}</span></div>` : ""}</article>`;
 }
 
@@ -1086,9 +1257,59 @@ function wireChat() {
     if (!pop.hidden) { paintTools(); if (!S.mcpSuggest) loadSuggest(""); if (!S.mcpServers) api("/app/mcp/servers").then((v) => { S.mcpServers = v; paintTools(); }).catch((e) => toast(e.message)); }
   };
   $("#cf").onsubmit = (ev) => { ev.preventDefault(); sendChat(new FormData(ev.target)); };
+  wireChatCards();
   wireDrafts();
   const box = $("#msgs"); box.scrollTop = box.scrollHeight;
   if (!S.chatBusy) ta.focus();
+}
+
+/** The AI's cards in the chat: the details form, open-a-deal buttons and group payments. */
+function wireChatCards() {
+  const stepOf = (key) => {
+    const [at, i] = key.split(":");
+    const msg = (S.chatHistory || []).map(asMsg).find((m) => String(m.at) === at);
+    return msg && msg.steps ? msg.steps[Number(i)] : null;
+  };
+  document.querySelectorAll(".chips-pick [data-pick]").forEach((b) => (b.onclick = () => {
+    const box = b.closest(".chips-pick"), input = box.parentElement.querySelector("input,textarea");
+    if (box.dataset.multi) {
+      b.classList.toggle("on");
+      input.value = [...box.querySelectorAll(".on")].map((x) => x.dataset.pick).join(", ");
+    } else {
+      box.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+      input.value = b.dataset.pick;
+    }
+  }));
+  document.querySelectorAll("[data-dform]").forEach((form) => (form.onsubmit = (ev) => {
+    ev.preventDefault();
+    const st = stepOf(form.dataset.dform);
+    if (!st || !st.form || S.chatBusy) return;
+    const fd = new FormData(form);
+    const empty = st.form.missing.filter((k) => !String(fd.get(k) || "").trim());
+    if (empty.length) { const e = form.querySelector(".err"); e.textContent = `Still missing: ${empty.map((k) => FORM_LABEL[k] || k).join(", ")}`; e.style.display = "block"; return; }
+    S.formSent = S.formSent || {};
+    S.formSent[form.dataset.dform] = true;
+    const text = `Here are the details: ${st.form.missing.map((k) => `${(FORM_LABEL[k] || k).replace(/\?$/, "")}: ${String(fd.get(k)).trim()}`).join("; ")}.`;
+    const out = new FormData(); out.set("m", text);
+    sendChat(out);
+  }));
+  document.querySelectorAll("[data-opendeal]").forEach((b) => (b.onclick = () => {
+    S.dealOpen = S.dealOpen || {}; S.dealOpen[b.dataset.opendeal] = true;
+    go("deals");
+    if (typeof loadDealDetail === "function") loadDealDetail(b.dataset.opendeal).then(() => renderView()).catch(() => undefined);
+  }));
+  document.querySelectorAll("[data-payout]").forEach((b) => (b.onclick = async () => {
+    const st = stepOf(b.dataset.payout);
+    if (!st || !st.payout) return;
+    if (!confirm(`Pay from ${st.payout.group}? It goes to the signers' vote and is paid when ${st.payout.threshold} approve.`)) return;
+    busy(b, "Sending…");
+    try {
+      const r = await web("POST", `groups/${st.payout.groupId}/payouts`, { recipients: st.payout.recipients.map((x) => ({ userId: x.userId, amount: Number(x.amount) })) });
+      S.payoutDone = S.payoutDone || {};
+      S.payoutDone[b.dataset.payout] = r.status === "EXECUTED" ? "Approved and paid" : `Sent to the vote: ${r.yes} of ${st.payout.threshold} yes`;
+      renderView();
+    } catch (e) { toast(e.message); idle(b); }
+  }));
 }
 
 /** Finding servers: the recommended ones, and a search of the official MCP Registry. */
@@ -1186,13 +1407,37 @@ function wireMcp() {
 }
 
 function wireDrafts() {
+  // A started split payment on a preview card: pay the next part, lock when all are paid, or cancel.
+  const planAct = async (b, path, body, okText, ask) => {
+    if (ask && !confirm(ask)) return;
+    busy(b, "…");
+    try { await web("POST", path, body); toast(okText); } catch (e) { toast(e.message); }
+    await refreshDealLists();
+  };
+  document.querySelectorAll("[data-planpay]").forEach((b) => (b.onclick = () => planAct(b, `plans/${b.dataset.planpay}/pay`, {}, "Part paid", "Pay the next part now from your wallet?")));
+  document.querySelectorAll("[data-planlock]").forEach((b) => (b.onclick = () => planAct(b, `plans/${b.dataset.planlock}/pay`, { lock: true }, "Locked in escrow: the seller has the deal now")));
+  document.querySelectorAll("[data-plancancel]").forEach((b) => (b.onclick = () => planAct(b, `plans/${b.dataset.plancancel}/cancel`, {}, "Split payment cancelled: what was paid is back in your wallet", "Cancel the split payment? What was paid comes back to you.")));
+  document.querySelectorAll(".done-draft [data-v]").forEach((b) => (b.onclick = () => go(b.dataset.v)));
+  document.querySelectorAll("[data-gvote]").forEach((b) => (b.onclick = async () => {
+    const sel = document.querySelector(`[data-gvsel="${CSS.escape(b.dataset.gvote)}"]`);
+    const g = (S.actingGroups || []).find((x) => x.id === sel.value);
+    if (!confirm(`Put this purchase to ${g ? g.name : "the group"}'s vote? It is locked from your wallet only when ${g ? g.threshold : "enough"} signers approve.`)) return;
+    busy(b, "Sending…");
+    try {
+      const r = await web("POST", `groups/${sel.value}/proposals`, { draftId: b.dataset.gvote });
+      S.draftDone = S.draftDone || {}; S.draftDone[b.dataset.gvote] = "vote";
+      toast(`Sent to the vote: ${r.yes ?? 1} of ${g ? g.threshold : "?"} yes so far`);
+      await refreshDealLists();
+      await load();
+    } catch (e) { toast(e.message); idle(b); }
+  }));
   const allDrafts = () => [...(S.drafts || []), ...Object.values(S.groupDeals || {}).flatMap((g) => (g && g.drafts) || [])];
   // A group's preview (its card under Groups) is confirmed as that group: its purchase goes to the signers' vote.
   const companyOf = (b) => (b.dataset.company === undefined ? undefined : b.dataset.company || null);
   document.querySelectorAll("[data-tmpl]").forEach((b) => (b.onclick = () => { const d = allDrafts().find((x) => x.id === b.dataset.tmpl); if (d) saveTemplate(d); }));
   document.querySelectorAll("[data-discard]").forEach((b) => (b.onclick = async () => {
     if (!confirm("Discard this preview? Nothing was paid or locked.")) return;
-    try { await api("/app/drafts/discard", "POST", { draftId: b.dataset.discard, companyId: companyOf(b) }); toast("Preview discarded"); await refreshDealLists(); } catch (e) { toast(e.message); }
+    try { await api("/app/drafts/discard", "POST", { draftId: b.dataset.discard, companyId: companyOf(b) }); S.draftDone = S.draftDone || {}; S.draftDone[b.dataset.discard] = "discarded"; toast("Preview discarded"); await refreshDealLists(); } catch (e) { toast(e.message); }
   }));
   document.querySelectorAll("[data-confirm]").forEach((b) => (b.onclick = () => {
     const d = allDrafts().find((x) => x.id === b.dataset.confirm);
@@ -1200,7 +1445,7 @@ function wireDrafts() {
     const group = company ? (S.actingGroups || []).find((g) => g.wallet && g.wallet.companyId === company) : null;
     const dlg = $("#dlg"), form = $("#dlg-form");
     const forGroup = company ? group : company === undefined && S.info.acting ? { wallet: { name: S.info.acting.name } } : null;
-    form.innerHTML = `<h2>Confirm: ${esc(d.title)}</h2><p>${forGroup ? `For <b>${esc(forGroup.wallet.name)}</b>: ${d.side === "BUY" ? `it goes to the group's signers' vote; ${esc(d.total)} ${esc(d.symbol)} is locked from the group's account when enough of them approve.` : "the offer goes to the buyer in the group's name."}` : d.side === "BUY" ? `The full ${esc(d.total)} ${esc(d.symbol)} is locked in escrow from your Mock Bank balance${d.paymentPlan ? " (split payment: part 1 now)" : ""}.` : "Your offer goes to the buyer; nothing is locked from you."}</p>
+    form.innerHTML = `<h2>Confirm: ${esc(d.title)}</h2><p>${forGroup ? `For <b>${esc(forGroup.wallet.name)}</b>: ${d.side === "BUY" ? `it goes to the group's signers' vote; ${esc(d.total)} ${esc(d.symbol)} is locked from the group's account when enough of them approve.` : "the offer goes to the buyer in the group's name."}` : d.side === "BUY" ? d.paymentPlan ? `Split payment: part 1 (${esc(d.paymentPlan[0].amount)} ${esc(d.symbol)}) is paid now and held for this deal. The seller gets the deal when the last part is paid; then the full ${esc(d.total)} ${esc(d.symbol)} is locked in escrow.` : `The full ${esc(d.total)} ${esc(d.symbol)} is locked in escrow from your Mock Bank balance and the offer goes to ${esc(d.sellerLabel || "the seller")}.` : "Your offer goes to the buyer; nothing is locked from you."}</p>
       <p class="hint">This adds a block signed by your device key; the server carries it out.</p><div class="err" id="de"></div><div id="dres"></div>
       <div class="row" style="justify-content:flex-end;margin-top:12px"><button value="cancel" formnovalidate>Close</button><button class="primary" id="dok" value="ok">Sign</button></div>`;
     dlg.showModal();
@@ -1212,8 +1457,11 @@ function wireDrafts() {
         const r = await api("/app/confirm-draft", "POST", { draftId: d.id, companyId: company });
         if (!r.ok) throw new Error(r.error || "Not done (the signed block stays on your chain)");
         const inv = r.result && r.result.invite;
+        S.draftDone = S.draftDone || {};
+        S.draftDone[d.id] = r.result && r.result.plan ? "plan" : r.result && r.result.companyVote ? "vote" : "confirmed";
         $("#dres").innerHTML = `<div class="ok-box">Signed and done${r.result.companyVote ? ` · sent to the signers' vote (${r.result.companyVote.yes} of ${r.result.companyVote.threshold} yes)` : ""}${r.result.plan ? ` · part ${r.result.plan.paidParts} paid` : ""}.</div>` +
-          (inv && inv.link ? `<p>Send this private link to ${esc(inv.name)}:</p><div class="mono">${esc(inv.link)}</div>${inv.access && inv.access.otp ? `<p>One-time code (send it separately): <b class="mono">${esc(inv.access.otp)}</b></p>` : ""}` : "");
+          (inv && inv.link ? `<p>Send this private link to ${esc(inv.name)}:</p><div class="row"><div class="mono" style="flex:1;word-break:break-all">${esc(inv.link)}</div><button type="button" data-copy="${esc(inv.link)}">Copy link</button></div>${inv.access && inv.access.otp ? `<p>One-time code (send it separately): <b class="mono">${esc(inv.access.otp)}</b> <button type="button" data-copy="${esc(inv.access.otp)}">Copy code</button></p>` : ""}<p class="hint">You can find this link again under Private links.</p>` : "");
+        document.querySelectorAll("#dres [data-copy]").forEach((c) => (c.onclick = async () => { try { await navigator.clipboard.writeText(c.dataset.copy); toast("Copied"); } catch { toast("Select it and copy"); } }));
         ok.style.display = "none";
         await refreshDealLists();
       } catch (err) { showErr($("#de"), err); ok.disabled = false; ok.textContent = "Sign"; }
@@ -1284,8 +1532,10 @@ async function streamChat(payload) {
 function approveDialog(a) {
   return new Promise((resolve) => {
     const dlg = $("#dlg"), form = $("#dlg-form");
-    const servers = [...new Set(a.calls.map((c) => c.server).filter(Boolean))];
-    form.innerHTML = `<h2>Allow the AI to use your tools?</h2><p class="hint">These run on this computer, with your MCP servers' access. They cannot sign or pay in the wallet.</p>
+    // Adding an MCP server (the app's own "kravii" tool) is asked every time: no "always allow" for it.
+    const servers = [...new Set(a.calls.map((c) => c.server).filter((sv) => sv && sv !== "kravii"))];
+    const adds = a.calls.filter((c) => c.server === "kravii" && c.tool === "add_mcp_server");
+    form.innerHTML = `<h2>${adds.length && adds.length === a.calls.length ? "Add an MCP server?" : "Allow the AI to use your tools?"}</h2><p class="hint">${adds.length ? "The AI wants to add an MCP server to this app. It runs on this computer with your access; add only servers you trust. You can turn it off or remove it on the MCP page. " : ""}These run on this computer, with your MCP servers' access. They cannot sign or pay in the wallet.</p>
       ${a.calls.map((c) => `<label class="switch"><input type="checkbox" name="ok" value="${esc(c.id)}" checked><span><b>${esc(c.server || "?")} · ${esc(c.tool || c.name)}</b><div class="mono hint" style="max-height:90px;overflow:auto">${esc(JSON.stringify(c.input)).slice(0, 600)}</div></span></label>`).join("")}
       ${servers.map((sv) => `<label class="switch" style="border:0"><input type="checkbox" name="always" value="${esc(sv)}"><span>Always allow <b>${esc(sv)}</b> (no more asking)</span></label>`).join("")}
       <div class="row" style="justify-content:flex-end;margin-top:12px"><button value="no" formnovalidate>Decline all</button><button class="primary" value="ok">Run allowed</button></div>`;
@@ -1383,11 +1633,17 @@ function deliverDialog(dealId, index) {
   form.innerHTML = `<h2>Deliver: ${esc(m.name)}</h2><p class="hint">Accepted when: ${esc(m.acceptance || "-")}</p>
     ${m.delivery === "parcel" ? `<label>Carrier</label><select name="carrier"><option value="MOCK_POST">Mock Post (books a demo parcel)</option><option value="THAILAND_POST">Thailand Post</option><option value="KERRY">Kerry</option><option value="FLASH">Flash</option><option value="OTHER">Other</option></select>
       <label>Tracking number</label><input name="tracking" maxlength="40" placeholder="(Mock Post makes one)">` : ""}
-    ${m.delivery === "file" ? `<label>File (up to 4 MB${types ? `; ${esc(types)}` : ""})</label><input type="file" name="file" ${types ? `accept="${esc(types)}"` : ""} required>` : ""}
+    ${m.delivery === "file" ? `<label>File (up to 4 MB${types ? `; ${esc(types)}` : ""})</label><input type="file" name="file" ${types ? `accept="${esc(types)}"` : ""} required><div class="hint" id="fname">No file chosen yet</div>` : ""}
     <label>Note for the buyer</label><textarea name="note" rows="3" maxlength="4000" placeholder="What you delivered and how it meets the criteria"></textarea>
     <p class="hint">Your device key signs the note${m.delivery === "file" ? " and the file's SHA-256" : ""}; the file is encrypted on the server and the buyer sees a watermarked preview until they approve.</p>
     <div class="err" id="de"></div><div class="row" style="justify-content:flex-end;margin-top:12px"><button value="cancel" formnovalidate>Back</button><button class="primary" id="dok" value="ok">Sign and deliver</button></div>`;
   dlg.showModal();
+  // A file milestone: pressing Deliver goes straight to choosing the file (the dialog then shows it, with the note).
+  const fileInput = form.querySelector("input[type=file]");
+  if (fileInput) {
+    fileInput.onchange = () => { const f = fileInput.files[0]; $("#fname").textContent = f ? `${f.name} · ${Math.max(1, Math.round(f.size / 1024))} KB` : "No file chosen yet"; };
+    setTimeout(() => fileInput.click(), 0);
+  }
   form.onsubmit = async (ev) => {
     if (ev.submitter?.value !== "ok") return;
     ev.preventDefault();
@@ -1397,7 +1653,7 @@ function deliverDialog(dealId, index) {
       fd.set("dealId", dealId); fd.set("index", index);
       const r = await timed("/app/deliver", { method: "POST", headers: { "x-app-token": TOKEN }, body: fd }, FILE_TIMEOUT).then(async (x) => { const j = await x.json().catch(() => ({})); if (!x.ok) throw new Error(j.error || `Error ${x.status}`); return j; });
       if (!r.ok) throw new Error(r.error || "Not delivered (the signed block stays on your chain)");
-      dlg.close(); toast("Delivered"); await load();
+      dlg.close(); toast("Delivered: the buyer is asked to approve. It is under “Delivered: waiting for the buyer” now."); await load();
     } catch (err) { showErr($("#de"), err); ok.disabled = false; ok.textContent = "Sign and deliver"; }
   };
 }
@@ -1429,7 +1685,7 @@ function dealHtml(d) {
   }
   return `<div class="card deal"><div class="row space"><div><b>${esc(d.title)}</b> <span class="hint">D-${d.id}</span>
       <div class="hint">${d.role === "buyer" ? "You buy from" : "You sell to"} ${esc(d.counterpartyLabel)} ${d.counterpartyHasApp ? `<span class="chip ok">their app links to your chain</span>` : ""}</div></div>
-      <div class="row"><span class="chip ${STATUS_CHIP[d.status] || ""}">${esc(d.status)}</span><b>${esc(d.total)}</b>${head.join("")}<button data-details="${d.id}">${S.dealOpen && S.dealOpen[d.id] ? "Hide details" : "Details"}</button></div></div>
+      <div class="row">${dealChip(d)}<b>${esc(d.total)}</b>${head.join("")}<button data-details="${d.id}">${S.dealOpen && S.dealOpen[d.id] ? "Hide details" : "Details"}</button></div></div>
     ${d.milestones.map((m) => {
       const acts = [];
       if (d.status === "Active") {
@@ -1439,7 +1695,7 @@ function dealHtml(d) {
         if (d.role === "seller" && m.status === "Pending" && m.delivery !== "deposit") acts.push(`<button class="primary" data-deliver="${d.id}" data-i="${m.index}">Deliver</button>`);
         if (d.role === "seller" && ["Pending", "Delivered", "Disputed"].includes(m.status)) acts.push(btn("refund", m.index, "Refund buyer", "danger"));
       }
-      return `<div class="ms"><div>${esc(m.name)} · <b>${esc(m.amount)}</b> <span class="chip ${STATUS_CHIP[m.status] || ""}">${esc(m.status)}</span> <span class="hint">${esc(m.delivery || "")}</span>${dueHtml(d, m)}${m.split ? `<span class="hint"> seller ${esc(m.split.toSeller)} / buyer ${esc(m.split.toBuyer)}</span>` : ""}${m.file ? `<div class="hint">📎 ${esc(m.file.name)}</div>` : ""}</div><div class="row">${m.file && m.file.preview ? `<button data-preview="${d.id}" data-i="${m.index}" data-name="${esc(m.file.name)}">Preview</button>` : ""}${acts.join("")}</div></div>`;
+      return `<div class="ms"><div>${esc(m.name)} · <b>${esc(m.amount)}</b> <span class="chip ${STATUS_CHIP[m.status] || ""}">${esc(m.status)}</span> <span class="hint">${esc(m.delivery || "")}</span>${dueHtml(d, m)}${m.split ? `<span class="hint"> seller ${esc(m.split.toSeller)} / buyer ${esc(m.split.toBuyer)}</span>` : ""}${m.file ? `<div class="hint">📎 ${esc(m.file.name)}</div>` : ""}</div><div class="row">${fileButtons(d, m)}${acts.join("")}</div></div>`;
     }).join("")}
     ${S.dealOpen && S.dealOpen[d.id] ? dealDetailHtml(d.id) : ""}
   </div>`;
@@ -1535,7 +1791,13 @@ function wireRepair() {
 async function load() {
   if (S.info.stage !== "ready") return;
   if (S.actingGroups === undefined) { S.actingGroups = []; api("/app/groups").then((g) => { S.actingGroups = g.groups; if (S.info.stage === "ready") renderApp(); }).catch(() => undefined); }
-  if (S.update === undefined) { S.update = null; api("/app/update").then((u) => { S.update = u; if (S.info.stage === "ready") renderApp(); }).catch(() => undefined); }
+  if (S.update === undefined) {
+    S.update = null;
+    const check = () => api("/app/update").then((u) => { const was = S.update && S.update.available; S.update = u; S.updateAt = Date.now(); if (S.info.stage === "ready" && !S.updating && !!u.available !== !!was) renderApp(); }).catch(() => undefined);
+    check();
+    // A release can come out while the app is open: look again every 30 minutes.
+    setInterval(() => { if (!S.updating) check(); }, 30 * 60_000);
+  }
   try {
     S.info = await api("/app/state");
     if (S.view === "overview") { const [a, d] = await Promise.all([api("/app/account"), api("/app/deals")]); S.account = a; S.deals = d.deals; }
@@ -1567,7 +1829,12 @@ setInterval(async () => {
   if (!S.info || S.info.stage !== "ready" || S.chatBusy || document.querySelector("dialog[open]") || document.querySelector("#cf textarea")?.value) return;
   const before = JSON.stringify([S.info.height, (S.info.requests || []).length, (S.info.agentRequests || []).length]);
   try { S.info = await api("/app/state"); } catch { return; }
-  if (JSON.stringify([S.info.height, (S.info.requests || []).length, (S.info.agentRequests || []).length]) !== before) load();
+  const changed = JSON.stringify([S.info.height, (S.info.requests || []).length, (S.info.agentRequests || []).length]) !== before;
+  // Deals also move without a new block here (a deposit paid out, a review time running out, the
+  // other side's move still being carried out): screens with deals or money read them again every 30 s.
+  const typing = document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+  const live = ["overview", "deals", "activity", "groups"].includes(S.view) && !typing && Date.now() - (S.autoLoadAt || 0) > 30_000;
+  if (changed || live) { S.autoLoadAt = Date.now(); load(); }
 }, 10_000);
 
 boot().then(load).catch((e) => { $("#root").innerHTML = `<div class="center"><div class="card narrow err" style="display:block">${esc(e.message)}</div></div>`; });

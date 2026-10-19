@@ -80,8 +80,11 @@ function dealDetailHtml(id) {
   h += sec("Witnesses (พยาน)", `${(d.witnesses || []).map((w) => `<div class="hint">${w.mine ? "Yours" : "Theirs"}: <b>${esc(w.name)}</b>${w.contact ? ` · ${esc(w.contact)}` : ""}</div>`).join("") || `<div class="hint">None yet.</div>`}
     <div class="row" style="margin-top:6px"><button data-wit="${id}">${mineW ? "Change my witness" : "Add my witness"}</button>${mineW ? `<button data-witrm="${id}">Remove mine</button>` : ""}</div>`);
   const files = d.attachments || [];
+  // Only the side that made the offer attaches files here (the website refuses the other side).
+  const listed = (S.deals || []).find((x) => String(x.id) === String(id));
+  const creator = listed ? listed.offeredBy === "me" : d.offeredBy === "me" || d.canAttach === true;
   h += sec("Files of the deal", `${files.map((f) => `<div class="row space"><span>📎 ${esc(f.name)} <span class="hint">${f.size ? Math.max(1, Math.round(f.size / 1024)) + " KB" : ""}</span></span><span class="row"><button data-attopen="${id}" data-f="${esc(f.id)}">Open</button>${f.mine !== false ? `<button data-attrm="${id}" data-f="${esc(f.id)}">Delete</button>` : ""}</span></div>`).join("") || `<div class="hint">No files yet.</div>`}
-    <form data-attup="${id}" class="row" style="margin-top:6px"><input type="file" name="file" required style="flex:1"><button>Upload</button></form>`);
+    ${creator ? `<form data-attup="${id}" class="row" style="margin-top:6px"><input type="file" name="file" required style="flex:1"><button>Upload</button></form><div class="hint">For the other side to read (a brief, a sample, a quotation). Work you deliver goes with Deliver on its milestone.</div>` : `<div class="hint">Files here are attached by the side that made the offer.${listed && listed.role === "seller" ? " To send your work, press Deliver on its milestone." : ""}</div>`}`);
   const parcels = (d.milestones || []).filter((m) => m.delivers === "parcel");
   if (parcels.length) h += sec("Parcels", parcels.map((m) => `<div class="row space"><span class="hint">Milestone ${m.index + 1}: ${m.delivery && m.delivery.tracking ? `${esc(m.delivery.carrier || "")} ${esc(m.delivery.tracking)} · ${esc(m.delivery.parcelStatus || m.delivery.status || "")}` : "not sent yet"}</span>${m.delivery && m.delivery.tracking ? `<button data-track="${id}" data-i="${m.index}">Refresh tracking</button>` : ""}</div>`).join(""));
   const sites = (d.milestones || []).filter((m) => m.canMockup);

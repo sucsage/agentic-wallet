@@ -72,6 +72,7 @@ jobs:
           APP=$(cat electrobun/build/app-dir.txt)
           mkdir -p electrobun/out
           "$ISCC" "/DAppVersion=$V" "/DSourceDir=$APP" "/DOutputDir=$(cygpath -w "$PWD/electrobun/out")" packaging/windows/window-installer.iss
+          bun run scripts/app-archive.ts "$V" "${{ matrix.name }}"
           ls -la electrobun/out
       - name: Name the installers
         if: runner.os != 'Windows'
@@ -86,6 +87,7 @@ jobs:
             case "$rest" in .*) out="$name$rest" ;; -*) out="$name$rest" ;; *) out="$name-$rest" ;; esac
             cp "$f" "out/$out"
           done
+          (cd .. && bun run scripts/app-archive.ts "$V" "${{ matrix.name }}")
           ls -la out
       - uses: actions/upload-artifact@v4
         with: { name: "window-${{ matrix.name }}", path: "desktop/electrobun/out/*", if-no-files-found: error }

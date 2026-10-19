@@ -23,9 +23,13 @@ export type Manifest = {
   assets: Record<string, { file: string; sha256: string; size: number }>;
   /** The windowed app's installers (since 0.4.0). */
   windowed?: Record<string, { file: string; sha256: string; size: number }>;
+  /** The windowed app itself, packed (.tar.zst), for updating in place without an installer (since 0.7.0). */
+  apps?: Record<string, { file: string; sha256: string; size: number }>;
 };
 
-const MANIFEST_URL = `https://github.com/${RELEASE_REPO}/releases/latest/download/latest.json`;
+/** Tests only: a release served from this computer (http://127.0.0.1:<port>), never a remote host. */
+const LOCAL_RELEASE = /^http:\/\/127\.0\.0\.1:\d+$/.test(process.env.AW_UPDATE_BASE ?? "") ? process.env.AW_UPDATE_BASE! : null;
+const MANIFEST_URL = LOCAL_RELEASE ? `${LOCAL_RELEASE}/latest.json` : `https://github.com/${RELEASE_REPO}/releases/latest/download/latest.json`;
 const MAX_SIZE = 250 * 1024 * 1024;
 
 /** This computer's key in latest.json, e.g. macos-arm64, windows-x64, linux-x64. */
@@ -93,7 +97,7 @@ export async function checkUpdate(force = false) {
     const win = m.windowed?.[platformKey()];
     const download = win && /^[\w.-]+$/.test(win.file) ? `https://github.com/${RELEASE_REPO}/releases/download/${encodeURIComponent(m.tag)}/${win.file}` : undefined;
     const reason = process.env.AW_SHELL === "electrobun"
-      ? windowedReason(win)
+      ? windowedReason(win, m.apps?.[platformKey()])
       : !compiled()
       ? "Running from source: update with git pull"
       : !asset
@@ -174,10 +178,29 @@ function canWrite(path: string): boolean {
   }
 }
 
+/**
+ * The installed app folder on Windows and Linux (the one with bin/), from this process's path
+ * (...\Kravii\bin\bun.exe, .../Kravii/bin/bun).
+ */
+function appFolder(): string | null {
+  const bin = dirname(process.execPath);
+  if (basename(bin).toLowerCase() !== "bin") return null;
+  const root = dirname(bin);
+  return existsSync(join(root, "Resources")) ? root : null;
+}
+
 /** Why the windowed app cannot update itself here (null: it can). */
-function windowedReason(file: { file: string } | undefined): string | null {
-  if (!file) return "No build for this computer in that release";
-  if (process.platform === "win32") return null;
+function windowedReason(file: { file: string } | undefined, packed?: { file: string }): string | null {
+  if (!file && !packed) return "No build for this computer in that release";
+  if (process.platform === "win32") {
+    if (packed) {
+      const root = appFolder();
+      if (!root) return "Download the new version and install it over this one: your wallet data stays";
+      if (!canWrite(root) || !canWrite(join(root, "bin"))) return `Kravii cannot write to ${root}: download the new version and install it (your wallet data stays)`;
+      return null;
+    }
+    return null;
+  }
   if (process.platform === "darwin") {
     const app = macBundle();
     if (!app) return "Download the new version and install it over this one (quit Kravii first): your wallet data stays";
@@ -185,13 +208,15 @@ function windowedReason(file: { file: string } | undefined): string | null {
     if (!canWrite(dirname(app)) || !canWrite(app)) return `Kravii cannot write to ${dirname(app)}: download the new version and install it (your wallet data stays)`;
     return null;
   }
+  const root = appFolder();
+  if (packed && root && canWrite(root) && canWrite(join(root, "bin"))) return null;
   return "Download the new version and install it over this one (quit Kravii first): your wallet data stays";
 }
 
 /** Downloads a release file into the updates folder and checks its size and SHA-256. */
 async function download(m: Manifest, asset: { file: string; sha256: string; size: number }): Promise<string> {
   if (!/^[\w.-]+$/.test(asset.file) || !/^[0-9a-f]{64}$/.test(asset.sha256)) throw new Error("The release information is not readable");
-  const url = `https://github.com/${RELEASE_REPO}/releases/download/${encodeURIComponent(m.tag)}/${asset.file}`;
+  const url = LOCAL_RELEASE ? `${LOCAL_RELEASE}/${asset.file}` : `https://github.com/${RELEASE_REPO}/releases/download/${encodeURIComponent(m.tag)}/${asset.file}`;
   const res = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(10 * 60_000), headers: { "user-agent": `Kravii-Desktop/${VERSION}` } });
   if (!res.ok) throw new Error(`The download failed (${res.status})`);
   const bytes = new Uint8Array(await res.arrayBuffer());
@@ -237,34 +262,29 @@ function unpackMac(dmg: string): string {
   return join(stage, app);
 }
 
-/**
- * Downloads and checks the new windowed app, gets it ready, and returns how to finish: `finish()`
- * hands over to a small helper (macOS) or the installer (Windows) and quits this app, which then
- * opens again as the new version.
- */
-export async function prepareWindowedUpdate(): Promise<{ version: string; finish: () => void }> {
-  const m = await manifest(true);
-  if (!m || !newer(m.version, VERSION)) throw new Error("No newer version to install");
-  const asset = m.windowed?.[platformKey()];
-  const reason = windowedReason(asset);
-  if (reason || !asset) throw new Error(reason ?? "No build for this computer in the latest release");
-  const file = await download(m, asset);
-  if (process.platform === "win32") {
-    return {
-      version: m.version,
-      finish: () => {
-        // The installer closes this app, installs over it and opens Kravii again (its [Run] for silent installs).
-        spawn(file, ["/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS"], { detached: true, stdio: "ignore" }).unref();
-        setTimeout(() => process.exit(0), 1500);
-      },
-    };
-  }
-  const installed = macBundle()!;
-  const fresh = unpackMac(file);
+/** The new app from its packed copy (.tar.zst), in the updates folder: the folder (or .app) inside it. */
+function unpackArchive(archive: string): string {
+  const stage = join(updatesDir(), "app");
+  mkdirSync(stage, { recursive: true });
+  const tar = join(updatesDir(), "app.tar");
+  writeFileSync(tar, Bun.zstdDecompressSync(readFileSync(archive)));
+  rmSync(archive, { force: true });
+  // Windows' own tar (bsdtar) takes C:\ paths.
+  const tarExe = process.platform === "win32" ? join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe") : "/usr/bin/tar";
+  execFileSync(existsSync(tarExe) ? tarExe : "tar", ["-xf", tar, "-C", stage], { stdio: "ignore", timeout: 180_000, windowsHide: true });
+  rmSync(tar, { force: true });
+  const found = readdirSync(stage).map((d) => join(stage, d)).find((d) =>
+    process.platform === "darwin" ? d.endsWith(".app") && existsSync(join(d, "Contents", "MacOS")) : existsSync(join(d, "bin")) && existsSync(join(d, "Resources")),
+  );
+  if (!found) throw new Error("The new version could not be unpacked: nothing was changed");
+  return found;
+}
+
+/** The macOS helper: after this app has quit, the new bundle in place of the old one, then open it. */
+function macSwap(installed: string, fresh: string): () => void {
   const target = join(dirname(installed), basename(fresh));
   const script = join(updatesDir(), "swap.sh");
-  // After this app has quit: the installed app aside, the new one in its place, then open it. If the
-  // move fails, the old app goes back.
+  // If the move fails, the old app goes back.
   writeFileSync(
     script,
     `#!/bin/sh
@@ -283,13 +303,112 @@ if [ -n "$AGENTIC_WALLET_DATA" ]; then open --env AGENTIC_WALLET_DATA="$AGENTIC_
 `,
     { mode: 0o755 },
   );
-  return {
-    version: m.version,
-    finish: () => {
-      spawn("/bin/sh", [script, String(process.pid), installed, fresh, target], { detached: true, stdio: "ignore" }).unref();
-      setTimeout(() => process.exit(0), 600);
-    },
+  return () => {
+    spawn("/bin/sh", [script, String(process.pid), installed, fresh, target], { detached: true, stdio: "ignore" }).unref();
+    setTimeout(() => process.exit(0), 600);
   };
+}
+
+/**
+ * Windows and Linux: after this app has quit, its bin, Resources and lib folders are swapped for the
+ * new ones (the old ones go back if a move fails), then the app opens again. On Windows the version
+ * in "Installed apps" is updated too.
+ */
+function folderSwap(root: string, fresh: string, version: string): () => void {
+  const parts = ["bin", "Resources", "lib"];
+  if (process.platform === "win32") {
+    const script = join(updatesDir(), "swap.ps1");
+    const q = (s: string) => `'${s.replace(/'/g, "''")}'`;
+    writeFileSync(
+      script,
+      `$ErrorActionPreference = 'SilentlyContinue'
+$app = ${q(root)}; $new = ${q(fresh)}
+foreach ($id in @(${process.pid}, ${process.ppid})) { try { Wait-Process -Id $id -Timeout 30 } catch {} }
+Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith("$app\bin\", 'OrdinalIgnoreCase') } | Stop-Process -Force
+Start-Sleep -Milliseconds 500
+$parts = @(${parts.map(q).join(", ")})
+$moved = @(); $ok = $true
+foreach ($p in $parts) {
+  if (-not (Test-Path "$new\$p")) { continue }
+  Remove-Item -Recurse -Force "$app\$p.updating-old"
+  if (Test-Path "$app\$p") { Move-Item "$app\$p" "$app\$p.updating-old" -ErrorAction Stop }
+  $moved += $p
+  try { Move-Item "$new\$p" "$app\$p" -ErrorAction Stop } catch { $ok = $false; break }
+}
+if ($ok) {
+  foreach ($p in $moved) { Remove-Item -Recurse -Force "$app\$p.updating-old" }
+  Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' | Where-Object { (Get-ItemProperty $_.PSPath).DisplayName -eq 'Kravii' } | ForEach-Object { Set-ItemProperty $_.PSPath DisplayVersion ${q(version)} }
+} else {
+  foreach ($p in $moved) { if (Test-Path "$app\$p.updating-old") { Remove-Item -Recurse -Force "$app\$p"; Move-Item "$app\$p.updating-old" "$app\$p" } }
+}
+Start-Process -FilePath "$app\bin\launcher.exe" -WorkingDirectory "$app\bin"
+`,
+      "utf8",
+    );
+    return () => {
+      const ps = join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+      spawn(existsSync(ps) ? ps : "powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", script], { detached: true, stdio: "ignore", windowsHide: true }).unref();
+      setTimeout(() => process.exit(0), 600);
+    };
+  }
+  const script = join(updatesDir(), "swap.sh");
+  writeFileSync(
+    script,
+    `#!/bin/sh
+PID="$1"; APP="$2"; NEW="$3"
+for i in $(seq 1 100); do kill -0 "$PID" 2>/dev/null || break; sleep 0.2; done
+OK=1; MOVED=""
+for p in ${parts.join(" ")}; do
+  [ -e "$NEW/$p" ] || continue
+  rm -rf "$APP/$p.updating-old"
+  [ -e "$APP/$p" ] && mv "$APP/$p" "$APP/$p.updating-old"
+  MOVED="$MOVED $p"
+  mv "$NEW/$p" "$APP/$p" || { OK=0; break; }
+done
+for p in $MOVED; do
+  if [ "$OK" = 1 ]; then rm -rf "$APP/$p.updating-old"; else rm -rf "$APP/$p"; mv "$APP/$p.updating-old" "$APP/$p"; fi
+done
+cd "$APP/bin" && nohup ./launcher >/dev/null 2>&1 &
+`,
+    { mode: 0o755 },
+  );
+  return () => {
+    spawn("/bin/sh", [script, String(process.pid), root, fresh], { detached: true, stdio: "ignore" }).unref();
+    setTimeout(() => process.exit(0), 600);
+  };
+}
+
+/**
+ * Downloads and checks the new windowed app, gets it ready, and returns how to finish: `finish()`
+ * hands over to a small helper (macOS) or the installer (Windows) and quits this app, which then
+ * opens again as the new version.
+ */
+export async function prepareWindowedUpdate(): Promise<{ version: string; finish: () => void }> {
+  const m = await manifest(true);
+  if (!m || !newer(m.version, VERSION)) throw new Error("No newer version to install");
+  const installer = m.windowed?.[platformKey()];
+  const packed = m.apps?.[platformKey()];
+  const reason = windowedReason(installer, packed);
+  if (reason) throw new Error(reason);
+  // Since 0.7.0: the app itself, swapped in place (no installer). Older releases: the installer.
+  if (packed) {
+    const fresh = unpackArchive(await download(m, packed));
+    const finish = process.platform === "darwin" ? macSwap(macBundle()!, fresh) : folderSwap(appFolder()!, fresh, m.version);
+    return { version: m.version, finish };
+  }
+  if (!installer) throw new Error("No build for this computer in the latest release");
+  const file = await download(m, installer);
+  if (process.platform === "win32") {
+    return {
+      version: m.version,
+      finish: () => {
+        // The installer closes this app, installs over it and opens Kravii again (its [Run] for silent installs).
+        spawn(file, ["/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS"], { detached: true, stdio: "ignore" }).unref();
+        setTimeout(() => process.exit(0), 1500);
+      },
+    };
+  }
+  return { version: m.version, finish: macSwap(macBundle()!, unpackMac(file)) };
 }
 
 /** Leftovers of an update (the downloaded installer, the unpacked app): removed on the next start. */

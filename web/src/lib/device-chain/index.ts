@@ -16,7 +16,7 @@ import { customerOfUser } from "../bank/customers";
 import { type DealMove, DEAL_MOVES, runDealMove } from "../bank/deal-actions";
 import { appOrigin, confirmDraft } from "../bank/confirm-draft";
 import { dueDates } from "../bank/milestone-due";
-import { DealError, dealTerms, deliver, syncDeal } from "../bank/deals";
+import { DealError, dealTerms, deliver, redeemId, syncDeal } from "../bank/deals";
 import { type DraftMilestone, deliveryOf, draftView, listDrafts } from "../bank/drafts";
 import { CARRIERS, type Carrier } from "../post";
 import { send } from "../chain";
@@ -530,12 +530,19 @@ export async function deviceContacts(device: DeviceRow) {
 export async function deviceDrafts(device: DeviceRow) {
   const drafts = await listDrafts(device.userId, deviceWallet(device));
   const open = drafts.filter((d) => ["PREVIEW", "DRAFT", "FAILED", "NEED_INFO"].includes(d.status));
-  const [views, labels] = await Promise.all([Promise.all(open.map((d) => draftView(d))), friendLabels(device.userId)]);
+  const [views, labels, votes] = await Promise.all([
+    Promise.all(open.map((d) => draftView(d))),
+    friendLabels(device.userId),
+    // A purchase put to a group's vote: the app shows the vote instead of Confirm.
+    db.groupProposal.findMany({ where: { draftId: { in: open.map((d) => d.id) }, status: "OPEN" }, include: { group: { select: { name: true, threshold: true } }, votes: true } }),
+  ]);
   // A seller or buyer who is a friend (or has a private link) shows by name, as on the website.
   const named = views.map((v) => {
     const addr = /^0x[0-9a-fA-F]{40}$/.test(String(v.sellerLabel ?? "")) ? String(v.sellerLabel) : String(v.counterparty ?? "");
     const name = labels.get(addr.toLowerCase());
-    return name && (!v.sellerLabel || /^0x/.test(String(v.sellerLabel))) ? { ...v, sellerLabel: name } : v;
+    const p = votes.find((x) => x.draftId === v.id);
+    const vote = p ? { group: p.group.name, threshold: p.group.threshold, yes: p.votes.filter((x) => x.approve).length, no: p.votes.filter((x) => !x.approve).length } : null;
+    return { ...(name && (!v.sellerLabel || /^0x/.test(String(v.sellerLabel))) ? { ...v, sellerLabel: name } : v), vote };
   });
   return JSON.parse(JSON.stringify(named, (_k, v) => (typeof v === "bigint" ? v.toString() : v)));
 }
@@ -553,14 +560,45 @@ const KIND_LABEL: Record<string, string> = {
 
 /** The wallet's money in and out (the Mock Bank statement), newest first. */
 export async function deviceActivity(device: DeviceRow) {
-  const account = await accountOf(deviceWallet(device));
+  const wallet = deviceWallet(device);
+  const account = await accountOf(wallet);
   if (!account) return { balance: 0, currency: "THB", rows: [] };
   const rows = await db.bankTransfer.findMany({
     where: { OR: [{ fromId: account.id }, { toId: account.id }] },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: 100,
-    include: { from: { select: { kind: true, label: true } }, to: { select: { kind: true, label: true } } },
+    include: { from: { select: { kind: true, label: true, ownerAddress: true } }, to: { select: { kind: true, label: true, ownerAddress: true } } },
   });
+  // Who the money came from (or went to): money of a deal moves through the escrow, so its transfer
+  // is matched to the deal by its key (payout:<id>, refund:<id>, accept:<id>:debit) and named after
+  // the other side of that deal; a plan's parts and a draft's funding after the draft's other side.
+  const labels = await friendLabels(device.userId);
+  const nameOf = (address: string | null | undefined) => (address ? labels.get(address.toLowerCase()) : undefined);
+  const byKey = new Map<string, { who?: string; dealId: number }>();
+  const dealish = rows.some((t) => /^(payout|refund|accept):/.test(t.idempotencyKey));
+  const deals = dealish ? await readFileDeals(wallet).catch(() => []) : [];
+  for (const d of deals) {
+    const who = nameOf(d.counterparty);
+    byKey.set(`accept:${redeemId("accept", d.id)}:debit`, { who, dealId: d.id });
+    byKey.set(`refund:${redeemId("cancel", d.id)}`, { who, dealId: d.id });
+    for (const m of d.milestones) {
+      byKey.set(`payout:${redeemId("payout", d.id, m.index)}`, { who, dealId: d.id });
+      byKey.set(`refund:${redeemId("refund", d.id, m.index)}`, { who, dealId: d.id });
+    }
+  }
+  const draftKeys = rows.map((t) => t.idempotencyKey.match(/^(?:funding:(0x[0-9a-f]+):debit|plan:([\w-]+):)/i)).filter(Boolean) as RegExpMatchArray[];
+  const drafts = draftKeys.length
+    ? await db.dealDraft.findMany({
+        where: { OR: [{ fundingId: { in: draftKeys.map((m) => m[1]).filter(Boolean) } }, { plan: { id: { in: draftKeys.map((m) => m[2]).filter(Boolean) } } }] },
+        select: { fundingId: true, title: true, side: true, seller: true, buyer: true, inviteName: true, plan: { select: { id: true } } },
+      }).catch(() => [])
+    : [];
+  const draftWho = (key: string): { who?: string; title?: string } | null => {
+    const m = key.match(/^(?:funding:(0x[0-9a-f]+):debit|plan:([\w-]+):)/i);
+    if (!m) return null;
+    const d = drafts.find((x) => (m[1] && x.fundingId === m[1]) || (m[2] && x.plan?.id === m[2]));
+    return d ? { who: nameOf(d.side === "SELL" ? d.buyer : d.seller) ?? d.inviteName ?? undefined, title: d.title } : null;
+  };
   return {
     balance: Number(account.balance) / 100,
     currency: account.currency,
@@ -573,7 +611,16 @@ export async function deviceActivity(device: DeviceRow) {
         label: KIND_LABEL[t.kind] ?? t.kind,
         direction: incoming ? "in" : "out",
         amount: Number(t.amount) / 100,
-        counterparty: !other ? "Mock Bank" : other.kind === "RESERVE" ? "Kravii escrow" : other.label,
+        counterparty: !other ? "Mock Bank" : other.kind === "RESERVE" ? "Kravii escrow" : (nameOf(other.ownerAddress) ?? other.label),
+        // Who it is from (in) or for (out), when known: a person, with the deal it belongs to.
+        who: (() => {
+          const deal = byKey.get(t.idempotencyKey);
+          if (deal) return { name: deal.who ?? null, deal: `D-${deal.dealId}` };
+          const draft = draftWho(t.idempotencyKey);
+          if (draft) return { name: draft.who ?? null, deal: draft.title ?? null };
+          if (t.kind === "TRANSFER" && other) return { name: nameOf(other.ownerAddress) ?? other.label, deal: null };
+          return null;
+        })(),
         txHash: t.txHash,
         at: t.createdAt,
       };

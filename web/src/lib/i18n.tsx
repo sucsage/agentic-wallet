@@ -314,6 +314,7 @@ const policyThai: Record<string, string> = {
   "In dispute": "มีข้อพิพาท",
   "Completed": "เสร็จสิ้น",
   "Cancelled": "ยกเลิกแล้ว",
+  "Completed · settled": "เสร็จสิ้น · ปิดยอดแล้ว",
   "Any type": "ทุกประเภท",
   "Hire (work)": "จ้างงาน",
   "Buy (goods)": "ซื้อสินค้า",

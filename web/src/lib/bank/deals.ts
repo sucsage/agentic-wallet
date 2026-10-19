@@ -580,7 +580,8 @@ export function demoDeliverable(dealId: number, index: number) {
   return { text, sha256: createHash("sha256").update(text).digest("hex") };
 }
 
-const redeemId = (kind: "payout" | "refund" | "cancel" | "accept", dealId: number, index = 0): Hex =>
+/** The id of one settlement in the bank (also part of its transfer's key, e.g. payout:<id>). */
+export const redeemId = (kind: "payout" | "refund" | "cancel" | "accept", dealId: number, index = 0): Hex =>
   keccak256(toHex(`${kind}:${config.chain.id}:${escrow(dealId)}:${dealId}:${index}`));
 
 async function redeemed(token: Address, holder: Address, id: Hex): Promise<boolean> {

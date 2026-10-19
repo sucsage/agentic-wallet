@@ -2,16 +2,15 @@ import { VERSION } from "./version";
 import { spawn as spawnProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
 
 import { ApiError } from "./api";
 import { wallet } from "./core";
 import { MCP_TOOLS, runMcp } from "./mcp";
 import { chatResponse } from "./chat-flow";
-import { type ServerEntry, parseSource, safeName, stopServer, toolsWithin } from "./mcp-host";
+import { type ServerEntry, parseSource, stopServer, toolsWithin } from "./mcp-host";
 import { RECOMMENDED, type Suggestion, WEB_SERVER, searchRegistry } from "./web-tools";
-import { checkUpdate, cleanOldExecutable, cleanUpdates, installUpdate, prepareWindowedUpdate } from "./updater";
+import { APP_SERVER, installSuggestion, installed } from "./mcp-install";
+import { checkUpdate, cleanOldExecutable, cleanUpdates, installUpdate, newer, prepareWindowedUpdate } from "./updater";
 import { dataDir, sessionPath } from "./paths";
 import indexHtml from "./ui/index.html" with { type: "text" };
 import extrasJs from "./ui/extras.js" with { type: "text" };
@@ -45,14 +44,38 @@ function openBrowser(url: string) {
   }
 }
 
-/** Already running (a second double-click): open the running one's screen and quit. */
-/** The URL of a copy of the app already running on this computer, if any. */
+/**
+ * The URL of a copy of the app already running on this computer, if any (a second double-click
+ * opens its screen). An OLDER copy still running (in the tray, or a version installed elsewhere) is
+ * asked to quit instead: otherwise a newly installed version would keep showing the old one.
+ */
 async function alreadyRunning(): Promise<string | null> {
   if (!existsSync(sessionPath())) return null;
   try {
-    const s = JSON.parse(readFileSync(sessionPath(), "utf8")) as { port: number; token: string };
+    const s = JSON.parse(readFileSync(sessionPath(), "utf8")) as { port: number; token: string; pid?: number };
     const r = await fetch(`http://127.0.0.1:${s.port}/ping`, { signal: AbortSignal.timeout(800) });
-    if ((await r.json()).app !== "agentic-wallet") return null;
+    const ping = (await r.json()) as { app?: string; version?: string };
+    if (ping.app !== "agentic-wallet") return null;
+    if (ping.version && newer(VERSION, ping.version)) {
+      console.log(`An older copy (${ping.version}) is running: asking it to quit`);
+      await fetch(`http://127.0.0.1:${s.port}/app/quit`, { method: "POST", headers: { "x-app-token": s.token }, signal: AbortSignal.timeout(2000) }).catch(() => undefined);
+      for (let i = 0; i < 40 && s.pid; i++) {
+        try {
+          process.kill(s.pid, 0);
+        } catch {
+          return null;
+        }
+        await Bun.sleep(250);
+      }
+      if (s.pid) {
+        try {
+          process.kill(s.pid);
+        } catch {
+          // gone
+        }
+      }
+      return null;
+    }
     return `http://127.0.0.1:${s.port}/#t=${s.token}`;
   } catch {
     return null;
@@ -222,7 +245,7 @@ async function route(req: Request, path: string, port: number): Promise<Response
     const found = parseSource(String(b.source ?? ""), b.name ? String(b.name) : undefined);
     const list = wallet.mcpServers();
     // "web" is the app's own web tools (mcp__web__…).
-    for (const [name, entry] of Object.entries(found)) list[name === WEB_SERVER ? "web_2" : name] = { ...entry, enabled: true, ask: true };
+    for (const [name, entry] of Object.entries(found)) list[name === WEB_SERVER ? "web_2" : name === APP_SERVER ? "kravii_2" : name] = { ...entry, enabled: true, ask: true };
     wallet.saveMcpServers(list);
     return json(await mcpServersView());
   }
@@ -249,26 +272,18 @@ async function route(req: Request, path: string, port: number): Promise<Response
   // Finding servers: the recommended ones and a search of the official MCP Registry; one click adds one.
   if (m === "GET" && path === "/app/mcp/suggest") {
     const q = String(new URL(req.url).searchParams.get("q") ?? "");
-    const installed = wallet.mcpServers();
-    const mark = (s: Suggestion) => ({ ...s, installed: Object.values(installed).some((c) => JSON.stringify(c.url ?? c.args) === JSON.stringify(s.entry.url ?? expand(s.entry).args)) });
+    const mark = (s: Suggestion) => ({ ...s, installed: installed(s) });
     return json({ recommended: RECOMMENDED.map(mark), results: q ? (await searchRegistry(q)).map(mark) : [] });
   }
   if (m === "POST" && path === "/app/mcp/servers/install") {
     const b = await body<{ id?: string; suggestion?: Suggestion }>(req);
     const s = RECOMMENDED.find((x) => x.id === b.id) ?? b.suggestion;
     if (!s || !s.entry) return json({ error: "Choose a server" }, 400);
-    const e = s.entry;
-    // Only what a suggestion can be: a remote https URL, or an npm package run with the app's Bun.
-    const remote = typeof e.url === "string" && /^https:\/\/[^\s{}]+$/.test(e.url);
-    const npm = e.command === "bun" && Array.isArray(e.args) && e.args[0] === "x" && /^(@[\w.-]+\/)?[\w.-]+(@[\w.^~-]+)?$/.test(String(e.args[1] ?? ""));
-    if (!remote && !npm) return json({ error: "That server cannot be added this way: paste its config instead" }, 400);
-    const list = wallet.mcpServers();
-    let name = safeName(s.name || "server");
-    for (let i = 2; list[name] || name === WEB_SERVER; i++) name = `${safeName(s.name || "server").slice(0, 36)}_${i}`;
-    const entry: ServerEntry = remote ? { url: e.url, ...(e.headers ? { headers: Object.fromEntries(Object.entries(e.headers).map(([k, v]) => [String(k), String(v)])) } : {}) } : { ...expand(e), ...(e.env ? { env: Object.fromEntries(Object.entries(e.env).map(([k, v]) => [String(k), String(v)])) } : {}) };
-    // A server that still needs a key or a setting starts turned off: the user fills it in first.
-    list[name] = { ...entry, enabled: !(s.needs && s.needs.length), ask: true, source: s.site || s.id };
-    wallet.saveMcpServers(list);
+    try {
+      installSuggestion(s);
+    } catch (e) {
+      return json({ error: (e as Error).message }, 400);
+    }
     return json(await mcpServersView());
   }
   if (m === "POST" && path === "/app/window") {
@@ -305,10 +320,6 @@ function mcpEntry() {
 }
 
 /** The user's MCP servers with their status and tools (starting the enabled ones). */
-/** {documents} in a suggestion's arguments: this computer's Documents folder. */
-function expand(e: ServerEntry): ServerEntry {
-  return { command: e.command, args: (e.args ?? []).map((a) => String(a).replace("{documents}", join(homedir(), "Documents"))) };
-}
 
 async function mcpServersView() {
   const list = wallet.mcpServers();

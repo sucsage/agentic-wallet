@@ -803,11 +803,34 @@ export async function pendingVotes(userId: string) {
   });
   const drafts = await db.dealDraft.findMany({ where: { id: { in: draftIdsOf(open) } } });
   const byId = new Map(drafts.map((d) => [d.id, d]));
-  const names = new Map((await db.user.findMany({ where: { id: { in: open.flatMap((p) => payoutOf(p).map((r) => r.userId)) } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
-  return open.map((p) => ({
-    proposalId: p.id,
-    group: p.group,
-    title: proposalTitle(p, byId.get(p.draftId ?? "")?.title, (id) => names.get(id ?? "") ?? "a member"),
-    yes: p.votes.filter((v) => v.approve).length,
-  }));
+  const people = [...open.flatMap((p) => payoutOf(p).map((r) => r.userId)), ...open.map((p) => p.proposerId), ...open.flatMap((p) => p.votes.map((v) => v.userId))];
+  const names = new Map((await db.user.findMany({ where: { id: { in: people } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
+  const labels = drafts.length ? await friendLabels(userId) : new Map<string, string>();
+  return open.map((p) => {
+    const d = byId.get(p.draftId ?? "");
+    const ms = d && Array.isArray(d.milestones) ? (d.milestones as { name?: string; amount?: string; due?: string; deposit?: boolean }[]) : [];
+    // Draft milestones hold token amounts ("2000.00"); a payout holds minor units.
+    const units = (x: string | undefined) => Number(x ?? 0);
+    const minor = (x: string | undefined) => Number(x ?? 0) / 100;
+    const other = d ? (d.side === "SELL" ? d.buyer : d.seller) : null;
+    return {
+      proposalId: p.id,
+      group: p.group,
+      title: proposalTitle(p, d?.title, (id) => names.get(id ?? "") ?? "a member"),
+      yes: p.votes.filter((v) => v.approve).length,
+      no: p.votes.filter((v) => !v.approve).length,
+      // What the vote is about, so a signer can decide from the group's page.
+      details: {
+        proposer: names.get(p.proposerId) ?? "a member",
+        at: p.createdAt,
+        kind: d ? (d.side === "SELL" ? "sale" : "purchase") : dealActionOf(p) ? "deal move" : "payout",
+        summary: d?.summary ?? null,
+        counterparty: d ? (labels.get(String(other ?? "").toLowerCase()) ?? d.inviteName ?? null) : null,
+        total: d ? ms.reduce((t, m) => t + units(m.amount), 0) : payoutOf(p).reduce((t, r) => t + minor(r.amount), 0),
+        milestones: ms.map((m) => ({ name: m.name ?? "", amount: units(m.amount), due: m.due ?? null, deposit: Boolean(m.deposit) })),
+        payout: payoutOf(p).map((r) => ({ name: names.get(r.userId) ?? "a member", amount: minor(r.amount) })),
+        voted: p.votes.map((v) => ({ name: names.get(v.userId) ?? "a member", approve: v.approve })),
+      },
+    };
+  });
 }

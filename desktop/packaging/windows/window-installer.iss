@@ -82,3 +82,17 @@ Filename: "{sys}\taskkill.exe"; Parameters: "/F /T /IM launcher.exe"; Flags: run
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"
+
+[Code]
+// Before copying: stop any copy of Kravii still running (in the tray, an older version installed here,
+// or the old browser build), so its files are not locked and the new version is the one that opens.
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  Code: Integer;
+  Cmd: String;
+begin
+  Cmd := '-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "Get-Process | Where-Object { $_.Path -and ($_.Path.StartsWith(''' +
+    ExpandConstant('{app}') + '\'', ''OrdinalIgnoreCase'') -or $_.ProcessName -like ''AgenticWallet*'' -or $_.ProcessName -like ''MilestonePay*'') } | Stop-Process -Force"';
+  Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Cmd, '', SW_HIDE, ewWaitUntilTerminated, Code);
+  Result := '';
+end;
