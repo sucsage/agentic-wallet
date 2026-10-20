@@ -170,6 +170,7 @@ After `down` (without `-v`) the database still lists earlier deals but the new c
 | A deal looks stuck right after an action | The app reads the chain a moment behind; reload after a few seconds. |
 | Build fails or runs out of memory | Give Docker at least 6 GB RAM, then `docker compose up --build -d --wait` again. |
 | Desktop link says the token is missing | The link changes on every start. Get a fresh one with `docker compose logs desktop \| grep "Open:"`. |
+| `web-entrypoint.sh: no such file or directory` (Windows) | The script had Windows (CRLF) line endings. Fixed in the images and by `.gitattributes`. If you cloned before the fix, update, then `docker compose build --no-cache`. |
 | Everything is in an odd state | `docker compose down -v`, then start again. |
 
 ## Source
