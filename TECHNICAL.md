@@ -669,7 +669,7 @@ or addresses. Deleting an account removes the user's drafts, chats and nicknames
 
 ## 9. Third-party components and AI assistance
 
-Kravii's design, architecture, smart contracts, security model and product decisions are the team's own work for this competition. Kravii itself is released under the MIT License ([LICENSE](LICENSE)). It is built on the open-source components below, used under their licences without modification, and on AI services and tools, which are listed here so that reviewers can see what is ours and what is not.
+Kravii's design, architecture, smart contracts, security model and product decisions are the team's own work for this competition. Kravii itself is all rights reserved: the code is public to read and for the competition's judges to run, not for reuse ([LICENSE](LICENSE)); the smart contracts stay under the MIT License. It is built on the open-source components below, used under their licences without modification, and on AI services and tools, which are listed here so that reviewers can see what is ours and what is not.
 
 **Open-source components**
 

@@ -10,7 +10,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "type": "module",
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox-viem": "^5.0.7",
