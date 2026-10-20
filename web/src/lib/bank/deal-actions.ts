@@ -3,13 +3,13 @@ import "server-only";
 import { after } from "next/server";
 import type { Address } from "viem";
 
-import { companyOfWallet } from "../company";
+import { canSpendFrom, companyOfWallet } from "../company";
 import { HttpError } from "../guard";
 import { KycRequired, requireKycFor } from "../kyc";
 import { SocialError, proposeDealAction } from "../social";
 import { config } from "../config";
 import { openDispute } from "./arbiter";
-import { DealError, acceptAndPay, buyerAction, dealForWallet, sellerAction, syncDeal } from "./deals";
+import { DealError, acceptAndPay, buyerAction, dealForWallet, refuseSettled, sellerAction, syncDeal } from "./deals";
 
 export type DealMove = "approve" | "dispute" | "reclaim" | "cancel" | "accept" | "claim" | "refund";
 export const DEAL_MOVES: DealMove[] = ["approve", "dispute", "reclaim", "cancel", "accept", "claim", "refund"];
@@ -29,6 +29,9 @@ export async function runDealMove(
   reason?: string,
 ): Promise<unknown> {
   const { userId, currency, wallet } = who;
+  // A company's deals are moved by its signers; any member may still dispute a delivery. Here, not
+  // only in the route, so the desktop app's signed intents cannot skip it (DC-CO-01).
+  if (action !== "dispute" && !(await canSpendFrom(userId, wallet))) throw new HttpError(403, "Only a company signer can do this");
   const deal = await dealForWallet(wallet, id).catch((e) => {
     throw e instanceof DealError ? new HttpError(404, e.message) : e;
   });
@@ -43,6 +46,12 @@ export async function runDealMove(
   if (deal.role === "buyer" && (action === "approve" || action === "accept")) {
     const shared = await companyOfWallet(wallet);
     if (shared) {
+      // A vote on a milestone that is already settled would only fail when it passes (AW-L-02).
+      try {
+        refuseSettled(deal, action, index);
+      } catch (e) {
+        throw e instanceof DealError ? new HttpError(400, e.message) : e;
+      }
       const vote = await proposeDealAction(userId, shared.groupId, { dealId: id, index, action }).catch((e) => {
         throw e instanceof SocialError ? new HttpError(400, e.message) : e;
       });

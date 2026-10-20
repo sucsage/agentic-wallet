@@ -95,6 +95,32 @@ export async function requireBankWallet() {
   return { user, customer, wallet: await demoWallet(primary), company: null };
 }
 
+/**
+ * Money and payee changes on a company belong to its signers. Throws 403 for a plain member acting
+ * as the company; a personal wallet (company null) always passes. Use after requireBankWallet or
+ * requireActingCustomer on every route that moves money, changes who can be paid, changes the
+ * caps or re-links the company's bank account (DC-CO-01).
+ */
+export async function assertCompanySigner(userId: string, company: { groupId: string } | null) {
+  if (!company) return;
+  const { isCompanySigner } = await import("./company");
+  if (!(await isCompanySigner(userId, company.groupId))) throw new HttpError(403, "Only a company signer can do this");
+}
+
+/** requireBankWallet, plus: acting as a company means being one of its signers. */
+export async function requireBankSigner() {
+  const r = await requireBankWallet();
+  await assertCompanySigner(r.user.id, r.company);
+  return r;
+}
+
+/** requireActingCustomer, plus: acting as a company means being one of its signers. */
+export async function requireActingSigner() {
+  const r = await requireActingCustomer();
+  await assertCompanySigner(r.user.id, r.company);
+  return r;
+}
+
 /** A sandbox wallet that belongs to the signed-in user (UserWallet row) and to this demo on-chain. */
 export async function userWallet(raw: string): Promise<Address> {
   const { user } = await requireCustomer();

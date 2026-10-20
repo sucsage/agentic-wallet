@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { DEAL_MOVES, runDealMove } from "@/lib/bank/deal-actions";
 import { requestDeviceSignature } from "@/lib/device-chain";
-import { HttpError, errorResponse, rateLimit, requireBankWallet } from "@/lib/guard";
+import { HttpError, assertCompanySigner, errorResponse, rateLimit, requireBankWallet } from "@/lib/guard";
 
 export const maxDuration = 120;
 
@@ -27,6 +27,8 @@ export async function POST(req: Request, ctx: RouteContext<"/api/deals/[id]/acti
     if (!Number.isInteger(id) || !parsed.success) throw new HttpError(400, "Invalid request");
     const { index, reason } = parsed.data;
     const action = parsed.data.action as (typeof DEAL_MOVES)[number];
+    // A company's deals are moved by its signers; any member may still dispute a delivery.
+    if (action !== "dispute") await assertCompanySigner(user.id, company);
     if (!company) {
       const waiting = await requestDeviceSignature(user.id, wallet, { dealId: id, action, index, reason });
       if (waiting) return Response.json({ deviceRequest: waiting });

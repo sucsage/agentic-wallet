@@ -1,6 +1,12 @@
 # Proposal: a timeout for disputed milestones (draft)
 
-Status: draft for discussion. Not implemented. A contract-level matrix of every exit from `Disputed` has been produced (below) and refines the details.
+> **Update 2026-10-16 (FileEscrow v2, `5cc8fa5`).** Re-read against the new code:
+> - `FileEscrow` now has `resolveSplit(dealId, index, sellerBps)`, so a 50/50 fallback (option C below) needs no new split function; the timeout can call the same payout path with 5,000 bps. Settled splits get the new `Split` status.
+> - There is still **no timeout and no `disputedAt`**: `Disputed` leaves only through the arbiter or the seller's `refund`. The "stuck if the arbiter never rules" finding (DC-M-01) is unchanged. `MilestoneEscrow` is untouched.
+> - **Prerequisite:** `FileEscrow.refund` must refuse `Split` (DC-H-02, draft PR #2). A timeout adds one more way to settle a milestone, so every settling path must refuse every settled status, ideally by allowing only the states that still hold money. The FileEscrow property test now checks this by trying every move on settled milestones.
+> - The `FileEscrow` constructor now takes `firstDealId`; a timeout change means another redeploy and an ABI refresh (`export-abis.mjs`).
+
+Status: **implemented in `FileEscrow` on 2026-10-18** (option A, 7-day constant; see FINDINGS-2026-10-16.md, DC-M-01). Needs a redeploy. The rest of this page is the original proposal. A contract-level matrix of every exit from `Disputed` has been produced (below) and refines the details.
 
 ## Problem
 
@@ -30,7 +36,7 @@ Follows decision D001: funds stay locked until the counterparties confirm, and a
 
 | Question | Options | Recommendation |
 |---|---|---|
-| Fallback outcome | A: refund the buyer. B: pay the seller. C: split 50/50 (needs a new split function) | A. The money came from the buyer and nobody has confirmed the work. It lets a buyer dispute to get a refund, which the AI and human arbiter normally prevent, so the window should be long enough for them to act |
+| Fallback outcome | A: refund the buyer. B: pay the seller. C: split 50/50 (v2 already has `resolveSplit`; reuse it) | A. The money came from the buyer and nobody has confirmed the work. It lets a buyer dispute to get a refund, which the AI and human arbiter normally prevent, so the window should be long enough for them to act |
 | Window length | A constant (for example 7 days), or a period fixed in the offer terms (the contract review suggested 30 days) | Either works. A constant avoids changing the offer signature the web app calls; a period in the terms is more flexible. The team picks |
 | Where to store `disputedAt` | New field in the milestone struct | Needed. This changes the `getMilestone` return shape, so `contracts/scripts/export-abis.mjs` must be rerun and `web/src/lib/state.ts` (hand-mirrored types) updated |
 | Both escrows | `FileEscrow` only, or `MilestoneEscrow` too | Both if `MilestoneEscrow` stays in use; otherwise document it as legacy |

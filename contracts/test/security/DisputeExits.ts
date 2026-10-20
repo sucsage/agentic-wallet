@@ -10,7 +10,7 @@ import { type Hex, keccak256, maxUint256, toHex, zeroHash } from "viem";
 const usd = (n: number) => BigInt(Math.round(n * 1e6));
 const REVIEW = 3n * 24n * 60n * 60n;
 const YEAR = 365n * 24n * 60n * 60n;
-const STATUS = { Pending: 0, Delivered: 1, Approved: 2, KeyReleased: 3, Released: 4, Disputed: 5, Refunded: 6 } as const;
+const STATUS = { Pending: 0, Delivered: 1, Approved: 2, KeyReleased: 3, Released: 4, Disputed: 5, Refunded: 6, Split: 7 } as const;
 const FILE_HASH = keccak256(toHex("final-logo.svg"));
 const KEY: Hex = `0x${"ab".repeat(48)}`;
 const file = (amount: number) => ({ amount: usd(amount), hasFile: true, workHash: zeroHash });
@@ -77,14 +77,14 @@ describe("Disputed funds: who can move them, and what happens when nobody rules"
       await assert.rejects(c.fArbiter.write.resolve([0n, 0n, false]));
     });
 
-    it("KNOWN GAP (DC-M-01): if the arbiter never rules, the money stays locked for ever", async () => {
+    it("DC-M-01 fixed: a silent arbiter cannot lock the money for ever (timeoutResolve after 7 days)", async () => {
       const c = await disputedFileDeal();
       await networkHelpers.time.increase(YEAR);
       assert.equal((await c.fileEscrow.read.getMilestone([0n, 0n])).status, STATUS.Disputed);
-      assert.equal(await c.usdc.read.balanceOf([c.fileEscrow.address]), usd(1_000));
-      // Neither party has an exit of their own except the seller's voluntary refund.
-      await assert.rejects(c.fBuyer.write.reclaim([0n, 0n]));
-      await assert.rejects(c.fSeller.write.claim([0n, 0n]));
+      await c.fStranger.write.timeoutResolve([0n, 0n]);
+      assert.equal((await c.fileEscrow.read.getMilestone([0n, 0n])).status, STATUS.Refunded);
+      assert.equal(await c.usdc.read.balanceOf([c.fileEscrow.address]), 0n);
+      assert.equal(await c.usdc.read.balanceOf([buyer.account.address]), usd(10_000));
     });
 
     it("KNOWN GAP (DC-L-01): the seller's refund pre-empts the arbiter, who can then no longer rule", async () => {
@@ -92,6 +92,18 @@ describe("Disputed funds: who can move them, and what happens when nobody rules"
       await c.fSeller.write.refund([0n, 0n]);
       assert.equal(await c.usdc.read.balanceOf([buyer.account.address]), usd(10_000));
       await assert.rejects(c.fArbiter.write.resolve([0n, 0n, true]));
+    });
+
+    it("DC-H-02 fixed: a settled milestone, split or otherwise, cannot be refunded again", async () => {
+      const c = await disputedFileDeal(); // deal 0, 1,000
+      // A second, unrelated deal keeps 1,500 of someone else's money in the same escrow.
+      await c.fBuyer.write.offerToBuy([stranger.account.address, arbiter.account.address, c.usdc.address, [file(1_500)], REVIEW, "other"]);
+      assert.equal(await c.usdc.read.balanceOf([c.fileEscrow.address]), usd(2_500));
+      await c.fArbiter.write.resolveSplit([0n, 0n, 3_000]); // seller 300, buyer 700, deal 0 is settled
+      assert.equal(await c.usdc.read.balanceOf([c.fileEscrow.address]), usd(1_500));
+      await viem.assertions.revertWithCustomErrorWithArgs(c.fSeller.write.refund([0n, 0n]), c.fileEscrow, "WrongStatus", [STATUS.Split]);
+      assert.equal((await c.fileEscrow.read.getMilestone([0n, 0n])).status, STATUS.Split);
+      assert.equal(await c.usdc.read.balanceOf([c.fileEscrow.address]), usd(1_500)); // the other deal's money is untouched
     });
 
     it("a stranger cannot call refund on someone else's disputed deal", async () => {
@@ -151,7 +163,7 @@ describe("Disputed funds: who can move them, and what happens when nobody rules"
       assert.equal(await c.usdc.read.balanceOf([c.milestone.address]), usd(1_000));
     });
 
-    it("KNOWN GAP (DC-M-01): with a silent arbiter the money is locked permanently and no party has an exit", async () => {
+    it("KNOWN GAP (DC-M-01, legacy MilestoneEscrow only): with a silent arbiter the money is locked permanently and no party has an exit", async () => {
       const c = await disputedDeal();
       await networkHelpers.time.increase(YEAR);
       await assert.rejects(c.mBuyer.write.release([0n, 0n]));

@@ -102,6 +102,10 @@ contract FileEscrow is ReentrancyGuard {
     mapping(address => uint256[]) private _dealsOf;
     /// @dev What the seller received from a Split milestone; the buyer got the rest.
     mapping(uint256 => mapping(uint256 => uint256)) private _splitToSeller;
+    /// @dev When the buyer opened the dispute; starts the arbiter's window (DC-M-01).
+    mapping(uint256 => mapping(uint256 => uint64)) private _disputedAt;
+    /// @notice How long the arbiter has to rule before anyone may return the money to the buyer.
+    uint64 public constant ARBITER_WINDOW = 7 days;
 
     event OfferCreated(
         uint256 indexed dealId, address indexed buyer, address indexed seller, address creator, uint256 total, string termsURI
@@ -114,6 +118,7 @@ contract FileEscrow is ReentrancyGuard {
     event Disputed(uint256 indexed dealId, uint256 indexed index);
     event Released(uint256 indexed dealId, uint256 indexed index, uint256 amount);
     event Refunded(uint256 indexed dealId, uint256 indexed index, uint256 amount);
+    event ArbiterTimedOut(uint256 indexed dealId, uint256 indexed index, address indexed caller);
     event SplitResolved(uint256 indexed dealId, uint256 indexed index, uint256 toSeller, uint256 toBuyer);
 
     error InvalidOffer();
@@ -243,10 +248,17 @@ contract FileEscrow is ReentrancyGuard {
     }
 
     /// @notice Gives a milestone's payment back to the buyer at any point before it is settled.
+    /// @dev Allowed only while the escrow still holds the money. A list of the settled states would
+    ///      miss any status added later (Split was, DC-H-02: a split milestone was refunded a second time
+    ///      out of other deals' funds), so the states that hold money are listed instead.
     function refund(uint256 dealId, uint256 index) external nonReentrant {
         (Deal storage d, Milestone storage m) = _active(dealId, index);
         if (msg.sender != d.seller) revert NotAllowed();
-        if (m.status == Status.Released || m.status == Status.Refunded) revert WrongStatus(m.status);
+        Status s = m.status;
+        if (
+            s != Status.Pending && s != Status.Delivered && s != Status.Approved && s != Status.KeyReleased
+                && s != Status.Disputed
+        ) revert WrongStatus(s);
 
         _payBack(dealId, index, d, m);
     }
@@ -283,6 +295,7 @@ contract FileEscrow is ReentrancyGuard {
         if (block.timestamp > m.deadline) revert WindowClosed();
 
         m.status = Status.Disputed;
+        _disputedAt[dealId][index] = uint64(block.timestamp);
         emit Disputed(dealId, index);
     }
 
@@ -331,9 +344,27 @@ contract FileEscrow is ReentrancyGuard {
         emit SplitResolved(dealId, index, toSeller, toBuyer);
     }
 
+    /// @notice Last resort when the arbiter stays silent: after ARBITER_WINDOW anyone may return a
+    ///         disputed milestone's money to the buyer (DC-M-01). The outcome is fixed here, not chosen
+    ///         by the caller: the money came from the buyer and nobody has confirmed the work. Before
+    ///         the window ends only the arbiter (or the seller's own refund) can settle it.
+    function timeoutResolve(uint256 dealId, uint256 index) external nonReentrant {
+        (Deal storage d, Milestone storage m) = _active(dealId, index);
+        if (m.status != Status.Disputed) revert WrongStatus(m.status);
+        if (block.timestamp < uint256(_disputedAt[dealId][index]) + ARBITER_WINDOW) revert WindowOpen();
+
+        emit ArbiterTimedOut(dealId, index, msg.sender);
+        _payBack(dealId, index, d, m);
+    }
+
     // ----------------------------------------------------------------------------------------
     // Views
     // ----------------------------------------------------------------------------------------
+
+    /// @notice When the dispute on a milestone was opened; 0 if it never was.
+    function disputedAt(uint256 dealId, uint256 index) external view returns (uint64) {
+        return _disputedAt[dealId][index];
+    }
 
     /// @notice How a Split milestone was paid out; (0, 0) for any other status.
     function splitOf(uint256 dealId, uint256 index) external view returns (uint256 toSeller, uint256 toBuyer) {

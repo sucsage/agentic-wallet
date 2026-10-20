@@ -15,6 +15,7 @@ It is the base for the competition `SECURITY.md` self-assessment. English only.
 | [SECURITY-CORRECTIONS.md](SECURITY-CORRECTIONS.md) | Fact check of `SECURITY.md`, `EVIDENCE.md` and README against the code: ranked problems, paste-ready replacements, new risk rows | Proposed edits, to send as a PR |
 | [PRIVACY-DATA-MAP.md](PRIVACY-DATA-MAP.md) | What personal data is stored, where, for how long, who can read it; gaps; text for the privacy section of `SECURITY.md` | Draft |
 | [ATTACK-CASES.md](ATTACK-CASES.md) | 35 attack cases with defence and test status | Draft |
+| [FINDINGS-2026-10-16.md](FINDINGS-2026-10-16.md) | Delta review of `5cc8fa5`: DC-H-02 (double refund after a split), DC-CO-01 (non-signer pays from a company), what was checked and fine | Open, reproduced |
 
 Rules for this folder: add a row above for every new file; findings are re-checked against the code before a status
 changes; no keys, `.env` values, or live credentials.
