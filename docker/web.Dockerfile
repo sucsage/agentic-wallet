@@ -11,5 +11,6 @@ COPY web/ ./
 COPY docker/seed.mts ./scripts/seed-local.mts
 RUN npx next build
 COPY docker/web-entrypoint.sh /usr/local/bin/web-entrypoint.sh
-RUN chmod +x /usr/local/bin/web-entrypoint.sh
+# Strip Windows line endings (a CRLF shebang makes the kernel say "no such file or directory").
+RUN sed -i 's/\r$//' /usr/local/bin/web-entrypoint.sh && chmod +x /usr/local/bin/web-entrypoint.sh
 ENTRYPOINT ["web-entrypoint.sh"]

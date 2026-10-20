@@ -13,5 +13,5 @@ COPY desktop/ ./
 COPY web/src/lib/device-chain/format.ts /app/web/src/lib/device-chain/format.ts
 COPY docker/desktop-entrypoint.sh /usr/local/bin/desktop-entrypoint.sh
 # format.ts resolves viem from /app/web: point it at the desktop install instead of letting bun fetch one.
-RUN ln -s /app/desktop/node_modules /app/web/node_modules && chmod +x /usr/local/bin/desktop-entrypoint.sh
+RUN ln -s /app/desktop/node_modules /app/web/node_modules && sed -i 's/\r$//' /usr/local/bin/desktop-entrypoint.sh && chmod +x /usr/local/bin/desktop-entrypoint.sh
 ENTRYPOINT ["desktop-entrypoint.sh"]
