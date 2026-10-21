@@ -1,6 +1,10 @@
+import type { Metadata } from "next";
+
 import { MockupApp } from "@/components/mockup-app";
 
 const SITE = process.env.APP_ORIGIN?.trim() || "https://www.kravii.com";
+
+export const metadata: Metadata = { alternates: { canonical: "/" } };
 
 /** Tells search engines what Kravii is (a software product, not a misspelt place name). */
 const STRUCTURED = {

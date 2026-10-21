@@ -29,7 +29,6 @@ export const metadata: Metadata = {
   description: DESCRIPTION,
   applicationName: "Kravii",
   keywords: ["Kravii", "AI agent wallet", "milestone payments", "escrow", "SME", "freelance payments", "smart contract", "FinTechathon 2026"],
-  alternates: { canonical: "/" },
   openGraph: { type: "website", siteName: "Kravii", url: "/", title: "Kravii · AI agent wallet for milestone payments", description: DESCRIPTION, images: [{ url: "/icon.png", width: 512, height: 512, alt: "Kravii" }] },
   twitter: { card: "summary", title: "Kravii · AI agent wallet for milestone payments", description: DESCRIPTION, images: ["/icon.png"] },
 };
