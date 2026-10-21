@@ -11,6 +11,7 @@ import { securityOf } from "../two-factor";
 import { primaryWalletAddress } from "../user-wallets";
 import { type DeviceRow, DeviceError, serverSigner } from ".";
 import { accountMessage, signerOf } from "./format";
+import { selfOrigin } from "../origins";
 
 /**
  * The desktop app as the way in: make an account or sign in, verify identity, get the wallet, all
@@ -121,7 +122,7 @@ export async function finishDeviceKyc(origin: string, state: string, code: strin
   if (error) return done(error);
   if (!code) return done("No authorization code");
   const slug = flow.provider === "THAID" ? "thaid" : "netid";
-  const res = await fetch(new URL(`/api/mock-id/${slug}/token`, origin), {
+  const res = await fetch(new URL(`/api/mock-id/${slug}/token`, selfOrigin()), {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: `${origin}/api/device/kyc/callback`, client_id: CLIENT_ID, client_secret: clientSecret(), code_verifier: flow.verifier }),

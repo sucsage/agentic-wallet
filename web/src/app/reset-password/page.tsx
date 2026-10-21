@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { MockupApp } from "@/components/mockup-app";
 
 export const metadata: Metadata = {
-  title: "Reset password · Kravii",
+  title: "Reset password",
   description: "Choose a new password for your Kravii account.",
 };
 

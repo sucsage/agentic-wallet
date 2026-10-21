@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { MockupApp } from "@/components/mockup-app";
 
 export const metadata: Metadata = {
-  title: "Log in · Kravii",
+  title: "Log in",
   description: "Log in to Kravii with your bank.",
 };
 

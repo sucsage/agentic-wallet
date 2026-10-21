@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { ApplyPage } from "@/components/apply-page";
 
 export const metadata: Metadata = {
-  title: "Open call · Kravii",
+  title: "Open call",
   robots: { index: false, follow: false },
 };
 

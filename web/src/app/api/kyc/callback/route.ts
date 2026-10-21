@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { publicOrigin } from "@/lib/origins";
+import { publicOrigin, selfOrigin } from "@/lib/origins";
 
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth";
@@ -30,7 +30,7 @@ export async function GET(req: Request) {
     if (!code) return back("No authorization code");
 
     const slug = flow.provider === "THAID" ? "thaid" : "netid";
-    const res = await fetch(new URL(`/api/mock-id/${slug}/token`, origin), {
+    const res = await fetch(new URL(`/api/mock-id/${slug}/token`, selfOrigin()), {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({

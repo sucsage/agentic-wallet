@@ -5,7 +5,7 @@ import { PickForThisComputer } from "./pick";
 import "./download.css";
 
 export const metadata: Metadata = {
-  title: "Download · Kravii",
+  title: "Download",
   description: "Kravii Wallet desktop app for macOS, Windows and Linux (test mode demo).",
 };
 

@@ -38,3 +38,12 @@ export function publicOrigin(req: Request): string {
   if (host && /^[a-z0-9.-]+(:\d+)?$/i.test(host)) return `${req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() === "http" ? "http" : "https"}://${host}`;
   return new URL(req.url).origin;
 }
+
+/**
+ * Where this server reaches itself for server-to-server calls (the demo ID provider's token
+ * endpoint). Not the public address: behind a tunnel that is a round trip through the internet, and
+ * on a test instance it may not be reachable from inside the container at all.
+ */
+export function selfOrigin(): string {
+  return process.env.INTERNAL_ORIGIN?.trim() || `http://127.0.0.1:${process.env.PORT ?? 3000}`;
+}
