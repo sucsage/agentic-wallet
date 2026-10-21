@@ -29,6 +29,19 @@ cast receipt <tx hash> --rpc-url https://www.kravii.com/api/rpc
 `cd web && npx tsx --conditions=react-server --env-file=.env.local scripts/evidence.mts` regenerates
 EVIDENCE.md from the live chain.
 
+## Run it locally (one command)
+
+The whole system (database, chain, web app, desktop app, demo data) starts in containers on your own
+machine, for testing without any hosted service:
+
+```bash
+git clone https://github.com/sucsage/agentic-wallet.git && cd agentic-wallet
+docker compose up --build -d --wait
+```
+
+Then open http://localhost:3000 and sign in as `somchai`, `nong`, `mali` or `preecha` (PIN `123456`).
+Full guide, a 10-minute tour, configuration and troubleshooting: [docker/README.md](docker/README.md).
+
 ## Layout
 
 | Path | What |

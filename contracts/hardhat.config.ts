@@ -29,7 +29,8 @@ export default defineConfig({
     localhost: {
       type: "http",
       chainType: "l1",
-      url: "http://127.0.0.1:8545",
+      // LOCALHOST_RPC_URL points the deploy at a node in another container (see ../docker-compose.yml).
+      url: process.env.LOCALHOST_RPC_URL ?? "http://127.0.0.1:8545",
     },
     // Private Besu chain (../chain), gas is free. Local: loopback RPC. Chain server: its public
     // URL in BESU_RPC_URL, which needs the bearer JWT in CHAIN_TOKEN.

@@ -1,0 +1,108 @@
+# Whole system on one machine:   docker compose up --build      then open http://localhost:3000
+# Reset everything (chain, database):   docker compose down -v
+# Configuration: .env.example (defaults, works as is) and an optional .env on top of it. See docker/README.md.
+name: agentic-wallet
+
+x-env: &env
+  env_file:
+    - path: .env.example
+    - path: .env
+      required: false
+
+services:
+  postgres:
+    <<: *env
+    image: postgres:16-alpine
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-55432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  chain:
+    <<: *env
+    build:
+      context: .
+      dockerfile: docker/contracts.Dockerfile
+    command: ["npx", "hardhat", "node", "--hostname", "0.0.0.0", "--port", "8545"]
+    ports:
+      - "127.0.0.1:${CHAIN_PORT:-8545}:8545"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8545',{method:'POST',headers:{'content-type':'application/json'},body:'{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_chainId\",\"params\":[]}'}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+
+  deployer:
+    <<: *env
+    build:
+      context: .
+      dockerfile: docker/contracts.Dockerfile
+    command: ["node", "docker-deploy.mjs"]
+    depends_on:
+      chain:
+        condition: service_healthy
+    volumes:
+      - shared:/shared
+    restart: "no"
+
+  web:
+    <<: *env
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      deployer:
+        condition: service_completed_successfully
+    volumes:
+      - shared:/shared
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:3000/api/auth/ok"]
+      interval: 5s
+      timeout: 10s
+      retries: 40
+      start_period: 20s
+
+  seed:
+    <<: *env
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+    entrypoint: ["sh", "-c", "set -a; . /shared/contracts.env; set +a; exec npx tsx --conditions=react-server scripts/seed-local.mts"]
+    depends_on:
+      web:
+        condition: service_healthy
+    volumes:
+      - shared:/shared
+    # Shares web's network, so the app is http://localhost:3000 here too (the origin its auth checks expect).
+    network_mode: "service:web"
+    restart: "no"
+
+  desktop:
+    <<: *env
+    build:
+      context: .
+      dockerfile: docker/desktop.Dockerfile
+    depends_on:
+      web:
+        condition: service_healthy
+    environment:
+      AGENTIC_WALLET_SERVER: http://localhost:3000
+      AGENTIC_WALLET_DATA: /data
+    volumes:
+      - desktopdata:/data
+    ports:
+      - "127.0.0.1:47821:47821"
+
+volumes:
+  desktopdata:
+  pgdata:
+  shared:

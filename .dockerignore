@@ -1,0 +1,16 @@
+.git
+.claude
+.secrets
+.env
+ProjectStateV5
+design
+docs
+**/node_modules
+**/.next
+**/.env*
+!.env.example
+contracts/artifacts
+contracts/cache
+contracts/deployments
+web/tsconfig.tsbuildinfo
+desktop/node_modules

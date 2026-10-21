@@ -28,7 +28,7 @@ import * as store from "./store";
 import { currentProfile, setProfile } from "./paths";
 import { type VaultFile, WrongPassphrase, hasVault, lastAccount, listAccounts, openBackup, openKey, openLocal, readVault, rememberAccount, SITE, sealBackup, sealKey, sealLocal, writeVault } from "./vault";
 
-export const DEFAULT_SERVER = SITE;
+export const DEFAULT_SERVER = process.env.AGENTIC_WALLET_SERVER ?? SITE;
 
 type Head = { height: number; hash: Hex; serverSig: Hex; block: SignedBlock } | null;
 type Pending = { head: Head; server: Address; events: { event: DealEventBody; serverSig: Hex }[]; requests: WebRequest[] };
