@@ -19,10 +19,19 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const SITE = process.env.APP_ORIGIN?.trim() || "https://www.kravii.com";
+const DESCRIPTION =
+  "Kravii is an AI agent wallet for small businesses: describe a job in Thai, English or Chinese, the AI drafts a milestone deal, the money waits in an on-chain escrow and is paid only when you approve the work. Demo with test money (THB and CNY).";
+
 export const metadata: Metadata = {
-  title: "Kravii",
-  description:
-    "An AI agent wallet that pays SME contractors milestone by milestone. Smart contracts enforce every rule.",
+  metadataBase: new URL(SITE),
+  title: { default: "Kravii · AI agent wallet for milestone payments", template: "%s · Kravii" },
+  description: DESCRIPTION,
+  applicationName: "Kravii",
+  keywords: ["Kravii", "AI agent wallet", "milestone payments", "escrow", "SME", "freelance payments", "smart contract", "FinTechathon 2026"],
+  alternates: { canonical: "/" },
+  openGraph: { type: "website", siteName: "Kravii", url: "/", title: "Kravii · AI agent wallet for milestone payments", description: DESCRIPTION, images: [{ url: "/icon.png", width: 512, height: 512, alt: "Kravii" }] },
+  twitter: { card: "summary", title: "Kravii · AI agent wallet for milestone payments", description: DESCRIPTION, images: ["/icon.png"] },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

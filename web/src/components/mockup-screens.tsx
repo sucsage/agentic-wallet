@@ -29,7 +29,7 @@ export function LandingScreen({ onStart }: { onStart: () => void }) {
   ];
   const security = [
     ["shield", "Two layers of protection", "Policy checks before anything happens, then contract rules that enforce limits and the allow transfer list.", "violet"],
-    ["users", "Disputes settled by a neutral arbiter", "An AI arbiter that is not your agent rules on the written criteria; when it is unsure, a human decides.", "blue"],
+    ["users", "You approve every payment", "The AI drafts deals but cannot pay on its own. Money moves only when you sign, and a company wallet also needs its signers' votes.", "blue"],
     ["lock", "Your data, your control", "PDPA: delete your data anytime. Only fingerprints (hashes) are kept as evidence.", "green"],
   ];
   const faqs = [

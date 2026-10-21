@@ -253,7 +253,7 @@ Object.assign(mockupTh, {
   "Paid to the seller’s bank": "โอนเข้าบัญชีผู้ขาย", "Released straight to their bank account. THB ↔ CNY at a fixed rate.": "โอนตรงเข้าบัญชีธนาคารผู้ขาย แลกเงินบาท ↔ หยวนในอัตราคงที่",
   "SECURITY": "ความปลอดภัย", "Built for safety": "ออกแบบมาเพื่อความปลอดภัย", "Two layers of protection": "ป้องกัน 2 ชั้น",
   "Policy checks before anything happens, then contract rules that enforce limits and the allow transfer list.": "ตรวจนโยบายก่อนทำรายการ และกฎ contract บังคับเพดานกับ allowlist",
-  "Disputes settled by AI": "AI ตัดสินข้อพิพาท", "AI mediator first, then 3 independent models (2 of 3 must agree), appeal to 5.": "AI ไกล่เกลี่ยก่อน แล้วให้ 3 โมเดลอิสระตัดสิน (ต้องตรงกัน 2 ใน 3) อุทธรณ์ได้ถึง 5 โมเดล",
+  "You approve every payment": "คุณอนุมัติทุกการจ่ายเงิน", "The AI drafts deals but cannot pay on its own. Money moves only when you sign, and a company wallet also needs its signers' votes.": "AI ร่างดีลได้ แต่จ่ายเงินเองไม่ได้ เงินขยับเมื่อคุณเซ็นเท่านั้น และ wallet ของบริษัทต้องได้เสียงโหวตจากผู้มีสิทธิ์อนุมัติด้วย", "Disputes settled by AI": "AI ตัดสินข้อพิพาท", "AI mediator first, then 3 independent models (2 of 3 must agree), appeal to 5.": "AI ไกล่เกลี่ยก่อน แล้วให้ 3 โมเดลอิสระตัดสิน (ต้องตรงกัน 2 ใน 3) อุทธรณ์ได้ถึง 5 โมเดล",
   "Your data, your control": "ข้อมูลของคุณ คุณควบคุมเอง", "PDPA: delete your data anytime. Only fingerprints (hashes) are kept as evidence.": "PDPA: ลบข้อมูลได้ทุกเมื่อ เก็บแค่ลายนิ้วมือข้อมูล (hash) เป็นหลักฐาน",
   "ACCOUNTS": "ประเภทบัญชี", "For people and companies": "สำหรับบุคคลและบริษัท", "Personal account": "บัญชีส่วนตัว",
   "Pay and get paid from your own bank account.": "จ่ายและรับเงินผ่านบัญชีธนาคารของคุณ", "Company account": "บัญชีบริษัท",

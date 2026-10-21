@@ -67,6 +67,10 @@ function withHeaders(res: NextResponse, req: NextRequest): NextResponse {
 export async function proxy(req: NextRequest) {
   const path = req.nextUrl.pathname;
 
+  // One address for search engines and cookies: kravii.com → www.kravii.com.
+  const host = (req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "").split(",")[0].trim().toLowerCase();
+  if (host === "kravii.com") return NextResponse.redirect(`https://www.kravii.com${path}${req.nextUrl.search}`, 308);
+
   if (path.startsWith("/api/")) {
     if (UNSAFE.has(req.method) && !path.startsWith("/api/auth/")) {
       const origin = req.headers.get("origin");
