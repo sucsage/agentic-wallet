@@ -10,6 +10,7 @@ import { headers } from "next/headers";
 import { db } from "./db";
 import { emailEnabled, sendEmail } from "./email";
 import { mockBank } from "./mock-bank-auth";
+import { siteOrigins } from "./origins";
 
 /**
  * Sign in with Apple wants the client secret as an ES256 JWT signed with the .p8 key, valid for
@@ -89,6 +90,8 @@ export const auth = betterAuth({
     "https://appleid.apple.com",
     ...[process.env.VERCEL_URL, process.env.VERCEL_BRANCH_URL, process.env.VERCEL_PROJECT_PRODUCTION_URL].filter(Boolean).map((h) => `https://${h}`),
     "https://agentic-wallet-*-sucsages-projects.vercel.app",
+    // Self-hosted (Docker behind Cloudflare): the public addresses from the settings, and kravii.com.
+    ...siteOrigins(),
     ...(process.env.NODE_ENV === "production" ? [] : ["http://localhost:*", "http://127.0.0.1:*"]),
   ],
   databaseHooks: {

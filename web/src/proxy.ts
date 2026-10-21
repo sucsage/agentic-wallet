@@ -2,6 +2,7 @@ import { getSessionCookie } from "better-auth/cookies";
 import { type NextRequest, NextResponse } from "next/server";
 
 import { VERIFIED_HEADER, verifySignedRequest } from "./lib/device-chain/bridge";
+import { siteOrigins } from "./lib/origins";
 
 /**
  * Runs before every page and API request (Next.js 16 Proxy, formerly Middleware):
@@ -69,7 +70,11 @@ export async function proxy(req: NextRequest) {
   if (path.startsWith("/api/")) {
     if (UNSAFE.has(req.method) && !path.startsWith("/api/auth/")) {
       const origin = req.headers.get("origin");
-      if (origin && origin !== req.nextUrl.origin) {
+      // Behind a proxy or tunnel the request URL is the container's (http://…), so the site's public
+      // addresses and the forwarded host count as this site too.
+      const fwdHost = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
+      const fwd = fwdHost ? `${req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() || "https"}://${fwdHost}` : null;
+      if (origin && origin !== req.nextUrl.origin && origin !== fwd && !siteOrigins().includes(origin)) {
         return withHeaders(NextResponse.json({ error: "Cross-site request refused" }, { status: 403 }), req);
       }
     }
