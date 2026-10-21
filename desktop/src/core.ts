@@ -26,9 +26,9 @@ import { ApiError, plain, signed, signedRaw, signedForm } from "./api";
 import type { ServerConfig } from "./mcp-host";
 import * as store from "./store";
 import { currentProfile, setProfile } from "./paths";
-import { type VaultFile, WrongPassphrase, hasVault, lastAccount, listAccounts, openBackup, openKey, openLocal, readVault, rememberAccount, sealBackup, sealKey, sealLocal, writeVault } from "./vault";
+import { type VaultFile, WrongPassphrase, hasVault, lastAccount, listAccounts, openBackup, openKey, openLocal, readVault, rememberAccount, SITE, sealBackup, sealKey, sealLocal, writeVault } from "./vault";
 
-export const DEFAULT_SERVER = "https://agentic-wallet-inky.vercel.app";
+export const DEFAULT_SERVER = SITE;
 
 type Head = { height: number; hash: Hex; serverSig: Hex; block: SignedBlock } | null;
 type Pending = { head: Head; server: Address; events: { event: DealEventBody; serverSig: Hex }[]; requests: WebRequest[] };

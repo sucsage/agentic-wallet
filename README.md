@@ -12,9 +12,9 @@ Topic F: Agent Wallet.
 
 | | |
 |---|---|
-| Live app | https://agentic-wallet-inky.vercel.app (sign up with email, demo KYC approves at once, test money only) |
-| Public chain explorer (no sign-in) | https://agentic-wallet-inky.vercel.app/explorer |
-| Read-only JSON-RPC (chain id 20261020) | `https://agentic-wallet-inky.vercel.app/api/rpc` |
+| Live app | https://www.kravii.com (sign up with email, demo KYC approves at once, test money only) |
+| Public chain explorer (no sign-in) | https://www.kravii.com/explorer |
+| Read-only JSON-RPC (chain id 20261020) | `https://www.kravii.com/api/rpc` |
 | Transaction hashes, grouped by what they prove | [EVIDENCE.md](EVIDENCE.md) |
 | Technical documentation (architecture, core algorithms, security design) | [TECHNICAL.md](TECHNICAL.md) |
 | Security self-assessment (permission tiers, known risks) | [SECURITY.md](SECURITY.md) |
@@ -23,7 +23,7 @@ Our chain is a private, permissioned Hyperledger Besu network: only the app's ke
 anyone can **read**. To check a transaction hash yourself, without trusting our explorer:
 
 ```bash
-cast receipt <tx hash> --rpc-url https://agentic-wallet-inky.vercel.app/api/rpc
+cast receipt <tx hash> --rpc-url https://www.kravii.com/api/rpc
 ```
 
 `cd web && npx tsx --conditions=react-server --env-file=.env.local scripts/evidence.mts` regenerates

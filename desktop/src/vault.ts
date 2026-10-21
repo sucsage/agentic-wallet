@@ -58,7 +58,7 @@ export function listAccounts() {
   return profileIds()
     .map((id) => {
       const v = JSON.parse(readFileSync(vaultPathOf(id), "utf8")) as VaultFile;
-      return { id, address: v.address, user: v.user, deviceName: v.deviceName, server: v.server, wallet: v.wallet, linkedAt: v.linkedAt };
+      return { id, address: v.address, user: v.user, deviceName: v.deviceName, server: movedServer(v.server), wallet: v.wallet, linkedAt: v.linkedAt };
     })
     .sort((a, b) => b.linkedAt - a.linkedAt);
 }
@@ -71,7 +71,19 @@ export const lastAccount = (): string | null => {
   }
 };
 export const rememberAccount = (id: string) => writeFileSync(lastProfilePath(), id, { mode: 0o600 });
-export const readVault = (): VaultFile => JSON.parse(readFileSync(vaultPath(), "utf8"));
+/** The website's address. It moved from Vercel to the team's own server on 2026-10-21. */
+export const SITE = "https://www.kravii.com";
+/** A computer linked to the old Vercel address talks to the new one (same server, accounts and keys). */
+export const movedServer = (server: string) => (/^https:\/\/agentic-wallet(-[a-z0-9-]+)?\.vercel\.app\/?$/i.test(server) ? SITE : server);
+
+export const readVault = (): VaultFile => {
+  const v = JSON.parse(readFileSync(vaultPath(), "utf8")) as VaultFile;
+  const server = movedServer(v.server);
+  if (server === v.server) return v;
+  const moved = { ...v, server };
+  writeVault(moved);
+  return moved;
+};
 export function writeVault(file: VaultFile) {
   writeFileSync(vaultPath(), JSON.stringify(file, null, 2), { mode: 0o600 });
   try {

@@ -114,7 +114,7 @@ async function route(req: Request, path: string, port: number): Promise<Response
     try {
       url = new URL("/login", new URL(raw).origin);
     } catch {
-      return json({ error: "Enter the server address, e.g. https://agentic-wallet-inky.vercel.app" }, 400);
+      return json({ error: "Enter the server address, e.g. https://www.kravii.com" }, 400);
     }
     if (url.protocol !== "https:" && url.hostname !== "localhost" && url.hostname !== "127.0.0.1") return json({ error: "The server must use https" }, 400);
     openBrowser(url.toString());

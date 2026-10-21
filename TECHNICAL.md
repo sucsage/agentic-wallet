@@ -23,7 +23,7 @@ manipulated or hallucinating model still cannot move money outside policy.
 
 | | |
 |---|---|
-| Live app | https://agentic-wallet-inky.vercel.app (Mock Bank sign-up, test money only) |
+| Live app | https://www.kravii.com (Mock Bank sign-up, test money only) |
 | Public explorer and read-only RPC | `/explorer`, `/api/rpc` (chain id 20261020) |
 | Security self-assessment | [SECURITY.md](SECURITY.md) |
 | Transaction evidence | [EVIDENCE.md](EVIDENCE.md) |
