@@ -683,7 +683,7 @@ export function DraftCard({
           )}
           {draft.rules && (
             <details>
-              <summary>📜 Rules and conditions ({draft.rules.split(/\n+/).filter(Boolean).length} lines) · part of the signed terms</summary>
+              <summary>📜 Rules and conditions ({((n) => `${n} ${n === 1 ? "line" : "lines"}`)(draft.rules.split(/\n+/).filter(Boolean).length)}) · part of the signed terms</summary>
               <pre>{draft.rules}</pre>
             </details>
           )}
