@@ -20,3 +20,21 @@ export function siteOrigins(): string[] {
   }
   return [...out];
 }
+
+/**
+ * This site's address as the visitor sees it, for links, redirects and OAuth redirect URIs. Behind a
+ * proxy or tunnel the request's own URL is the container's (http://localhost:3000), so APP_ORIGIN (or
+ * BETTER_AUTH_URL) wins when set, then the forwarded host; the request URL only without either.
+ */
+export function publicOrigin(req: Request): string {
+  for (const v of [process.env.APP_ORIGIN, process.env.BETTER_AUTH_URL]) {
+    try {
+      if (v?.trim()) return new URL(v.trim()).origin;
+    } catch {
+      // not an address
+    }
+  }
+  const host = req.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
+  if (host && /^[a-z0-9.-]+(:\d+)?$/i.test(host)) return `${req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() === "http" ? "http" : "https"}://${host}`;
+  return new URL(req.url).origin;
+}

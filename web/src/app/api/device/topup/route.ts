@@ -3,6 +3,7 @@ import { z } from "zod";
 import { topupInfo, topupStart } from "@/lib/device-chain/features";
 import { deviceRoute } from "@/lib/device-chain/route";
 import { HttpError } from "@/lib/guard";
+import { publicOrigin } from "@/lib/origins";
 
 export const maxDuration = 60;
 
@@ -13,5 +14,5 @@ export const GET = deviceRoute((device) => topupInfo(device));
 export const POST = deviceRoute(async (device, body, req) => {
   const parsed = Body.safeParse(body);
   if (!parsed.success) throw new HttpError(400, "Enter an amount");
-  return topupStart(device, new URL(req.url).origin, parsed.data);
+  return topupStart(device, publicOrigin(req), parsed.data);
 });

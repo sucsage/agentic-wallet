@@ -1,4 +1,5 @@
 import { finishDeviceKyc } from "@/lib/device-chain/account";
+import { publicOrigin } from "@/lib/origins";
 
 const page = (ok: boolean, text: string) =>
   new Response(
@@ -12,9 +13,10 @@ const page = (ok: boolean, text: string) =>
 /** The digital ID sends the browser back here after a check started in the desktop app. */
 export async function GET(req: Request) {
   const url = new URL(req.url);
+  const origin = publicOrigin(req);
   const state = url.searchParams.get("state") ?? "";
   try {
-    const result = await finishDeviceKyc(url.origin, state, url.searchParams.get("code"), url.searchParams.get("error_description") ?? url.searchParams.get("error"));
+    const result = await finishDeviceKyc(origin, state, url.searchParams.get("code"), url.searchParams.get("error_description") ?? url.searchParams.get("error"));
     if (result === "ok") return page(true, "Your wallet account is open. The app finishes setting up your wallet.");
     if (result === "pending") return page(true, "A reviewer checks your identity; the app shows when it is approved.");
     return page(false, result);

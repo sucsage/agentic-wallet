@@ -1,5 +1,6 @@
 import { HttpError, errorResponse, rateLimit, requireCustomer } from "@/lib/guard";
 import { SocialError, groupLink } from "@/lib/social";
+import { publicOrigin } from "@/lib/origins";
 
 /** A fresh join link for the group, shown as a QR to someone in person. */
 export async function POST(req: Request, ctx: RouteContext<"/api/groups/[id]/link">) {
@@ -9,7 +10,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/groups/[id]/lin
     const link = await groupLink(user.id, (await ctx.params).id).catch((e) => {
       throw e instanceof SocialError ? new HttpError(400, e.message) : e;
     });
-    return Response.json({ url: `${new URL(req.url).origin}/groups/join/${link.token}`, expiresAt: link.expiresAt });
+    return Response.json({ url: `${publicOrigin(req)}/groups/join/${link.token}`, expiresAt: link.expiresAt });
   } catch (err) {
     return errorResponse(err);
   }

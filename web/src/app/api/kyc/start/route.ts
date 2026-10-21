@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { db } from "@/lib/db";
 import { HttpError, errorResponse, rateLimit, requireUser } from "@/lib/guard";
+import { publicOrigin } from "@/lib/origins";
 
 /**
  * Starts identity verification (OpenID Connect, authorization code + PKCE): remembers state,
@@ -23,7 +24,7 @@ export async function POST(req: Request) {
     const provider = country === "TH" ? "THAID" : "CN_NETID";
     const flow = { provider, state: randomToken(), nonce: randomToken(), verifier: randomToken(32), uid: user.id } as const;
     (await cookies()).set(KYC_COOKIE, await signFlow(flow), { httpOnly: true, secure: true, sameSite: "lax", path: "/api/kyc", maxAge: 600 });
-    const origin = new URL(req.url).origin;
+    const origin = publicOrigin(req);
     const q = new URLSearchParams({
       response_type: "code",
       client_id: CLIENT_ID,

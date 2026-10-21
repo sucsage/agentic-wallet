@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { BuyerInviteError, createBuyerInvite } from "@/lib/bank/buyer-invites";
 import { HttpError, errorResponse, rateLimit, requireBankWallet } from "@/lib/guard";
+import { publicOrigin } from "@/lib/origins";
 
 export const maxDuration = 60;
 
@@ -15,7 +16,7 @@ export async function POST(req: Request) {
     const { invite, token } = await createBuyerInvite(user.id, wallet, body.data.name).catch((e) => {
       throw e instanceof BuyerInviteError ? new HttpError(400, e.message) : e;
     });
-    return Response.json({ name: `${invite.name} (invited buyer)`, link: `${new URL(req.url).origin}/pay/${token}`, expiresAt: invite.expiresAt }, { status: 201 });
+    return Response.json({ name: `${invite.name} (invited buyer)`, link: `${publicOrigin(req)}/pay/${token}`, expiresAt: invite.expiresAt }, { status: 201 });
   } catch (err) {
     return errorResponse(err);
   }

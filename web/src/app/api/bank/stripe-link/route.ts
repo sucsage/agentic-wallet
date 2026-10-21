@@ -1,6 +1,7 @@
 import { linkOf, startLink, unlink } from "@/lib/bank/stripe-link";
 import { TopupError } from "@/lib/bank/topup";
 import { HttpError, errorResponse, rateLimit, requireCustomer } from "@/lib/guard";
+import { publicOrigin } from "@/lib/origins";
 
 /** The card linked through Stripe as a funding source (GET), link one (POST), unlink (DELETE). */
 export async function GET() {
@@ -17,7 +18,7 @@ export async function POST(req: Request) {
   try {
     rateLimit(req, "stripe-link", 20, 60 * 60 * 1000);
     const { user } = await requireCustomer();
-    const url = await startLink(user.id, new URL(req.url).origin).catch((e) => {
+    const url = await startLink(user.id, publicOrigin(req)).catch((e) => {
       throw e instanceof TopupError ? new HttpError(400, e.message) : e;
     });
     return Response.json({ url });

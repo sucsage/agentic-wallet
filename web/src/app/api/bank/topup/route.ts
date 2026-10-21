@@ -3,6 +3,7 @@ import { z } from "zod";
 import { linkOf } from "@/lib/bank/stripe-link";
 import { TopupError, startTopup, topupHistory, topupLimit } from "@/lib/bank/topup";
 import { HttpError, errorResponse, rateLimit, requireCustomer } from "@/lib/guard";
+import { publicOrigin } from "@/lib/origins";
 
 /** GET: limit (KYC-dependent), linked card, recent top-ups. POST {amount, method}: a Stripe Checkout URL. */
 export async function GET() {
@@ -29,7 +30,7 @@ export async function POST(req: Request) {
       .object({ amount: z.number().positive().max(1_000_000), method: z.enum(["card", "promptpay"]).default("card") })
       .safeParse(await req.json().catch(() => null));
     if (!body.success) throw new HttpError(400, "Send an amount");
-    const url = await startTopup(user.id, body.data.amount, new URL(req.url).origin, body.data.method).catch((e) => {
+    const url = await startTopup(user.id, body.data.amount, publicOrigin(req), body.data.method).catch((e) => {
       throw e instanceof TopupError ? new HttpError(400, e.message) : e;
     });
     return Response.json({ url });

@@ -15,6 +15,7 @@ import { closeFinishedLink } from "@/lib/bank/link-end";
 import { dueDates } from "@/lib/bank/milestone-due";
 import { db } from "@/lib/db";
 import { HttpError, errorResponse, rateLimit } from "@/lib/guard";
+import { publicOrigin } from "@/lib/origins";
 
 export const maxDuration = 120;
 
@@ -69,7 +70,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/pay/[token]">) 
       await db.buyerInvite.update({ where: { id: invite.id }, data: { name: clean } });
       return json({ name: clean });
     }
-    if (b.action === "checkout") return json(await startBuyerPayment(invite, token, b.dealId, new URL(req.url).origin).catch(asHttp(400)));
+    if (b.action === "checkout") return json(await startBuyerPayment(invite, token, b.dealId, publicOrigin(req)).catch(asHttp(400)));
     if (b.action === "confirm") return json(await confirmBuyerPayment(invite, b.sessionId, b.dealId).catch(asHttp(400)));
     if (b.action === "pay") return json(await payOffer(invite, b.dealId).catch(asHttp(400)));
     return json(await approveAsInvitedBuyer(invite, b.dealId, b.index).catch(asHttp(400)));

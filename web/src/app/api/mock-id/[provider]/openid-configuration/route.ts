@@ -1,10 +1,11 @@
 import { MOCK_ISSUER } from "@/lib/kyc";
+import { publicOrigin } from "@/lib/origins";
 
 /** Discovery document of a mock identity provider (what a real one serves at /.well-known). */
 export async function GET(req: Request, ctx: RouteContext<"/api/mock-id/[provider]/openid-configuration">) {
   const slug = (await ctx.params).provider;
   if (slug !== "thaid" && slug !== "netid") return Response.json({ error: "not_found" }, { status: 404 });
-  const origin = new URL(req.url).origin;
+  const origin = publicOrigin(req);
   const thai = slug === "thaid";
   return Response.json({
     issuer: MOCK_ISSUER[thai ? "THAID" : "CN_NETID"],

@@ -4,6 +4,7 @@ import { DealError, dealForWallet } from "@/lib/bank/deals";
 import { inviteLinkFor } from "@/lib/bank/invites";
 import { RelinkError, relinkInvite } from "@/lib/bank/relink";
 import { HttpError, errorResponse, rateLimit, requireBankWallet } from "@/lib/guard";
+import { publicOrigin } from "@/lib/origins";
 
 /**
  * A new private link for the other side of this deal (the old one stops working): only with the
@@ -18,7 +19,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/deals/[id]/invi
       throw e instanceof DealError ? new HttpError(404, e.message) : e;
     });
     const body = z.object({ code: z.string().max(12).optional() }).safeParse(await req.json().catch(() => ({})));
-    const origin = new URL(req.url).origin;
+    const origin = publicOrigin(req);
     const invite = await inviteLinkFor(user.id, deal.counterparty, origin);
     if (!invite) throw new HttpError(404, "You did not invite the other side of this deal");
     return Response.json(

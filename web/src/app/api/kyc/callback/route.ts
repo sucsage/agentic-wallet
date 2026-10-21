@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { publicOrigin } from "@/lib/origins";
 
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth";
@@ -13,7 +14,8 @@ import { type KycInput, KycError, submitKyc } from "@/lib/onboarding";
  */
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const back = (result: string) => Response.redirect(new URL(`/chat?kyc=${encodeURIComponent(result)}`, url.origin), 303);
+  const origin = publicOrigin(req);
+  const back = (result: string) => Response.redirect(new URL(`/chat?kyc=${encodeURIComponent(result)}`, origin), 303);
   const jar = await cookies();
   const raw = jar.get(KYC_COOKIE)?.value;
   jar.delete({ name: KYC_COOKIE, path: "/api/kyc" });
@@ -28,13 +30,13 @@ export async function GET(req: Request) {
     if (!code) return back("No authorization code");
 
     const slug = flow.provider === "THAID" ? "thaid" : "netid";
-    const res = await fetch(new URL(`/api/mock-id/${slug}/token`, url.origin), {
+    const res = await fetch(new URL(`/api/mock-id/${slug}/token`, origin), {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         grant_type: "authorization_code",
         code,
-        redirect_uri: `${url.origin}/api/kyc/callback`,
+        redirect_uri: `${origin}/api/kyc/callback`,
         client_id: CLIENT_ID,
         client_secret: clientSecret(),
         code_verifier: flow.verifier,

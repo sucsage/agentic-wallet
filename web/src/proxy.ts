@@ -2,7 +2,7 @@ import { getSessionCookie } from "better-auth/cookies";
 import { type NextRequest, NextResponse } from "next/server";
 
 import { VERIFIED_HEADER, verifySignedRequest } from "./lib/device-chain/bridge";
-import { siteOrigins } from "./lib/origins";
+import { publicOrigin, siteOrigins } from "./lib/origins";
 
 /**
  * Runs before every page and API request (Next.js 16 Proxy, formerly Middleware):
@@ -91,7 +91,7 @@ export async function proxy(req: NextRequest) {
 
   const signedIn = Boolean(getSessionCookie(req));
   if (!signedIn && under(path, APP_PAGES) && !under(path, PUBLIC_UNDER_APP)) {
-    const login = new URL("/login", req.url);
+    const login = new URL("/login", publicOrigin(req));
     login.searchParams.set("next", `${path}${req.nextUrl.search}`);
     return withHeaders(NextResponse.redirect(login), req);
   }

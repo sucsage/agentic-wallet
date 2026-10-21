@@ -13,6 +13,7 @@ import { config, explorerAddress } from "@/lib/config";
 import { db } from "@/lib/db";
 import { HttpError, errorResponse, requireBankWallet } from "@/lib/guard";
 import { friendLabels } from "@/lib/social";
+import { publicOrigin } from "@/lib/origins";
 
 
 // The arbiter may run after the response (three to five models for a dispute).
@@ -58,7 +59,7 @@ export async function GET(req: Request, ctx: RouteContext<"/api/deals/[id]">) {
       friendLabels(user.id),
       Promise.all(deal.milestones.map((m) => disputeOf(id, m.index))),
       // The other side has no account and this user invited them: their private link.
-      inviteLinkFor(user.id, deal.counterparty, new URL(req.url).origin),
+      inviteLinkFor(user.id, deal.counterparty, publicOrigin(req)),
       dueDates(wallet, id).catch(() => []),
     ]);
     return Response.json({

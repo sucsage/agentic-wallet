@@ -5,6 +5,7 @@ import { inviteLinkFor } from "@/lib/bank/invites";
 import { db } from "@/lib/db";
 import { HttpError, errorResponse, rateLimit, requireBankWallet } from "@/lib/guard";
 import { LinkAccessError, issueOtp, resetWithCode } from "@/lib/link-access";
+import { publicOrigin } from "@/lib/origins";
 
 const Body = z.discriminatedUnion("action", [
   /** A new one-time code, while the person has not set a password yet (e.g. the first one expired). */
@@ -22,7 +23,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/deals/[id]/invi
     const deal = await dealForWallet(wallet, id).catch((e) => {
       throw e instanceof DealError ? new HttpError(404, e.message) : e;
     });
-    const link = await inviteLinkFor(user.id, deal.counterparty, new URL(req.url).origin);
+    const link = await inviteLinkFor(user.id, deal.counterparty, publicOrigin(req));
     if (!link) throw new HttpError(404, "You did not invite the other side of this deal");
     const body = Body.safeParse(await req.json().catch(() => null));
     if (!body.success) throw new HttpError(400, "Choose an action");

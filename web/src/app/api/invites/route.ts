@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { InviteError, createInvite, listInvites } from "@/lib/bank/invites";
 import { HttpError, errorResponse, rateLimit, requireBankWallet } from "@/lib/guard";
+import { publicOrigin } from "@/lib/origins";
 
 export const maxDuration = 120;
 
@@ -40,7 +41,7 @@ export async function POST(req: Request) {
     });
     return Response.json({
       invite: { id: invite.id, name: invite.name, wallet: invite.sellerWallet, expiresAt: invite.expiresAt },
-      link: `${new URL(req.url).origin}/invite/${token}`,
+      link: `${publicOrigin(req)}/invite/${token}`,
       payee,
     });
   } catch (err) {

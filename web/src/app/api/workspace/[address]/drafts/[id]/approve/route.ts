@@ -1,5 +1,6 @@
 import { confirmDraft } from "@/lib/bank/confirm-draft";
 import { errorResponse, rateLimit, requireUser, userWallet } from "@/lib/guard";
+import { publicOrigin } from "@/lib/origins";
 
 export const maxDuration = 120;
 
@@ -13,7 +14,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/workspace/[addr
     const { address, id } = await ctx.params;
     const wallet = await userWallet(address);
     const user = await requireUser();
-    const body = await confirmDraft(user.id, wallet, id, new URL(req.url).origin);
+    const body = await confirmDraft(user.id, wallet, id, publicOrigin(req));
     return new Response(JSON.stringify(body, (_k, v) => (typeof v === "bigint" ? v.toString() : v)), { headers: { "content-type": "application/json" } });
   } catch (err) {
     return errorResponse(err);
