@@ -55,7 +55,7 @@ export default function PrivacyPage() {
       <p>
         As long as your account exists. When you delete your account, your account, profile, sessions and sign-in links are deleted at once.
         Records needed as evidence of a deal with another person (its terms, hashes and transactions) may be kept for that deal. Server logs
-        are kept for up to 90 days.
+        are kept only as long as needed for security.
       </p>
 
       <h2>6. Your rights</h2>
