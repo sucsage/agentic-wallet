@@ -12,6 +12,7 @@ import { CaptureGuard } from "./capture-guard";
 import { GuarantorForm } from "./guarantor-form";
 import { LinkGate } from "./link-gate";
 import "./invite.css";
+import { askConfirm } from "./ui-dialog";
 
 const KIND = "pay" as const;
 
@@ -189,7 +190,7 @@ export function PayPage({ token }: { token: string }) {
   }
 
   async function approve(d: Deal, m: Milestone) {
-    if (!window.confirm(`Approve "${m.name}"? ${money(m.amount)} goes to ${view?.sellerName ?? "the seller"}, and this cannot be undone.`)) return;
+    if (!(await askConfirm(`Approve "${m.name}"? ${money(m.amount)} goes to ${view?.sellerName ?? "the seller"}, and this cannot be undone.`))) return;
     setBusy(`ok${d.id}:${m.index}`);
     setMsg(null);
     try {

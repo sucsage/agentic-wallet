@@ -5,6 +5,7 @@ import { useState } from "react";
 import { tokenMoney } from "./app-data";
 import { Button } from "./mockup-ui";
 import "./company.css";
+import { askConfirm } from "./ui-dialog";
 
 export type Person = { userId: string; name: string };
 
@@ -56,7 +57,7 @@ export function SendMoneyDialog({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!window.confirm(`${submitLabel}: ${tokenMoney(total, currency)} to ${chosen.map((p) => p.name).join(", ")}?`)) return;
+    if (!(await askConfirm(`${submitLabel}: ${tokenMoney(total, currency)} to ${chosen.map((p) => p.name).join(", ")}?`))) return;
     setBusy(true);
     setMsg(null);
     try {

@@ -6,6 +6,7 @@ import { localizeMockupNode, useLang } from "@/lib/i18n";
 
 import { api } from "./app-data";
 import { Button, Card } from "./mockup-ui";
+import { askConfirm } from "./ui-dialog";
 
 type Device = { address: string; name: string; os: string; linkedAt: string; revokedAt: string | null; lastSeenAt: string | null; height: number | null; head: string | null };
 type Settings = { deviceSigns: boolean; devices: Device[]; pendingRequests: number; server: string; downloads: string | null };
@@ -110,8 +111,8 @@ export function DesktopAppCard() {
                   <Button
                     variant="danger"
                     disabled={busy}
-                    onClick={() => {
-                      if (confirm(`Remove ${d.name}? It can no longer sync or sign. Its chain stays on that computer.`)) act(() => post<Settings>("/api/device/revoke", { address: d.address }), "Removed");
+                    onClick={async () => {
+                      if (await askConfirm(`Remove ${d.name}? It can no longer sync or sign. Its chain stays on that computer.`, { ok: "Remove", danger: true })) act(() => post<Settings>("/api/device/revoke", { address: d.address }), "Removed");
                     }}
                   >
                     Remove

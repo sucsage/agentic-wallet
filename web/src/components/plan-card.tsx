@@ -7,6 +7,7 @@ import { localizeMockupNode, useLang } from "@/lib/i18n";
 import { api, tokenMoney } from "./app-data";
 import { toast } from "./header-tools";
 import { Button } from "./mockup-ui";
+import { askConfirm } from "./ui-dialog";
 
 export type PlanViewData = {
   id: string | null;
@@ -114,8 +115,8 @@ export function PlanCard({
             <Button
               variant="outline"
               disabled={!!busy}
-              onClick={() => {
-                if (!window.confirm("Stop the split payment? Everything paid so far comes back to your balance.")) return;
+              onClick={async () => {
+                if (!(await askConfirm("Stop the split payment? Everything paid so far comes back to your balance."))) return;
                 void run("cancel", () => post(`/api/plans/${plan.id}/cancel`), "Split payment stopped: refunded");
               }}
             >

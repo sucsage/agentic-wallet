@@ -30,6 +30,7 @@ import { DealFormCard, type DealFormData } from "./deal-form";
 import { PreferencesCard, alsoIn, usePrefs } from "./prefs";
 import { TopUpSheet } from "./topup-sheet";
 import type { BankChoice } from "./mockup-screens";
+import { askConfirm } from "./ui-dialog";
 
 /**
  * The mockup screens wired to the backend: bank sign-in and consent, the balance bar, the AI chat
@@ -883,7 +884,7 @@ export function LiveChat() {
   }
 
   async function removeChat(c: SavedChat) {
-    if (!address || busy || !window.confirm(`Delete the chat "${c.title}"? Drafts made in it stay in Deals.`)) return;
+    if (!address || busy || !(await askConfirm(`Delete the chat "${c.title}"? Drafts made in it stay in Deals.`, { ok: "Delete", danger: true }))) return;
     try {
       await api(`/api/workspace/${address}/chats/${c.id}`, { method: "DELETE" });
       if (c.id === chatId) newChat();
@@ -2081,7 +2082,7 @@ function StripeLinkCard() {
     }
   }
   async function remove() {
-    if (!window.confirm("Unlink this card? Deals will then be paid from your wallet balance only.")) return;
+    if (!(await askConfirm("Unlink this card? Deals will then be paid from your wallet balance only."))) return;
     setBusy(true);
     try {
       await api("/api/bank/stripe-link", { method: "DELETE" });

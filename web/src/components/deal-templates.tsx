@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "./header-tools";
 import { api, tokenMoney } from "./app-data";
 import { Button, Loading } from "./mockup-ui";
+import { askConfirm, askText } from "./ui-dialog";
 
 type Template = {
   id: string;
@@ -101,8 +102,8 @@ export function TemplatesPanel({ currency, onCount }: { currency: "THB" | "CNY";
               <Button
                 variant="outline"
                 disabled={!!busy}
-                onClick={() => {
-                  const name = window.prompt("New name for this template:", t.name)?.trim();
+                onClick={async () => {
+                  const name = (await askText("New name for this template:", t.name))?.trim();
                   if (name && name !== t.name) void run(`r${t.id}`, () => api(`/api/templates/${t.id}`, json("PATCH", { name })));
                 }}
               >
@@ -111,8 +112,8 @@ export function TemplatesPanel({ currency, onCount }: { currency: "THB" | "CNY";
               <Button
                 variant="outline"
                 disabled={!!busy}
-                onClick={() => {
-                  if (window.confirm(`Delete the template “${t.name}”? Deals made from it are not affected.`)) void run(`d${t.id}`, () => api(`/api/templates/${t.id}`, json("DELETE")));
+                onClick={async () => {
+                  if (await askConfirm(`Delete the template “${t.name}”? Deals made from it are not affected.`, { ok: "Delete", danger: true })) void run(`d${t.id}`, () => api(`/api/templates/${t.id}`, json("DELETE")));
                 }}
               >
                 {busy === `d${t.id}` ? "Deleting…" : "Delete"}

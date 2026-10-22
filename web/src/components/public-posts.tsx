@@ -9,6 +9,7 @@ import { copyText } from "./chat-markdown";
 import { FileLink } from "./file-preview";
 import { toast } from "./header-tools";
 import { Button, Loading } from "./mockup-ui";
+import { askConfirm } from "./ui-dialog";
 
 type Application = {
   id: string;
@@ -110,7 +111,7 @@ export function PublicPostsPanel({ currency, onChosen, onCount }: { currency: "T
                 </Button>
               )}
               {p.open && (
-                <Button variant="outline" disabled={!!busy} onClick={() => window.confirm("Close this post? The link stops taking applications.") && void run(`c${p.id}`, async () => void (await post(`/api/posts/${p.id}/close`)))}>
+                <Button variant="outline" disabled={!!busy} onClick={async () => (await askConfirm("Close this post? The link stops taking applications.")) && void run(`c${p.id}`, async () => void (await post(`/api/posts/${p.id}/close`)))}>
                   Close
                 </Button>
               )}

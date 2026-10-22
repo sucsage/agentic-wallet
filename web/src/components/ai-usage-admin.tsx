@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { api } from "./app-data";
 import type { AiUsage } from "./ai-usage";
+import { askText } from "./ui-dialog";
 
 type Row = AiUsage & { userId: string; name: string; email: string; ownKeyWeek: number; callsWeek: number };
 
@@ -25,8 +26,8 @@ export function AiUsageAdmin() {
       setMsg((e as Error).message);
     }
   }
-  const ask = (label: string, now: number) => {
-    const v = prompt(`${label} in tokens (empty: back to the default)`, String(now));
+  const ask = async (label: string, now: number) => {
+    const v = await askText(`${label} in tokens (empty: back to the default)`, String(now));
     if (v === null) return undefined;
     return v.trim() === "" ? null : Math.max(0, Math.floor(Number(v)));
   };
@@ -66,10 +67,10 @@ export function AiUsageAdmin() {
               <td className="text-right">
                 <button
                   className="aw-button aw-button-outline"
-                  onClick={() => {
-                    const d = ask("Per day", u.perDay);
+                  onClick={async () => {
+                    const d = await ask("Per day", u.perDay);
                     if (d === undefined) return;
-                    const w = ask("Per week", u.perWeek);
+                    const w = await ask("Per week", u.perWeek);
                     if (w === undefined) return;
                     void set(u.userId, d, w);
                   }}

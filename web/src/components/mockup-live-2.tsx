@@ -23,6 +23,7 @@ import { SEND_LIMITS } from "@/lib/send-limits";
 import { acceptAttr, fileTypeOk, fileTypesLabel } from "@/lib/file-types";
 import { BalanceBar } from "./mockup-live";
 import { Button, Card, Loading, PageTitle } from "./mockup-ui";
+import { askConfirm, askText, showNotice } from "./ui-dialog";
 
 /**
  * Second batch of mockup screens wired to the backend: approvals, policy, friends, groups,
@@ -1277,8 +1278,8 @@ export function LiveGroups({ initialCreateOpen = false, joinToken = null }: { in
                   <span className="aw-gw-wallet-actions">
                     <Button
                       disabled={!!busy}
-                      onClick={() => {
-                        if (!window.confirm(`Open a shared wallet for "${detail.name}"? The group can then hire and sell in its own name; its money moves only after ${detail.threshold} signers approve.`)) return;
+                      onClick={async () => {
+                        if (!(await askConfirm(`Open a shared wallet for "${detail.name}"? The group can then hire and sell in its own name; its money moves only after ${detail.threshold} signers approve.`))) return;
                         void run("gwallet", () => send(`/api/groups/${detail.id}/wallet`, "POST"), afterChange);
                       }}
                     >
@@ -1347,8 +1348,8 @@ export function LiveGroups({ initialCreateOpen = false, joinToken = null }: { in
                           type="button"
                           className="danger"
                           disabled={!!busy}
-                          onClick={() => {
-                            if (!window.confirm(`Remove ${m.name} from "${detail.name}"?`)) return;
+                          onClick={async () => {
+                            if (!(await askConfirm(`Remove ${m.name} from "${detail.name}"?`, { ok: "Remove", danger: true }))) return;
                             void run(`kick${m.userId}`, () => send(`/api/groups/${detail.id}/members/${m.userId}`, "DELETE"), afterChange);
                           }}
                         >
@@ -1525,8 +1526,8 @@ export function LiveGroups({ initialCreateOpen = false, joinToken = null }: { in
               <Button
                 variant="outline"
                 disabled={!!busy}
-                onClick={() => {
-                  if (!window.confirm(`Leave "${detail.name}"?`)) return;
+                onClick={async () => {
+                  if (!(await askConfirm(`Leave "${detail.name}"?`, { ok: "Leave", danger: true }))) return;
                   void run("leave", () => send(`/api/groups/${detail.id}/leave`, "POST"), async () => {
                     setSelected(null);
                     await afterChange();
@@ -1539,8 +1540,8 @@ export function LiveGroups({ initialCreateOpen = false, joinToken = null }: { in
                 <Button
                   variant="danger"
                   disabled={!!busy}
-                  onClick={() => {
-                    if (!window.confirm(`Dissolve "${detail.name}" for everyone? Open votes end; drafts stay with their proposers.${detail.company ? " Its wallet must be empty (pay it out first) and its deals finished." : ""}`)) return;
+                  onClick={async () => {
+                    if (!(await askConfirm(`Dissolve "${detail.name}" for everyone? Open votes end; drafts stay with their proposers.${detail.company ? " Its wallet must be empty (pay it out first) and its deals finished." : ""}`, { ok: "Dissolve", danger: true }))) return;
                     void run("delete", () => send(`/api/groups/${detail.id}`, "DELETE"), async () => {
                       setSelected(null);
                       await reload();
@@ -2346,14 +2347,14 @@ function InviteLinkCard({ dealId, invite, onDone }: { dealId: number; invite: No
         disabled={busy}
         onClick={async () => {
           // A working link is only replaced with the code its holder sends you (from their link's page).
-          const code = shown ? window.prompt("They press “Forgot password” (or “Lost the code?”) on their link and send you a 6-digit code. Enter it to make a new link (the old one stops working):") : "";
+          const code = shown ? await askText("They press “Forgot password” (or “Lost the code?”) on their link and send you a 6-digit code. Enter it to make a new link (the old one stops working):") : "";
           if (shown && !code) return;
           setBusy(true);
           setErr(null);
           try {
             const r = await send<{ link: string; otp: string | null }>(`/api/deals/${dealId}/invite-link`, "POST", { code: code ?? undefined });
             setLink(r.link);
-            if (r.otp) window.alert(`New link made. Its one-time code is ${r.otp}: send it to them separately from the link.`);
+            if (r.otp) await showNotice(`New link made. Its one-time code is ${r.otp}: send it to them separately from the link.`);
             await onDone();
           } catch (e) {
             setErr((e as Error).message);

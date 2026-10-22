@@ -1,6 +1,7 @@
 "use client";
 
 import { type CSSProperties, useState } from "react";
+import { askConfirm } from "./ui-dialog";
 
 export type Due = { index: number; due: string | null; proposedDue: string | null; proposedBy: "me" | "them" | null; late: boolean; lateRequestedAt: string | null };
 
@@ -71,7 +72,7 @@ export function DueControl({ due, role, editable, onAction }: { due: Due | null;
         </span>
       )}
       {due.late && role === "buyer" && !due.lateRequestedAt && (
-        <button type="button" style={{ ...btn, color: "#ff8a8a", borderColor: "#5a2a2e", justifySelf: "start" }} disabled={busy} onClick={() => window.confirm("Nothing was delivered by the agreed date. Ask the seller to refund this milestone?") && void run("late")}>
+        <button type="button" style={{ ...btn, color: "#ff8a8a", borderColor: "#5a2a2e", justifySelf: "start" }} disabled={busy} onClick={async () => (await askConfirm("Nothing was delivered by the agreed date. Ask the seller to refund this milestone?")) && void run("late")}>
           Ask for this milestone&apos;s money back (late)
         </button>
       )}
