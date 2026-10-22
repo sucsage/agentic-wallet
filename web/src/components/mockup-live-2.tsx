@@ -1077,7 +1077,7 @@ export function LiveGroups({ initialCreateOpen = false, joinToken = null }: { in
             >
               <label className="aw-create-field">
                 <span>Group name</span>
-                <input value={name} onChange={(e) => setName(e.target.value)} required maxLength={60} placeholder="e.g. PLC Team" />
+                <input value={name} onChange={(e) => setName(e.target.value)} required maxLength={60} placeholder="e.g. Design Team" />
               </label>
               <small>Invite contacts as signers (they vote on payments) or members (they propose). They join by accepting.</small>
               <RolePicker friends={friends} picked={picked} setPicked={setPicked} />
@@ -1086,7 +1086,7 @@ export function LiveGroups({ initialCreateOpen = false, joinToken = null }: { in
                 <select value={threshold} onChange={(e) => setThreshold(Number(e.target.value))}>
                   {Array.from({ length: Math.max(1, signers - 1) }, (_, i) => i + 2).map((n) => (
                     <option key={n} value={n} disabled={n > signers}>
-                      {n} of {signers} signers (you included)
+                      {n} signers must approve{n > signers ? ` (invite ${n - signers} more signer${n - signers === 1 ? "" : "s"})` : ` · ${signers} signers incl. you`}
                     </option>
                   ))}
                 </select>
@@ -1115,7 +1115,7 @@ export function LiveGroups({ initialCreateOpen = false, joinToken = null }: { in
                 </div>
                 <h2>{g.name}</h2>
                 <p>
-                  {g.members.length} members · {g.threshold} of {signerCount} approve{g.invited ? ` · ${g.invited} invited` : ""}
+                  {g.members.length} members · {g.threshold} signers approve{signerCount < g.threshold ? ` (${signerCount} joined so far)` : ""}{g.invited ? ` · ${g.invited} invited` : ""}
                 </p>
                 <div className="aw-group-members">
                   <div>

@@ -103,7 +103,7 @@ export function BalanceBar() {
         </span>
         <span>
           <small>
-            {acting ? `Company · ${acting.name}` : `${currency} wallet`} · {account?.accountNo ?? "…"}
+            {acting ? `${acting.kind === "GROUP" ? "Group" : "Company"} · ${acting.name}` : `${currency} wallet`} · {account?.accountNo ?? "…"}
           </small>
           <b>
             {account ? money(account.balance, currency) : "…"} <i>Available</i>
@@ -547,6 +547,7 @@ export function DraftCard({
   busy = false,
   onSaveTemplate,
   onPlanChanged,
+  sentToVote,
 }: {
   draft: DraftView;
   currency: "THB" | "CNY";
@@ -558,6 +559,8 @@ export function DraftCard({
   company?: { name: string; threshold: number } | null;
   /** Confirm was pressed and is still running (on-chain steps take a few seconds). */
   busy?: boolean;
+  /** Already submitted to the signers' vote: no second Submit. */
+  sentToVote?: boolean;
   /** Shows "Save as template" (the deal without its other party). */
   onSaveTemplate?: (d: DraftView) => void;
   /** A split payment part was paid or stopped: reload. */
@@ -732,7 +735,10 @@ export function DraftCard({
           </span>
         </div>
       )}
-      {!funded && (
+      {!funded && sentToVote && (
+        <p className="aw-draft-note">✓ Sent to the signers&apos; vote. It locks once enough of them approve (Groups → this group).</p>
+      )}
+      {!funded && !sentToVote && (
         <div className="aw-draft-actions">
           <Button variant="outline" disabled={busy} onClick={() => onDiscard(draft)}>
             Discard
@@ -822,6 +828,8 @@ export function LiveChat() {
   const [balanceAtOpen, setBalanceAtOpen] = useState<number | null>(null);
   const [debiting, setDebiting] = useState(false);
   const [approvingId, setApprovingId] = useState<string | null>(null);
+  // Previews already submitted to a group's or company's vote (their card stops offering Submit).
+  const [voted, setVoted] = useState<Set<string>>(() => new Set());
   // The dialog can be closed while the debit runs on-chain; the result then lands in the chat.
   const confirmOpen = useRef(false);
   useEffect(() => {
@@ -1045,6 +1053,7 @@ export function LiveChat() {
       }
       if (res.companyVote) {
         const v = res.companyVote;
+        setVoted((cur) => new Set(cur).add(d.id));
         setItems((cur) => [
           ...cur,
           {
@@ -1257,6 +1266,7 @@ export function LiveChat() {
                           onApprove={(d) => (d.side === "SELL" || me?.acting ? approve(d) : setConfirm(d))}
                           onDiscard={discard}
                           busy={approvingId === s.draft!.id}
+                          sentToVote={voted.has(s.draft!.id)}
                           onSaveTemplate={saveAsTemplate}
                         />
                       ))}
