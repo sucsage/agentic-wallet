@@ -134,7 +134,7 @@ export function DesktopAppCard() {
           <span>
             <b>My desktop app signs deal moves</b>
             <small>
-              Approving, accepting, disputing and refunds pressed on this website wait until you sign them in the app.
+              Approving, accepting and refunds pressed on this website wait until you sign them in the app.
               {s.pendingRequests > 0 && ` ${s.pendingRequests} waiting now.`}
             </small>
           </span>
