@@ -12,7 +12,7 @@ type Opts = { ok?: string; cancel?: string; danger?: boolean; input?: { value?: 
 
 const STYLE_ID = "aw-ui-dialog-style";
 const CSS = `
-.aw-ui-dialog{border:1px solid #292929;border-radius:16px;background:#111;color:#f2f2f2;width:min(440px,calc(100vw - 32px));padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+.aw-ui-dialog{margin:auto;inset:0;height:fit-content;max-height:calc(100vh - 32px);border:1px solid #292929;border-radius:16px;background:#111;color:#f2f2f2;width:min(440px,calc(100vw - 32px));padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.6)}
 .aw-ui-dialog::backdrop{background:rgba(0,0,0,.6);backdrop-filter:blur(2px)}
 .aw-ui-dialog p{margin:0 0 16px;font-size:14px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}
 .aw-ui-dialog input{width:100%;box-sizing:border-box;margin:0 0 16px;padding:10px 12px;border:1px solid #333;border-radius:10px;background:#000;color:#f2f2f2;font:inherit;font-size:14px}

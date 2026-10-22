@@ -629,7 +629,7 @@ export function DraftCard({
                   : m.hasFile
                     ? ` · 📎 ${m.fileTypes?.length ? `${fileTypesLabel(m.fileTypes)} only` : "file"}`
                     : ""}
-              {!m.deposit && typeof m.revisions === "number" ? ` · ↻ ${m.revisions} rounds of changes` : ""}
+              {!m.deposit && typeof m.revisions === "number" ? ` · ↻ ${m.revisions} ${m.revisions === 1 ? "round" : "rounds"} of changes` : ""}
             </b>
             <small>{m.due ? `Due ${m.due}` : m.acceptance}</small>
           </span>

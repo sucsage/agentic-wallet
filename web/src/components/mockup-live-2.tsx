@@ -1483,7 +1483,7 @@ export function LiveGroups({ initialCreateOpen = false, joinToken = null }: { in
                         : `${p.side === "SELL" ? "Sell" : "Pay"} · ${p.title} · ${tokenMoney(total(p.milestones), currency)}`}
                   </b>
                   <small className="aw-gw-proposal-meta">
-                    Proposed by {p.mine ? "you" : p.proposer} · {p.yes}/{detail.threshold} approved{p.no ? ` · ${p.no} no` : ""} · {PROPOSAL_STATUS[p.status] ?? p.status}
+                    Proposed by {p.mine ? "you" : p.proposer} · {p.yes}/{detail.threshold} approved{p.no ? ` · ${p.no} no` : ""} · {p.side === "PAYOUT" && p.status === "EXECUTED" ? "Approved · paid out" : p.side === "PAYOUT" && p.status === "FAILED" ? "Approved, but the payout failed · nothing left the group account" : (PROPOSAL_STATUS[p.status] ?? p.status)}
                     {p.dealId !== null ? ` · deal D-${p.dealId}` : ""}
                   </small>
                   {p.voters.length > 0 && <small className="aw-gw-proposal-meta">{p.voters.map((v) => `${v.approve ? "✓" : "✗"} ${v.name}`).join(" · ")}</small>}
