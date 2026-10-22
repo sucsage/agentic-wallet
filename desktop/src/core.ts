@@ -852,7 +852,7 @@ class Wallet {
     } catch (e) {
       anchor = { ok: false, detail: e instanceof Error ? e.message : String(e) };
     }
-    return { local: local.ok ? { ok: true, detail: `${blocks.length} blocks: every hash, link and signature checks out` } : { ok: false, detail: local.error }, server, anchor };
+    return { local: local.ok ? { ok: true, detail: `${blocks.length} block${blocks.length === 1 ? "" : "s"}: every hash, link and signature checks out` } : { ok: false, detail: local.error }, server, anchor };
   }
 
   /** Reads the anchor's receipt from the chain (read-only JSON-RPC): an Anchored event of the contract with this root. */
