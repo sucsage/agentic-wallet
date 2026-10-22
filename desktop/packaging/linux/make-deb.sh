@@ -26,7 +26,7 @@ Section: misc
 Priority: optional
 Architecture: $DEBARCH
 Maintainer: Kravii team <noreply@github.com>
-Homepage: https://agentic-wallet-inky.vercel.app/download
+Homepage: https://www.kravii.com/download
 Description: Kravii desktop app (FinTechathon 2026 demo, test money only)
  Holds your deals as your own signed chain on this computer; the money stays in the
  escrow smart contract. Its screen opens in your browser.

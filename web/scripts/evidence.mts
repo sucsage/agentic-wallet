@@ -1,6 +1,6 @@
 // Writes ../EVIDENCE.md: real transaction hashes from the live chain, grouped by what they prove,
 // each linked to the public explorer. Reads only; run it again before submitting.
-//   cd web && npx tsx --conditions=react-server --env-file=.env.local scripts/evidence.mts https://agentic-wallet-inky.vercel.app
+//   cd web && npx tsx --conditions=react-server --env-file=.env.local scripts/evidence.mts https://www.kravii.com
 import { writeFileSync } from "node:fs";
 
 import { type AbiEvent, type Address, type Hex, decodeFunctionData, getAbiItem } from "viem";
@@ -9,7 +9,7 @@ const { publicClient } = await import("../src/lib/chain");
 const { config } = await import("../src/lib/config");
 const { agentWalletAbi, agentWalletFactoryAbi, fileEscrowAbi, mockTHBAbi } = await import("../src/lib/abis");
 
-const site = (process.argv[2] ?? "https://agentic-wallet-inky.vercel.app").replace(/\/$/, "");
+const site = (process.argv[2] ?? "https://www.kravii.com").replace(/\/$/, "");
 const pc = publicClient();
 const fromBlock = BigInt(process.env.START_BLOCK ?? "0");
 const head = await pc.getBlockNumber();
