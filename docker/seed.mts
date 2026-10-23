@@ -11,6 +11,9 @@ import pg from "pg";
 import { agentWalletAbi, fileEscrowAbi } from "../src/lib/abis";
 
 const BASE = process.env.SEED_BASE_URL ?? "http://localhost:3000";
+// The address the app trusts as its own (BETTER_AUTH_URL / APP_ORIGIN): with WEB_PORT changed it is not
+// http://localhost:3000, though the seed still reaches the app there inside the container network.
+const ORIGIN = new URL(process.env.APP_ORIGIN || process.env.BETTER_AUTH_URL || BASE).origin;
 const env = (k: string) => {
   const v = process.env[k];
   if (!v) throw new Error(`missing ${k}`);
@@ -35,7 +38,7 @@ if ((await q(`SELECT 1 FROM "BankCustomer" WHERE username = 'somchai'`)).length)
 async function call(path: string, method: string, cookie: string, body?: unknown) {
   const r = await fetch(BASE + path, {
     method,
-    headers: { "content-type": "application/json", origin: BASE, cookie },
+    headers: { "content-type": "application/json", origin: ORIGIN, cookie },
     body: body ? JSON.stringify(body) : undefined,
     signal: AbortSignal.timeout(180_000),
   });
