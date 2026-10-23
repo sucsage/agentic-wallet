@@ -687,7 +687,7 @@ Kravii's design, architecture, smart contracts, security model and product decis
 | sharp, unpdf, jsQR, qrcode, react-markdown, remark-gfm, Tailwind CSS | Image previews, PDF text, QR codes, Markdown, styling | Apache-2.0 / MIT |
 | Inno Setup, rcedit | Windows installer and executable resources | Inno Setup licence / MIT |
 
-Third-party services used in test mode only: Vercel (hosting), Neon (PostgreSQL), Stripe (test-mode payments), GitHub Actions and Releases (desktop builds), Tailscale Funnel (access to the chain server). The Mock Bank, mock ThaID and mock 国家网络身份认证, Mock Post and the AI arbiter flow are the team's own simulations; they do not imitate any real institution's branding.
+Third-party services, in test mode only: Cloudflare (DNS and the tunnel to the server), Stripe (test-mode payments), GitHub Actions and Releases (desktop builds); until 2026-10-21 the web app and its database ran on Vercel and Neon. The Mock Bank, mock ThaID and mock 国家网络身份认证, Mock Post and the AI arbiter flow are the team's own simulations; they do not imitate any real institution's branding.
 
 **AI in the product.** The wallet's assistant, the terms review and the dispute arbiter call large language models through the Anthropic Messages API (Anthropic, OpenRouter or a university LLM gateway; users may bring their own key). The models only draft and advise: every payment needs the user's signed approval, and on-chain policy (caps, recipient allowlist, N-of-M approval) is enforced by the contracts, not by the model.
 

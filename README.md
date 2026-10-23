@@ -1,12 +1,15 @@
-# Agentic Wallet
+# Kravii
 
-An AI agent that runs its own on-chain wallet and pays SME contractors milestone by milestone
-(deposit → delivery → FAT → SAT → retention). The agent never holds the owner key. It gets a scoped,
-expiring session key, and the smart contract enforces every rule, so a manipulated or hallucinating
-agent still cannot move funds outside policy.
+An AI agent wallet for small businesses that hire or sell by milestone. You describe the job in
+Thai, English or Chinese; the AI drafts the deal (milestones, deliverables, acceptance criteria) and a
+second AI checks the terms are fair to you. The money waits in an on-chain escrow and is paid one
+milestone at a time, only when you approve the work. The AI never moves money by itself: every
+payment needs your signature, and the smart contracts enforce caps, a recipient allowlist and N-of-M
+approval for company and group wallets, so a manipulated or hallucinating agent still cannot pay
+outside policy.
 
 Built for the 2026 Shenzhen International FinTech Competition (FinTechathon), International Track,
-Topic F: Agent Wallet.
+Topic F: Agent Wallet. Test money only.
 
 ## For reviewers
 
@@ -18,6 +21,8 @@ Topic F: Agent Wallet.
 | Transaction hashes, grouped by what they prove | [EVIDENCE.md](EVIDENCE.md) |
 | Technical documentation (architecture, core algorithms, security design) | [TECHNICAL.md](TECHNICAL.md) |
 | Security self-assessment (permission tiers, known risks) | [SECURITY.md](SECURITY.md) |
+| Desktop app (macOS, Windows, Linux) | https://www.kravii.com/download |
+| Run it yourself, or review it with an AI assistant | [below](#run-it-yourself) · [AGENTS.md](AGENTS.md) |
 
 Our chain is a private, permissioned Hyperledger Besu network: only the app's keys can **write**, but
 anyone can **read**. To check a transaction hash yourself, without trusting our explorer:
@@ -29,43 +34,72 @@ cast receipt <tx hash> --rpc-url https://www.kravii.com/api/rpc
 `cd web && npx tsx --conditions=react-server --env-file=.env.local scripts/evidence.mts` regenerates
 EVIDENCE.md from the live chain.
 
-## Run it locally (one command)
+## Run it yourself
 
-The whole system (database, chain, web app, desktop app, demo data) starts in containers on your own
-machine, for testing without any hosted service:
+**One command, everything in containers** (database, local chain, web app, desktop app, demo data).
+You need Docker with Compose v2, about 6 GB of free RAM, and ports 3000, 8545, 47821 and 55432 free.
 
 ```bash
 git clone https://github.com/sucsage/agentic-wallet.git && cd agentic-wallet
+cp .env.example .env          # optional: add ONE LLM key in .env for the AI chat
 docker compose up --build -d --wait
 ```
 
-Then open http://localhost:3000 and sign in as `somchai`, `nong`, `mali` or `preecha` (PIN `123456`).
-Full guide, a 10-minute tour, configuration and troubleshooting: [docker/README.md](docker/README.md).
+Open http://localhost:3000. The defaults in `.env.example` work as they are; without an LLM key
+everything works except the AI chat and the AI arbiter. Demo people (`somchai`, `nong`, `mali`,
+`preecha`, PIN `123456`), a 10-minute tour, the desktop app, configuration and troubleshooting are in
+[docker/README.md](docker/README.md). Stop with `docker compose down`; `docker compose down -v` also
+wipes the data.
 
-## Layout
+**Contracts only:** `cd contracts && npm ci && npx hardhat test` (102 passing).
+
+## Reviewing with an AI assistant
+
+The repository has an [`AGENTS.md`](AGENTS.md) that AI coding tools (Claude Code, Codex, Cursor and
+others) read automatically: a map from each claim to the code, test or command that checks it, and
+the limitations we know of. If you use an AI to help review, you can give it this prompt:
+
+```text
+You are helping me review a FinTechathon 2026 entry (Topic F: Agent Wallet):
+https://github.com/sucsage/agentic-wallet (live: https://www.kravii.com).
+Read AGENTS.md first, then README.md, SECURITY.md and EVIDENCE.md.
+For each claim in AGENTS.md, check it against the code, the tests and the chain:
+- run the contract tests (cd contracts && npm ci && npx hardhat test);
+- check a few transaction hashes from EVIDENCE.md on https://www.kravii.com/api/rpc
+  (eth_getTransactionReceipt), including the reverted one;
+- confirm that no AI tool in web/src/lib/agent.ts can move money without the user's confirmation.
+Be critical: tell me which claims hold, which do not, and how serious the known risks
+in SECURITY.md section 7 are. Then summarise strengths and weaknesses against the criteria:
+task completion, security and compliance, innovation and interaction, on-chain use.
+```
+
+## Repository layout
 
 | Path | What |
 |---|---|
-| `contracts/` | Solidity: `AgentWallet`, `AgentWalletFactory`, `MilestoneEscrow`, `MockUSDC` (Hardhat 3 + viem) |
-| `web/` | Next.js 16 app on Vercel: landing page, per-visitor sandbox, agent chat, approvals, deals, audit log |
-| `desktop/` | Desktop app (Bun, one executable per OS): each user's own deal chain on their computer, linked to the other party's and anchored on-chain (`desktop/README.md`) |
-| `web/src/lib/agent.ts` | LLM tool-use loop (any Anthropic-compatible API: PSU gateway, OpenRouter, Anthropic): 7 validated tools, untrusted-document handling |
-| `web/src/lib/policy.ts` | Guard #1: off-chain policy engine (tier routing, injection scan) |
-| `web/src/lib/actions.ts` | Every on-chain action, shared by the agent's tools and the UI |
-| `scripts/deploy-base-sepolia.sh` | One-command testnet deploy + gas funding + Vercel env file |
+| `contracts/` | Solidity (Hardhat 3 + viem): `AgentWallet` (session key, caps, allowlists, N-of-M), `AgentWalletFactory`, `MilestoneEscrow`, `FileEscrow`, `ChainAnchor`, `MockTHB`/`MockCNY` |
+| `web/` | Next.js 16 app: AI agent and tools, policy engine, Mock Bank, deals, groups and companies, private links, public explorer, API for the desktop app |
+| `web/src/lib/agent.ts` | The agent's tool-use loop (any Anthropic-compatible API); tool inputs validated with zod; untrusted documents fenced |
+| `web/src/lib/policy.ts`, `web/src/lib/safety.ts` | Guard 1: off-chain policy and prompt-injection checks |
+| `desktop/` | Desktop app (Bun + Electrobun, macOS/Windows/Linux): each user's own signed deal chain, AI chat, MCP |
+| `chain/` | Hyperledger Besu (QBFT, account allowlist, JWT-protected RPC) for the private chain |
+| `docker/`, `docker-compose.yml`, `docker-compose.prod.yml` | Local stack (above) and the production stack |
+| `docs/` | Word versions of the documents and the internal security audit |
 
 ## Architecture
 
 ```
-Visitor ──► Next.js (Vercel) ──► Claude agent ──► Guard 1: policy engine ──► Guard 2: AgentWallet ──► MilestoneEscrow
-              │  chat, approvals,     tools          tier routing, caps,          on-chain caps,           evidence hash,
-              │  deals, audit         (7)            allowlist, injection scan     allowlists, N-of-M       release, dispute
-              └─► "Launch sandbox" ──► AgentWalletFactory: one tx = configured wallet + 10,000 mUSDC
+Browser / desktop app ──► Next.js app ──► AI agent ──► Guard 1: policy + injection checks ──► Guard 2: AgentWallet ──► FileEscrow
+                             │   (tools only draft)       caps, allowlist, tiers                 on-chain caps, allowlist,   milestones,
+                             │                                                                 N-of-M approval             review window
+                             ├─► PostgreSQL: users, Mock Bank ledger, drafts, groups (no secrets on-chain, only hashes)
+                             └─► Hyperledger Besu (private, chain id 20261020): escrow, payments, hourly anchors of the device chains
+Desktop app: every decision the user signs is a block on their own chain; the server keeps only its head.
 ```
 
-The chain is the only database: deal terms and evidence ride on-chain as `data:` URIs, and the
-audit log is read from contract events. Each visitor gets an isolated wallet, so judges can't
-interfere with each other.
+Live setup: the web app, PostgreSQL and the Besu validator run in Docker on one machine behind a
+Cloudflare Tunnel (`docker-compose.prod.yml`, `chain/`; see [docker/README.md](docker/README.md#production-own-server-own-database)).
+The design, algorithms and security model are in [TECHNICAL.md](TECHNICAL.md).
 
 ## Permission tiers (enforced on-chain)
 
@@ -80,73 +114,12 @@ Generic calls (Tier 1 `Call` kind) are limited to `token.approve(allowlisted esc
 `escrow.createDeal(allowlisted payee, settlement token)`, `escrow.fund` and `escrow.dispute`.
 Anything that moves funds out has to go through its dedicated, checked path.
 
-## Run locally
-
-```bash
-cd contracts && npm install && npx hardhat node          # terminal 1: local chain
-cd contracts && npx hardhat run scripts/deploy.ts --network localhost
-cd web && npm install && cp .env.example .env.local      # fill addresses + Hardhat test keys
-npm run dev                                              # http://localhost:3000
-npm run e2e                                              # backend end-to-end flow against the chain
-```
-
-The chat agent needs one LLM provider: `LLM_BASE_URL` + `LLM_API_KEY` (any Anthropic-compatible gateway; default model `openai/gpt-6-luna`), `OPENROUTER_API_KEY`, or `ANTHROPIC_API_KEY`. Every other button works without one.
-
-`npm run agent-eval` grades the live agent on the demo's decision points (deal setup, autonomous payments, over-cap approval, refusing an incomplete SAT, phishing). With the PSU gateway, `openai/gpt-6-luna`, `deepseek/deepseek-v4.1-flash` and `qwen/qwen3.7-plus` all scored 8/8; gpt-6-luna did so 3/3 runs at ~35 s.
-
-## Deploy (Base Sepolia + Vercel)
-
-1. Fund the `OWNER` address from `.secrets/base-sepolia.env` with ~0.08 Base Sepolia ETH (any faucet).
-2. `./scripts/deploy-base-sepolia.sh`: deploys contracts, funds the other role keys, writes `.secrets/vercel.env`.
-3. Import the repo in Vercel with root directory `web/`, then paste `.secrets/vercel.env` plus the LLM variables (`LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`).
-
-## Private chain (Hyperledger Besu) — permissioned writes, public reads
-
-The app runs on its own permissioned chain instead of a public testnet: QBFT, chain id 20261020,
-free gas, and an **account allowlist** so only the app's keys can send transactions. Reading is
-public: the app's explorer at `/explorer` and read-only JSON-RPC at `/api/rpc` (no sign-in).
-App data for this chain lives in the `besu` Postgres schema (`DB_SCHEMA=besu`), apart from the
-Base Sepolia data in `public`.
-
-```
-Vercel (web + signing keys) ──HTTPS + Bearer JWT──▶ Tailscale Funnel ──▶ Besu   (chain server, e.g. a home PC)
-```
-
-Besu checks a bearer JWT on every RPC call itself (no proxy): no token or a bad one gets 401. The
-token is issued on the dev machine (`node scripts/chain-token.mjs [days]`, private key in `.secrets/`,
-public key in `chain/jwt-public.pem`). The chain server holds only the validator key and that public key.
-
-**Chain server on a home PC (Windows, no domain, no public IP)**:
-
-1. Install Docker Desktop (WSL 2) and Tailscale; set Windows sleep to *Never* and let both start at
-   sign-in.
-2. On the dev machine: `bash scripts/setup-besu.sh --config-only` (genesis, validator key, allowlist,
-   JWT key pair and `.secrets/chain-token.txt`). Copy the `chain/` folder to the PC.
-3. On the PC, in PowerShell, in `chain/`:
-   `docker compose -f docker-compose.yml -f docker-compose.server.yml up -d`, then
-   `tailscale funnel --bg 8555` for a fixed public HTTPS URL `https://<pc>.<tailnet>.ts.net`.
-4. From the dev machine:
-   `BESU_RPC_URL=https://<pc>.<tailnet>.ts.net CHAIN_TOKEN=$(cat .secrets/chain-token.txt) bash scripts/deploy-besu.sh`
-   and `cd web && DB_SCHEMA=besu npx prisma db push`.
-
-The chain is only up while the PC is: keep it powered and online during the review and the final,
-and keep the Base Sepolia deployment as a fallback. Tokens expire (default 90 days); issue a new one
-with `node scripts/chain-token.mjs` and update Vercel.
-
-**Vercel env**: the values from `.secrets/besu.env`, plus `RPC_URL=https://<pc>.<tailnet>.ts.net`,
-`CHAIN_TOKEN=<contents of .secrets/chain-token.txt>`, `DB_SCHEMA=besu` and the usual keys, database
-and LLM settings.
-
-**All on one machine** (development): `bash scripts/setup-besu.sh` starts the chain with its RPC on
-127.0.0.1:8555, deploys and pushes the schema; merge `.secrets/besu.env` into `web/.env.local` and
-add `DB_SCHEMA=besu`. Stop with `cd chain && docker compose down` (`down -v` wipes the chain).
-
 ## Contracts
 
 ```bash
 cd contracts
 npm install
-npm test          # 101 tests, including the prompt-injection "send everything to 0xEvil" cases
+npm test          # 102 tests, including the prompt-injection "send everything to 0xEvil" cases
 ```
 
 Deploy to Base Sepolia (testnet keys only):
@@ -158,7 +131,9 @@ AGENT_ADDRESS=0x... APPROVERS=0x...,0x... CONTRACTOR=0x... \
   npx hardhat run scripts/deploy.ts --network baseSepolia
 ```
 
-## Live on Base Sepolia (chain 84532)
+## Earlier deployment: Base Sepolia (chain 84532)
+
+Before the private chain, the contracts ran on the public Base Sepolia testnet. They stay there as a fallback and as public evidence.
 
 Redeployed 2026-10-12 with the neutral-arbiter escrow and FileEscrow.
 
@@ -199,7 +174,7 @@ Kravii's design, architecture, smart contracts, security model and product decis
 | sharp, unpdf, jsQR, qrcode, react-markdown, remark-gfm, Tailwind CSS | Image previews, PDF text, QR codes, Markdown, styling | Apache-2.0 / MIT |
 | Inno Setup, rcedit | Windows installer and executable resources | Inno Setup licence / MIT |
 
-Third-party services used in test mode only: Vercel (hosting), Neon (PostgreSQL), Stripe (test-mode payments), GitHub Actions and Releases (desktop builds), Tailscale Funnel (access to the chain server). The Mock Bank, mock ThaID and mock 国家网络身份认证, Mock Post and the AI arbiter flow are the team's own simulations; they do not imitate any real institution's branding.
+Third-party services, in test mode only: Cloudflare (DNS and the tunnel to the server), Stripe (test-mode payments), GitHub Actions and Releases (desktop builds); until 2026-10-21 the web app and its database ran on Vercel and Neon. The Mock Bank, mock ThaID and mock 国家网络身份认证, Mock Post and the AI arbiter flow are the team's own simulations; they do not imitate any real institution's branding.
 
 **AI in the product.** The wallet's assistant, the terms review and the dispute arbiter call large language models through the Anthropic Messages API (Anthropic, OpenRouter or a university LLM gateway; users may bring their own key). The models only draft and advise: every payment needs the user's signed approval, and on-chain policy (caps, recipient allowlist, N-of-M approval) is enforced by the contracts, not by the model.
 
