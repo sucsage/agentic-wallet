@@ -75,7 +75,7 @@ Where to look:
 
 ## Try it: a 10-minute tour
 
-**1. Sign in as a demo person.** On "Log in to continue" tick the consent box, choose **Thai bank**, and press **Continue with Thai bank**. On the Mock Bank page log in with a username below and PIN `123456`, then pick the passbook and press **Allow & continue**:
+**1. Sign in as a demo person.** Open http://localhost:3000/login and, at the bottom of the card, follow **Team test accounts (older Mock Bank sign-in)** (or go straight to http://localhost:3000/th/authorize). Log in with a username below and PIN `123456`, pick the passbook and press **Allow & continue**, then open http://localhost:3000/chat. (You can also create a new account with any email on the login page; the demo identity check approves at once.)
 
 | Username | Who | What they have |
 |---|---|---|

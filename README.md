@@ -47,7 +47,7 @@ docker compose up --build -d --wait
 
 Open http://localhost:3000. The defaults in `.env.example` work as they are; without an LLM key
 everything works except the AI chat and the AI arbiter. Demo people (`somchai`, `nong`, `mali`,
-`preecha`, PIN `123456`), a 10-minute tour, the desktop app, configuration and troubleshooting are in
+`preecha`, PIN `123456`; sign in at http://localhost:3000/th/authorize), a 10-minute tour, the desktop app, configuration and troubleshooting are in
 [docker/README.md](docker/README.md). Stop with `docker compose down`; `docker compose down -v` also
 wipes the data.
 
